@@ -1,0 +1,46 @@
+{
+  "name": "teknoplast-desktop",
+  "version": "1.0.0",
+  "description": "TEKNOPLAST — Windows ish stoli ilovasi",
+  "main": "main.js",
+  "author": "Teknoplast",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win",
+    "pack": "electron-packager . TEKNOPLAST --platform=win32 --arch=x64 --out=dist --overwrite --ignore=\"dist\""
+  },
+  "devDependencies": {
+    "@electron/packager": "^18.4.4",
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "uz.teknoplast.app",
+    "productName": "TEKNOPLAST",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "TEKNOPLAST"
+    }
+  }
+}

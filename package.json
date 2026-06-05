@@ -1,0 +1,14 @@
+{
+  "name": "teknoplast",
+  "version": "1.0.0",
+  "description": "TEKNOPLAST ERP — plastik zavod boshqaruv tizimi",
+  "scripts": {
+    "start": "cd backend && node src/index.js",
+    "build": "cd frontend && npm install && npm run build",
+    "install:all": "cd backend && npm install --production && cd ../frontend && npm install",
+    "postinstall": "npm run install:all && npm run build"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

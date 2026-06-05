@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Send, Bot, User, AlertTriangle, TrendingUp, DollarSign, Factory, X } from 'lucide-react';
+import { Send, User, AlertTriangle, TrendingUp, DollarSign, Factory, X, Mic, MicOff, Camera, Image, Volume2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { aiAPI } from '../services/api';
 
@@ -11,33 +11,55 @@ const SEVERITY_COLOR = {
   CRITICAL: 'border-l-4 border-red-500 bg-red-50',
 };
 
+// Ahmad Avatar
+function AhmadAvatar({ size = 32 }) {
+  return (
+    <div className={`w-${size/4} h-${size/4} bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center flex-shrink-0`}
+      style={{ width: size, height: size }}>
+      <span className="text-white font-bold" style={{ fontSize: size * 0.45 }}>A</span>
+    </div>
+  );
+}
+
 export default function AIPage() {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState('chat');
   const [message, setMessage] = useState('');
+  const [language, setLanguage] = useState('uz');
+  const [listening, setListening] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
   const [chatMessages, setChatMessages] = useState([
-    { role: 'assistant', text: 'Salom! Men Teknoplast AI yordamchisiman. Biznes haqida istalgan savolingizni bering.', time: new Date() }
+    { role: 'assistant', text: language === 'uz'
+      ? 'Assalomu alaykum! Men Ahmad — sizning yordamchingizman. Ovozli buyruq bering, rasm yuboring yoki savol yozing.'
+      : 'Здравствуйте! Я Ахмад — ваш помощник. Дайте голосовую команду, отправьте фото или напишите вопрос.',
+      time: new Date() }
   ]);
   const chatEndRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const recognitionRef = useRef(null);
 
+  // Alerts
   const { data: alerts } = useQuery({
     queryKey: ['alerts'],
     queryFn: () => aiAPI.getAlerts().then(r => r.data),
     refetchInterval: 60000,
   });
 
+  // Salary analysis
   const { data: salaryAnalysis, isLoading: salaryLoading, refetch: refetchSalary } = useQuery({
     queryKey: ['ai-salary'],
     queryFn: () => aiAPI.getSalaryAnalysis().then(r => r.data),
     enabled: false,
   });
 
+  // Sales forecast
   const { data: salesForecast, isLoading: salesLoading, refetch: refetchSales } = useQuery({
     queryKey: ['ai-sales'],
     queryFn: () => aiAPI.getSalesForecast().then(r => r.data),
     enabled: false,
   });
 
+  // Expense optimization
   const { data: expenseOpt, isLoading: expenseLoading, refetch: refetchExpense } = useQuery({
     queryKey: ['ai-expense'],
     queryFn: () => aiAPI.getExpenseOptimization().then(r => r.data),
@@ -49,19 +71,167 @@ export default function AIPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
   });
 
+  // Chat
   const chatMutation = useMutation({
     mutationFn: (question) => aiAPI.chat(question),
     onSuccess: (res) => {
+      const answer = res.data.answer;
       setChatMessages(prev => [...prev, {
-        role: 'assistant', text: res.data.answer, time: new Date()
+        role: 'assistant', text: answer, time: new Date()
       }]);
+      speak(answer);
+
+      // Agar tizimga qo'shish kerak bo'lsa
+      if (res.data.action) {
+        setPendingAction(res.data.action);
+      }
     },
     onError: () => {
+      const errMsg = language === 'uz'
+        ? 'Kechirasiz, xato yuz berdi. Qayta urinib ko\'ring.'
+        : 'Извините, произошла ошибка. Попробуйте снова.';
       setChatMessages(prev => [...prev, {
-        role: 'assistant', text: 'Kechirasiz, xato yuz berdi. Qayta urinib ko\'ring.', time: new Date()
+        role: 'assistant', text: errMsg, time: new Date()
       }]);
     },
   });
+
+  // Image upload
+  const imageMutation = useMutation({
+    mutationFn: async (file) => {
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('language', language);
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/ahmad/read-image', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setChatMessages(prev => [...prev, {
+        role: 'assistant',
+        text: data.response || data.text || (language === 'uz' ? 'Rasmni o\'qib bo\'ldim.' : 'Изображение прочитано.'),
+        time: new Date(),
+        imageData: data.extracted,
+      }]);
+      speak(data.response || data.text);
+
+      if (data.action) {
+        setPendingAction(data.action);
+      }
+    },
+    onError: () => {
+      const errMsg = language === 'uz' ? 'Rasmni o\'qishda xato' : 'Ошибка чтения изображения';
+      setChatMessages(prev => [...prev, {
+        role: 'assistant', text: errMsg, time: new Date()
+      }]);
+    },
+  });
+
+  // Text-to-Speech
+  const speak = (text) => {
+    if (!('speechSynthesis' in window) || !text) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = language === 'uz' ? 'uz-UZ' : 'ru-RU';
+    utterance.rate = 0.9;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Speech-to-Text
+  const toggleListening = () => {
+    if (listening) {
+      recognitionRef.current?.stop();
+      setListening(false);
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast.error(language === 'uz' ? 'Brauzer ovozni qo\'llab-quvvatlamaydi' : 'Браузер не поддерживает голос');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = language === 'uz' ? 'uz-UZ' : 'ru-RU';
+    recognition.interimResults = false;
+    recognition.continuous = false;
+
+    recognition.onstart = () => setListening(true);
+    recognition.onend = () => setListening(false);
+
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map(r => r[0].transcript)
+        .join('');
+
+      if (transcript.trim()) {
+        setChatMessages(prev => [...prev, { role: 'user', text: transcript, time: new Date() }]);
+        chatMutation.mutate(transcript);
+      }
+    };
+
+    recognition.onerror = () => {
+      setListening(false);
+      toast.error(language === 'uz' ? 'Ovoz tanilmadi' : 'Голос не распознан');
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
+
+  // Image upload handler
+  const handleImageUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setChatMessages(prev => [...prev, {
+      role: 'user',
+      text: language === 'uz' ? `Rasm yuborildi: ${file.name}` : `Фото отправлено: ${file.name}`,
+      time: new Date(),
+      isImage: true,
+      imageUrl: URL.createObjectURL(file),
+    }]);
+
+    imageMutation.mutate(file);
+    e.target.value = '';
+  };
+
+  // Permission action
+  const confirmAction = async (confirmed) => {
+    if (!pendingAction) return;
+
+    if (confirmed) {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/ahmad/confirm-action', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action: pendingAction }),
+        });
+        const data = await res.json();
+        const successMsg = language === 'uz'
+          ? `Tayyor! ${data.message || 'Tizimga qo\'shildi.'}`
+          : `Готово! ${data.message || 'Добавлено в систему.'}`;
+        setChatMessages(prev => [...prev, { role: 'assistant', text: successMsg, time: new Date() }]);
+        speak(successMsg);
+      } catch {
+        const errMsg = language === 'uz' ? 'Xato yuz berdi' : 'Произошла ошибка';
+        setChatMessages(prev => [...prev, { role: 'assistant', text: errMsg, time: new Date() }]);
+      }
+    } else {
+      const cancelMsg = language === 'uz' ? 'Bekor qilindi.' : 'Отменено.';
+      setChatMessages(prev => [...prev, { role: 'assistant', text: cancelMsg, time: new Date() }]);
+    }
+
+    setPendingAction(null);
+  };
 
   const sendMessage = () => {
     if (!message.trim()) return;
@@ -75,30 +245,41 @@ export default function AIPage() {
   }, [chatMessages]);
 
   const TABS = [
-    { id: 'chat', label: 'AI Chat', icon: Bot },
-    { id: 'alerts', label: `Ogohlantirishlar (${alerts?.alerts?.length || 0})`, icon: AlertTriangle },
-    { id: 'salary', label: 'Maosh Tahlili', icon: DollarSign },
-    { id: 'sales', label: 'Sotuv Prognozi', icon: TrendingUp },
-    { id: 'expense', label: 'Xarajat Optimallashtirish', icon: Factory },
+    { id: 'chat', label: 'Ahmad Chat', icon: '🤖' },
+    { id: 'alerts', label: `Ogohlantirishlar (${alerts?.alerts?.length || 0})`, icon: '⚠️' },
+    { id: 'salary', label: 'Maosh Tahlili', icon: '💰' },
+    { id: 'sales', label: 'Sotuv Prognozi', icon: '📈' },
+    { id: 'expense', label: 'Xarajat Optimallashtirish', icon: '🏭' },
   ];
+
+  const quickQuestions = language === 'uz'
+    ? ['Bu oyda sotuv qancha?', 'Eng ko\'p sotiladigan mahsulot?', 'Omborda nechta mahsulot bor?']
+    : ['Сколько продаж в этом месяце?', 'Самый продаваемый товар?', 'Сколько товаров на складе?'];
 
   return (
     <div className="space-y-4">
       <div className="page-header">
-        <h1 className="page-title">AI Yordamchi</h1>
-        <span className="badge-blue flex items-center gap-1">
-          <Bot size={12} /> Claude AI
-        </span>
+        <h1 className="page-title">Ahmad</h1>
+        <div className="flex items-center gap-2">
+          <select value={language} onChange={e => setLanguage(e.target.value)}
+            className="text-sm border rounded-lg px-2 py-1">
+            <option value="uz">O'zbek</option>
+            <option value="ru">Русский</option>
+          </select>
+          <span className="badge bg-emerald-100 text-emerald-800 flex items-center gap-1">
+            Ahmad
+          </span>
+        </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl overflow-x-auto">
-        {TABS.map(({ id, label, icon: Icon }) => (
+        {TABS.map(({ id, label, icon }) => (
           <button key={id} onClick={() => setActiveTab(id)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
-              activeTab === id ? 'bg-white shadow text-blue-700' : 'text-gray-600 hover:text-gray-900'
+              activeTab === id ? 'bg-white shadow text-emerald-700' : 'text-gray-600 hover:text-gray-900'
             }`}>
-            <Icon size={14} /> {label}
+            <span>{icon}</span> {label}
           </button>
         ))}
       </div>
@@ -109,18 +290,22 @@ export default function AIPage() {
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             {chatMessages.map((msg, i) => (
               <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                {msg.role === 'assistant' && (
-                  <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
-                    <Bot size={16} className="text-white" />
-                  </div>
-                )}
+                {msg.role === 'assistant' && <AhmadAvatar />}
                 <div className={`max-w-lg px-4 py-3 rounded-2xl text-sm ${
                   msg.role === 'user'
-                    ? 'bg-blue-600 text-white rounded-tr-sm'
+                    ? 'bg-emerald-600 text-white rounded-tr-sm'
                     : 'bg-gray-100 text-gray-800 rounded-tl-sm'
                 }`}>
+                  {msg.isImage && msg.imageUrl && (
+                    <img src={msg.imageUrl} alt="uploaded" className="max-w-xs rounded-lg mb-2" />
+                  )}
                   <p className="whitespace-pre-wrap">{msg.text}</p>
-                  <p className={`text-xs mt-1 ${msg.role === 'user' ? 'text-blue-200' : 'text-gray-400'}`}>
+                  {msg.role === 'assistant' && msg.text && (
+                    <button onClick={() => speak(msg.text)} className="mt-1 text-gray-400 hover:text-emerald-600">
+                      <Volume2 size={14} />
+                    </button>
+                  )}
+                  <p className={`text-xs mt-1 ${msg.role === 'user' ? 'text-emerald-200' : 'text-gray-400'}`}>
                     {msg.time.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
@@ -131,15 +316,37 @@ export default function AIPage() {
                 )}
               </div>
             ))}
-            {chatMutation.isPending && (
-              <div className="flex gap-3">
-                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                  <Bot size={16} className="text-white" />
+
+            {/* Pending action confirmation */}
+            {pendingAction && (
+              <div className="flex gap-3 justify-start">
+                <AhmadAvatar />
+                <div className="bg-yellow-50 border border-yellow-200 px-4 py-3 rounded-2xl rounded-tl-sm max-w-lg">
+                  <p className="text-sm text-yellow-800 font-medium mb-2">
+                    {language === 'uz' ? 'Tizimga qo\'shaylikmi?' : 'Добавить в систему?'}
+                  </p>
+                  <p className="text-sm text-yellow-700 mb-3">{pendingAction.description}</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => confirmAction(true)}
+                      className="px-4 py-1.5 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
+                      {language === 'uz' ? 'Ha, qo\'sh' : 'Да, добавить'}
+                    </button>
+                    <button onClick={() => confirmAction(false)}
+                      className="px-4 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300">
+                      {language === 'uz' ? 'Yo\'q' : 'Нет'}
+                    </button>
+                  </div>
                 </div>
+              </div>
+            )}
+
+            {(chatMutation.isPending || imageMutation.isPending) && (
+              <div className="flex gap-3">
+                <AhmadAvatar />
                 <div className="bg-gray-100 px-4 py-3 rounded-2xl rounded-tl-sm">
                   <div className="flex gap-1">
                     {[0,1,2].map(i => (
-                      <div key={i} className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                      <div key={i} className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce"
                         style={{ animationDelay: `${i * 0.15}s` }} />
                     ))}
                   </div>
@@ -151,22 +358,45 @@ export default function AIPage() {
 
           {/* Quick questions */}
           <div className="px-6 pb-2 flex gap-2 flex-wrap">
-            {['Bu oyda sotuv qancha?', 'Eng ko\'p sotiladigan mahsulot?', 'Oylik xarajat necha?'].map(q => (
+            {quickQuestions.map(q => (
               <button key={q} onClick={() => { setMessage(q); }}
-                className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full hover:bg-blue-100 transition">
+                className="text-xs px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-full hover:bg-emerald-100 transition">
                 {q}
               </button>
             ))}
           </div>
 
+          {/* Input area */}
           <div className="p-4 border-t border-gray-100">
-            <div className="flex gap-3">
+            <div className="flex gap-2">
+              {/* Voice button */}
+              <button onClick={toggleListening}
+                className={`w-10 h-10 flex items-center justify-center rounded-lg transition-all ${
+                  listening
+                    ? 'bg-red-500 text-white animate-pulse'
+                    : 'bg-gray-100 text-gray-600 hover:bg-emerald-100 hover:text-emerald-700'
+                }`}
+                title={language === 'uz' ? 'Ovozli buyruq' : 'Голосовая команда'}>
+                {listening ? <MicOff size={18} /> : <Mic size={18} />}
+              </button>
+
+              {/* Image button */}
+              <button onClick={() => fileInputRef.current?.click()}
+                className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100 text-gray-600 hover:bg-emerald-100 hover:text-emerald-700 transition-all"
+                title={language === 'uz' ? 'Rasm yuborish (nakladnoy, chek)' : 'Отправить фото (накладная, чек)'}>
+                <Camera size={18} />
+              </button>
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
+                onChange={handleImageUpload} />
+
+              {/* Text input */}
               <input value={message} onChange={e => setMessage(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                placeholder="Savolingizni yozing..."
+                placeholder={language === 'uz' ? 'Ahmad\'ga yozing...' : 'Напишите Ахмаду...'}
                 className="input flex-1" />
+
               <button onClick={sendMessage} disabled={chatMutation.isPending || !message.trim()}
-                className="btn-primary w-10 h-10 p-0 flex items-center justify-center">
+                className="btn-primary w-10 h-10 p-0 flex items-center justify-center bg-emerald-600 hover:bg-emerald-700">
                 <Send size={16} />
               </button>
             </div>
@@ -180,7 +410,7 @@ export default function AIPage() {
           {!(alerts?.alerts?.length) ? (
             <div className="card text-center py-12 text-gray-400">
               <AlertTriangle size={40} className="mx-auto mb-2 opacity-30" />
-              <p>Ogohlantirish yo'q. Hammasi yaxshi!</p>
+              <p>{language === 'uz' ? 'Ogohlantirish yo\'q. Hammasi yaxshi!' : 'Нет предупреждений. Все хорошо!'}</p>
             </div>
           ) : alerts.alerts.map(a => (
             <div key={a.id} className={`card p-4 ${SEVERITY_COLOR[a.severity] || ''}`}>
@@ -212,32 +442,32 @@ export default function AIPage() {
       {activeTab === 'salary' && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold">Maosh Tahlili (Claude AI)</h2>
-            <button onClick={() => refetchSalary()} disabled={salaryLoading} className="btn-primary btn-sm">
-              {salaryLoading ? 'Tahlil qilinmoqda...' : 'Tahlil qilish'}
+            <h2 className="font-semibold">{language === 'uz' ? 'Maosh Tahlili (Ahmad)' : 'Анализ зарплат (Ахмад)'}</h2>
+            <button onClick={() => refetchSalary()} disabled={salaryLoading} className="btn-primary btn-sm bg-emerald-600">
+              {salaryLoading ? (language === 'uz' ? 'Tahlil qilinmoqda...' : 'Анализ...') : (language === 'uz' ? 'Tahlil qilish' : 'Анализировать')}
             </button>
           </div>
           {salaryAnalysis ? (
             <div className="space-y-4">
               {salaryAnalysis.cached && (
-                <p className="text-xs text-gray-400">* Keshdan olindi (1 soat davomida saqlanadi)</p>
+                <p className="text-xs text-gray-400">* {language === 'uz' ? 'Keshdan olindi' : 'Из кэша'}</p>
               )}
               {(() => {
                 const d = salaryAnalysis.analysis?.analysis_data;
                 const parsed = typeof d === 'string' ? JSON.parse(d) : d;
                 return (
                   <div className="space-y-3">
-                    <div className="bg-blue-50 rounded-lg p-4">
-                      <h3 className="font-medium text-blue-900 mb-2">Xulosa</h3>
-                      <p className="text-sm text-blue-800">{parsed?.summary}</p>
+                    <div className="bg-emerald-50 rounded-lg p-4">
+                      <h3 className="font-medium text-emerald-900 mb-2">{language === 'uz' ? 'Xulosa' : 'Заключение'}</h3>
+                      <p className="text-sm text-emerald-800">{parsed?.summary}</p>
                     </div>
                     {parsed?.recommendations?.length > 0 && (
                       <div>
-                        <h3 className="font-medium mb-2">Tavsiyalar</h3>
+                        <h3 className="font-medium mb-2">{language === 'uz' ? 'Tavsiyalar' : 'Рекомендации'}</h3>
                         <ul className="space-y-2">
                           {parsed.recommendations.map((r, i) => (
                             <li key={i} className="flex gap-2 text-sm text-gray-700">
-                              <span className="text-green-500 mt-0.5">✓</span> {r}
+                              <span className="text-emerald-500 mt-0.5">&#10003;</span> {r}
                             </li>
                           ))}
                         </ul>
@@ -250,7 +480,7 @@ export default function AIPage() {
           ) : (
             <div className="text-center py-12 text-gray-400">
               <DollarSign size={40} className="mx-auto mb-2 opacity-30" />
-              <p className="text-sm">Tahlil boshlash uchun tugmani bosing</p>
+              <p className="text-sm">{language === 'uz' ? 'Tahlil boshlash uchun tugmani bosing' : 'Нажмите кнопку для начала анализа'}</p>
             </div>
           )}
         </div>
@@ -260,9 +490,9 @@ export default function AIPage() {
       {activeTab === 'sales' && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold">Sotuv Prognozi (Claude AI)</h2>
-            <button onClick={() => refetchSales()} disabled={salesLoading} className="btn-primary btn-sm">
-              {salesLoading ? 'Analizlanmoqda...' : 'Prognoz qilish'}
+            <h2 className="font-semibold">{language === 'uz' ? 'Sotuv Prognozi (Ahmad)' : 'Прогноз продаж (Ахмад)'}</h2>
+            <button onClick={() => refetchSales()} disabled={salesLoading} className="btn-primary btn-sm bg-emerald-600">
+              {salesLoading ? (language === 'uz' ? 'Analizlanmoqda...' : 'Анализ...') : (language === 'uz' ? 'Prognoz qilish' : 'Прогнозировать')}
             </button>
           </div>
           {salesForecast ? (
@@ -273,14 +503,14 @@ export default function AIPage() {
                 return (
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-green-50 rounded-lg p-4">
+                      <div className="bg-emerald-50 rounded-lg p-4">
                         <p className="text-xs text-gray-500">Trend</p>
-                        <p className="font-bold text-green-800">{parsed?.trend}</p>
-                        <p className="text-sm text-green-700">{parsed?.trend_percentage}%</p>
+                        <p className="font-bold text-emerald-800">{parsed?.trend}</p>
+                        <p className="text-sm text-emerald-700">{parsed?.trend_percentage}%</p>
                       </div>
                       <div className="bg-blue-50 rounded-lg p-4">
-                        <p className="text-xs text-gray-500">Keyingi oy prognozi</p>
-                        <p className="font-bold text-blue-800">{parsed?.next_month_forecast?.toLocaleString()} so'm</p>
+                        <p className="text-xs text-gray-500">{language === 'uz' ? 'Keyingi oy prognozi' : 'Прогноз на след. мес.'}</p>
+                        <p className="font-bold text-blue-800">{parsed?.next_month_forecast?.toLocaleString()} {language === 'uz' ? "so'm" : 'сум'}</p>
                       </div>
                     </div>
                     {parsed?.insights && (
@@ -290,7 +520,7 @@ export default function AIPage() {
                     )}
                     {parsed?.recommendations?.map((r, i) => (
                       <div key={i} className="flex gap-2 text-sm text-gray-700">
-                        <span className="text-blue-500">→</span> {r}
+                        <span className="text-emerald-500">&rarr;</span> {r}
                       </div>
                     ))}
                   </div>
@@ -300,7 +530,7 @@ export default function AIPage() {
           ) : (
             <div className="text-center py-12 text-gray-400">
               <TrendingUp size={40} className="mx-auto mb-2 opacity-30" />
-              <p className="text-sm">Prognoz boshlash uchun tugmani bosing</p>
+              <p className="text-sm">{language === 'uz' ? 'Prognoz boshlash uchun tugmani bosing' : 'Нажмите для прогноза'}</p>
             </div>
           )}
         </div>
@@ -310,9 +540,9 @@ export default function AIPage() {
       {activeTab === 'expense' && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold">Xarajat Optimallashtirish (Claude AI)</h2>
-            <button onClick={() => refetchExpense()} disabled={expenseLoading} className="btn-primary btn-sm">
-              {expenseLoading ? 'Tahlil qilinmoqda...' : 'Tahlil qilish'}
+            <h2 className="font-semibold">{language === 'uz' ? 'Xarajat Optimallashtirish (Ahmad)' : 'Оптимизация расходов (Ахмад)'}</h2>
+            <button onClick={() => refetchExpense()} disabled={expenseLoading} className="btn-primary btn-sm bg-emerald-600">
+              {expenseLoading ? (language === 'uz' ? 'Tahlil qilinmoqda...' : 'Анализ...') : (language === 'uz' ? 'Tahlil qilish' : 'Анализировать')}
             </button>
           </div>
           {expenseOpt ? (
@@ -327,17 +557,17 @@ export default function AIPage() {
                     </div>
                     {parsed?.savings_opportunities?.length > 0 && (
                       <div>
-                        <h3 className="font-medium mb-2">Tejash imkoniyatlari</h3>
+                        <h3 className="font-medium mb-2">{language === 'uz' ? 'Tejash imkoniyatlari' : 'Возможности экономии'}</h3>
                         {parsed.savings_opportunities.map((s, i) => (
                           <div key={i} className="flex gap-2 text-sm text-gray-700 mb-1.5">
-                            <span className="text-green-500">💡</span> {s}
+                            <span className="text-emerald-500">&#128161;</span> {s}
                           </div>
                         ))}
                       </div>
                     )}
                     {parsed?.recommendations?.map((r, i) => (
                       <div key={i} className="flex gap-2 text-sm text-gray-700">
-                        <span className="text-blue-500">→</span> {r}
+                        <span className="text-emerald-500">&rarr;</span> {r}
                       </div>
                     ))}
                   </div>
@@ -347,7 +577,7 @@ export default function AIPage() {
           ) : (
             <div className="text-center py-12 text-gray-400">
               <Factory size={40} className="mx-auto mb-2 opacity-30" />
-              <p className="text-sm">Tahlil boshlash uchun tugmani bosing</p>
+              <p className="text-sm">{language === 'uz' ? 'Tahlil boshlash uchun tugmani bosing' : 'Нажмите для анализа'}</p>
             </div>
           )}
         </div>

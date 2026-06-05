@@ -34,7 +34,7 @@ const NAV_ITEMS = [
   { to: '/machines',   icon: Cog,             label: 'Mashinalar',       roles: ['OWNER','PRODUCTION_HEAD'] },
   { to: '/reports',    icon: FileBarChart,    label: 'Hisobotlar',       roles: ['OWNER','ACCOUNTANT'] },
   { to: '/users',      icon: ShieldCheck,     label: 'Foydalanuvchilar', roles: ['OWNER'] },
-  { to: '/ai',         icon: Bot,             label: 'AI Yordamchi',     roles: null },
+  { to: '/ai',         icon: Bot,             label: 'Ahmad',            roles: null },
 ];
 
 export default function Sidebar() {

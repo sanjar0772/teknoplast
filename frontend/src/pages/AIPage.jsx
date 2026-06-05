@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Send, User, AlertTriangle, TrendingUp, DollarSign, Factory, X, Mic, MicOff, Camera, Image, Volume2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { aiAPI } from '../services/api';
+import { aiAPI, ahmadAPI } from '../services/api';
 
 const SEVERITY_COLOR = {
   LOW: 'border-l-4 border-blue-400 bg-blue-50',
@@ -73,9 +73,9 @@ export default function AIPage() {
 
   // Chat
   const chatMutation = useMutation({
-    mutationFn: ({ question, lang }) => aiAPI.chat(question, lang),
+    mutationFn: ({ question, lang }) => ahmadAPI.command(question, lang),
     onSuccess: (res) => {
-      const answer = res.data.answer;
+      const answer = res.data.response;
       const newIdx = chatMessages.length + 1; // user xabaridan keyingi index
       setChatMessages(prev => [...prev, {
         role: 'assistant', text: answer, time: new Date()
@@ -83,7 +83,7 @@ export default function AIPage() {
       // Javob tilini matndan aniqlab gapiramiz
       speak(answer, newIdx);
 
-      // Agar tizimga qo'shish kerak bo'lsa
+      // Agar tizimga qo'shish/amal kerak bo'lsa
       if (res.data.action) {
         setPendingAction(res.data.action);
       }
@@ -305,21 +305,15 @@ export default function AIPage() {
 
     if (confirmed) {
       try {
-        const token = localStorage.getItem('token');
-        const res = await fetch('/api/ahmad/confirm-action', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ action: pendingAction }),
-        });
-        const data = await res.json();
-        const successMsg = language === 'uz'
-          ? `Tayyor! ${data.message || 'Tizimga qo\'shildi.'}`
-          : `Готово! ${data.message || 'Добавлено в систему.'}`;
-        setChatMessages(prev => [...prev, { role: 'assistant', text: successMsg, time: new Date() }]);
-        speak(successMsg);
+        const { data } = await ahmadAPI.confirmAction(pendingAction);
+        const okWord = language === 'uz' ? 'Tayyor!' : 'Готово!';
+        const failWord = language === 'uz' ? 'Bajarilmadi:' : 'Не выполнено:';
+        const msgTxt = data.success === false
+          ? `${failWord} ${data.message || ''}`
+          : `${okWord} ${data.message || (language === 'uz' ? 'Tizimga qo\'shildi.' : 'Добавлено.')}`;
+        const idx = chatMessages.length;
+        setChatMessages(prev => [...prev, { role: 'assistant', text: msgTxt, time: new Date() }]);
+        speak(msgTxt, idx);
       } catch {
         const errMsg = language === 'uz' ? 'Xato yuz berdi' : 'Произошла ошибка';
         setChatMessages(prev => [...prev, { role: 'assistant', text: errMsg, time: new Date() }]);
@@ -364,8 +358,20 @@ export default function AIPage() {
   ];
 
   const quickQuestions = language === 'uz'
-    ? ['Bu oyda sotuv qancha?', 'Eng ko\'p sotiladigan mahsulot?', 'Omborda nechta mahsulot bor?']
-    : ['Сколько продаж в этом месяце?', 'Самый продаваемый товар?', 'Сколько товаров на складе?'];
+    ? ['Bugungi hisobot', '50 dona gul tuvak 7000 dan sotildi', 'Elektr uchun 500000 xarajat qo\'sh', 'Kam qolgan mahsulotlar']
+    : ['Отчёт за сегодня', 'Продано 50 цветочных горшков по 7000', 'Добавь расход 500000 за электричество', 'Заканчивающиеся товары'];
+
+  // Kunlik hisobot tugmasi
+  const handleDailyReport = async () => {
+    try {
+      const { data } = await ahmadAPI.dailyReport(language);
+      const idx = chatMessages.length;
+      setChatMessages(prev => [...prev, { role: 'assistant', text: data.response, time: new Date() }]);
+      speak(data.response, idx);
+    } catch {
+      toast.error(language === 'uz' ? 'Hisobot olinmadi' : 'Отчёт не получен');
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -470,10 +476,18 @@ export default function AIPage() {
             <div ref={chatEndRef} />
           </div>
 
-          {/* Quick questions */}
+          {/* Quick questions / commands */}
           <div className="px-6 pb-2 flex gap-2 flex-wrap">
+            <button onClick={handleDailyReport}
+              className="text-xs px-3 py-1.5 bg-emerald-600 text-white rounded-full hover:bg-emerald-700 transition font-medium">
+              📊 {language === 'uz' ? 'Bugungi hisobot' : 'Отчёт за день'}
+            </button>
             {quickQuestions.map(q => (
-              <button key={q} onClick={() => { setMessage(q); }}
+              <button key={q} onClick={() => {
+                const lang = detectLang(q);
+                setChatMessages(prev => [...prev, { role: 'user', text: q, time: new Date() }]);
+                chatMutation.mutate({ question: q, lang });
+              }}
                 className="text-xs px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-full hover:bg-emerald-100 transition">
                 {q}
               </button>

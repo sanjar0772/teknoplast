@@ -156,4 +156,11 @@ export const aiAPI = {
   getChatHistory: () => api.get('/ai/chat-history'),
 };
 
+// Ahmad — ovozli buyruq, hisobot, amal tasdiqlash
+export const ahmadAPI = {
+  command: (text, language) => api.post('/ahmad/command', { text, language }),
+  dailyReport: (language) => api.get('/ahmad/daily-report', { params: { language } }),
+  confirmAction: (action) => api.post('/ahmad/confirm-action', { action }),
+};
+
 export default api;

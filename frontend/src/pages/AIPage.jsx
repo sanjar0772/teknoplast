@@ -149,6 +149,7 @@ export default function AIPage() {
   // Text-to-Speech — Ahmad ovozi (erkak, o'g'il bola)
   const [speakingMsgId, setSpeakingMsgId] = useState(null);
   const voicesRef = useRef([]);
+  const speakStartRef = useRef(0); // speak boshlangan vaqt (klik konflikti uchun)
 
   // Ovozlarni oldindan yuklash (brauzer asinxron yuklaydi)
   useEffect(() => {
@@ -165,6 +166,20 @@ export default function AIPage() {
     };
   }, []);
 
+  // Ahmad gapirayotganda — istalgan joyga BITTA klik to'xtatadi
+  useEffect(() => {
+    const stopOnClick = () => {
+      if (!('speechSynthesis' in window)) return;
+      if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) return;
+      // speak endigina boshlangan bo'lsa (shu klik) — to'xtatmaymiz
+      if (Date.now() - speakStartRef.current < 400) return;
+      window.speechSynthesis.cancel();
+      setSpeakingMsgId(null);
+    };
+    document.addEventListener('click', stopOnClick);
+    return () => document.removeEventListener('click', stopOnClick);
+  }, []);
+
   const speak = (text, msgId = null, forceLang = null) => {
     if (!('speechSynthesis' in window) || !text) return;
 
@@ -176,6 +191,7 @@ export default function AIPage() {
     }
 
     window.speechSynthesis.cancel();
+    speakStartRef.current = Date.now(); // shu klik to'xtatmasligi uchun
     const spokenLang = forceLang || detectLang(text);
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 1.05;

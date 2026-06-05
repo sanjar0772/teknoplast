@@ -148,6 +148,22 @@ export default function AIPage() {
 
   // Text-to-Speech — Ahmad ovozi (erkak, o'g'il bola)
   const [speakingMsgId, setSpeakingMsgId] = useState(null);
+  const voicesRef = useRef([]);
+
+  // Ovozlarni oldindan yuklash (brauzer asinxron yuklaydi)
+  useEffect(() => {
+    const loadVoices = () => {
+      const v = window.speechSynthesis?.getVoices() || [];
+      if (v.length) voicesRef.current = v;
+    };
+    loadVoices();
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+    return () => {
+      if ('speechSynthesis' in window) window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
 
   const speak = (text, msgId = null, forceLang = null) => {
     if (!('speechSynthesis' in window) || !text) return;
@@ -160,21 +176,26 @@ export default function AIPage() {
     }
 
     window.speechSynthesis.cancel();
-    const spokenLang = forceLang || detectLang(text); // Javob tilini matndan aniqlaymiz
+    const spokenLang = forceLang || detectLang(text);
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = spokenLang === 'uz' ? 'uz-UZ' : 'ru-RU';
     utterance.rate = 1.05;
     utterance.pitch = 1.7; // Yuqori pitch — o'g'il bola ovozi
 
-    // O'g'il bola / erkak ovozini tanlash
-    const voices = window.speechSynthesis.getVoices();
-    const targetLang = spokenLang === 'uz' ? 'uz' : 'ru';
-    // Avval shu tilda ovoz qidiramiz, topilmasa rus tilini ishlatamiz (uz ko'pincha yo'q)
-    const langVoices = voices.filter(v => v.lang.startsWith(targetLang));
-    const fallbackVoices = voices.filter(v => v.lang.startsWith('ru'));
-    const pool = langVoices.length ? langVoices : fallbackVoices;
+    // Ovozlarni olamiz (ref yoki to'g'ridan-to'g'ri)
+    let voices = voicesRef.current.length ? voicesRef.current : window.speechSynthesis.getVoices();
 
-    // Erkak ovozini afzal ko'ramiz
+    // O'zbek ovozi kamdan-kam bor — shuning uchun: uz -> uz topilsa uz, bo'lmasa ru, u ham bo'lmasa default
+    const uzVoices = voices.filter(v => v.lang.toLowerCase().startsWith('uz'));
+    const ruVoices = voices.filter(v => v.lang.toLowerCase().startsWith('ru'));
+
+    let pool;
+    if (spokenLang === 'uz') {
+      pool = uzVoices.length ? uzVoices : ruVoices; // uz yo'q bo'lsa ru ovozda gapiradi
+    } else {
+      pool = ruVoices.length ? ruVoices : voices;
+    }
+
+    // Erkak/bola ovozini afzal ko'ramiz
     const chosen = pool.find(v =>
       v.name.toLowerCase().includes('male') ||
       v.name.toLowerCase().includes('dmitr') ||
@@ -182,13 +203,24 @@ export default function AIPage() {
       v.name.toLowerCase().includes('artem')
     ) || pool[0];
 
-    if (chosen) utterance.voice = chosen;
+    // MUHIM: utterance.lang ni TANLANGAN ovoz tiliga moslaymiz
+    // (uz-UZ qo'ysak, lekin uz ovozi yo'q bo'lsa — brauzer JIM qoladi)
+    if (chosen) {
+      utterance.voice = chosen;
+      utterance.lang = chosen.lang;
+    } else {
+      utterance.lang = spokenLang === 'uz' ? 'ru-RU' : 'ru-RU'; // xavfsiz fallback
+    }
 
     setSpeakingMsgId(msgId);
     utterance.onend = () => setSpeakingMsgId(null);
     utterance.onerror = () => setSpeakingMsgId(null);
 
+    // Chrome bug: ba'zan speak ishlamaydi — resume bilan turtki beramiz
     window.speechSynthesis.speak(utterance);
+    setTimeout(() => {
+      if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+    }, 100);
   };
 
   // Speech-to-Text

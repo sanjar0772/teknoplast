@@ -473,8 +473,6 @@ if (USE_PG) {
 
   function createSampleData() {
     const bcrypt = require('bcryptjs');
-    const hash = bcrypt.hashSync('Admin123!', 10);
-    const ownerId = uuidv4();
 
     _db.run(`INSERT OR IGNORE INTO system_settings (key,value,description) VALUES
       ('company_name','TEKNOPLAST','Kompaniya nomi'),
@@ -482,12 +480,30 @@ if (USE_PG) {
       ('timezone','Asia/Tashkent','Vaqt mintaqasi'),
       ('language','uz','Til')`);
 
-    _db.run(`INSERT OR IGNORE INTO users (id,phone,password_hash,full_name,role) VALUES (?,?,?,?,?)`,
-      [ownerId, '+998901234567', hash, 'Admin (Owner)', 'OWNER']);
+    const users = [
+      { phone: '+998901234567', password: 'Admin123!',      name: 'Admin (Owner)',      role: 'OWNER' },
+      { phone: '+998901111111', password: 'Owner123!',      name: 'Egasi',              role: 'OWNER' },
+      { phone: '+998902222222', password: 'Accountant123!', name: 'Hisobchi',           role: 'ACCOUNTANT' },
+      { phone: '+998903333333', password: 'Sales123!',      name: 'Savdo',              role: 'SALES_HEAD' },
+      { phone: '+998904444444', password: 'Production123!', name: 'Ishlab chiqarish',   role: 'PRODUCTION_HEAD' },
+      { phone: '+998905555555', password: 'Kirim123!',      name: 'Kirimchi',           role: 'KIRIMCHI' },
+      { phone: '+998906666666', password: 'Ombor123!',      name: 'Omborchi',           role: 'OMBORCHI' },
+    ];
 
-    console.log('👤 Birinchi foydalanuvchi:');
-    console.log('   Telefon: +998901234567');
-    console.log('   Parol:   Admin123!');
+    for (const u of users) {
+      const hash = bcrypt.hashSync(u.password, 10);
+      const id = uuidv4();
+      _db.run(`INSERT OR IGNORE INTO users (id,phone,password_hash,full_name,role) VALUES (?,?,?,?,?)`,
+        [id, u.phone, hash, u.name, u.role]);
+    }
+
+    console.log('👤 7 ta foydalanuvchi yaratildi');
+    console.log('   OWNER:           +998901234567 / Admin123!');
+    console.log('   SALES_HEAD:      +998903333333 / Sales123!');
+    console.log('   ACCOUNTANT:      +998902222222 / Accountant123!');
+    console.log('   PRODUCTION_HEAD: +998904444444 / Production123!');
+    console.log('   KIRIMCHI:        +998905555555 / Kirim123!');
+    console.log('   OMBORCHI:        +998906666666 / Ombor123!');
   }
 
   // Ana query funksiyasi

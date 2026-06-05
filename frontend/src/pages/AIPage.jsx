@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Send, User, AlertTriangle, TrendingUp, DollarSign, Factory, X, Mic, MicOff, Camera, Image, Volume2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { aiAPI, ahmadAPI } from '../services/api';
+import { aiAPI, ahmadAPI, reportsAPI } from '../services/api';
 
 const SEVERITY_COLOR = {
   LOW: 'border-l-4 border-blue-400 bg-blue-50',
@@ -73,12 +73,17 @@ export default function AIPage() {
 
   // Chat
   const chatMutation = useMutation({
-    mutationFn: ({ question, lang }) => ahmadAPI.command(question, lang),
+    mutationFn: ({ question, lang }) => {
+      // Suhbat xotirasi — oxirgi 6 ta xabarni yuboramiz
+      const history = chatMessages.slice(-6).map(m => ({ role: m.role, text: m.text }));
+      return ahmadAPI.command(question, lang, history);
+    },
     onSuccess: (res) => {
       const answer = res.data.response;
       const newIdx = chatMessages.length + 1; // user xabaridan keyingi index
       setChatMessages(prev => [...prev, {
-        role: 'assistant', text: answer, time: new Date()
+        role: 'assistant', text: answer, time: new Date(),
+        document: res.data.document || null, // yuklab olinadigan hujjat
       }]);
       // Javob tilini matndan aniqlab gapiramiz
       speak(answer, newIdx);
@@ -239,47 +244,101 @@ export default function AIPage() {
     }, 100);
   };
 
-  // Speech-to-Text
+  // ---- Wake word ("Ahmad" chaqiruvi) ----
+  const [wakeEnabled, setWakeEnabled] = useState(false);
+  const wakeRef = useRef(null);
+  const wakeEnabledRef = useRef(false);
+
+  // Buyruq tinglashni boshlash (dasturiy yoki tugma orqali)
+  const startCommandListening = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      toast.error(language === 'uz' ? 'Brauzer ovozni qo\'llab-quvvatlamaydi' : 'Браузер не поддерживает голос');
+      return;
+    }
+    const recognition = new SR();
+    recognition.lang = language === 'uz' ? 'uz-UZ' : 'ru-RU';
+    recognition.interimResults = false;
+    recognition.continuous = false;
+
+    recognition.onstart = () => setListening(true);
+    recognition.onend = () => {
+      setListening(false);
+      if (wakeEnabledRef.current) setTimeout(startWake, 400); // wake rejimini qayta yoqamiz
+    };
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results).map(r => r[0].transcript).join('');
+      if (transcript.trim()) {
+        const detectedLang = detectLang(transcript);
+        setChatMessages(prev => [...prev, { role: 'user', text: transcript, time: new Date() }]);
+        chatMutation.mutate({ question: transcript, lang: detectedLang });
+      }
+    };
+    recognition.onerror = () => {
+      setListening(false);
+      if (wakeEnabledRef.current) setTimeout(startWake, 400);
+    };
+    recognitionRef.current = recognition;
+    try { recognition.start(); } catch {}
+  };
+
+  // Wake recognition — "Ahmad" so'zini kutadi
+  const startWake = () => {
+    if (!wakeEnabledRef.current) return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    try { wakeRef.current?.stop(); } catch {}
+    const rec = new SR();
+    rec.lang = language === 'uz' ? 'uz-UZ' : 'ru-RU';
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.onresult = (event) => {
+      const txt = Array.from(event.results).map(r => r[0].transcript).join(' ').toLowerCase();
+      if (txt.includes('ahmad') || txt.includes('ахмад') || txt.includes('ahmat') || txt.includes('ахмат')) {
+        try { rec.stop(); } catch {}
+        startCommandListening();
+      }
+    };
+    rec.onend = () => {
+      // tinglash tugagan bo'lsa va wake hali yoqilgan bo'lsa — qayta boshlaymiz
+      if (wakeEnabledRef.current && !listening) { try { rec.start(); } catch {} }
+    };
+    rec.onerror = () => {};
+    wakeRef.current = rec;
+    try { rec.start(); } catch {}
+  };
+
+  const toggleWake = () => {
+    if (wakeEnabledRef.current) {
+      wakeEnabledRef.current = false;
+      setWakeEnabled(false);
+      try { wakeRef.current?.stop(); } catch {}
+    } else {
+      wakeEnabledRef.current = true;
+      setWakeEnabled(true);
+      startWake();
+      toast.success(language === 'uz' ? "'Ahmad' deb chaqiring" : "Скажите 'Ахмад'");
+    }
+  };
+
+  // Komponent yopilganda mikrofonni to'xtatamiz
+  useEffect(() => {
+    return () => {
+      wakeEnabledRef.current = false;
+      try { wakeRef.current?.stop(); } catch {}
+      try { recognitionRef.current?.stop(); } catch {}
+      try { window.speechSynthesis?.cancel(); } catch {}
+    };
+  }, []);
+
+  // Speech-to-Text (tugma)
   const toggleListening = () => {
     if (listening) {
       recognitionRef.current?.stop();
       setListening(false);
       return;
     }
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      toast.error(language === 'uz' ? 'Brauzer ovozni qo\'llab-quvvatlamaydi' : 'Браузер не поддерживает голос');
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = language === 'uz' ? 'uz-UZ' : 'ru-RU';
-    recognition.interimResults = false;
-    recognition.continuous = false;
-
-    recognition.onstart = () => setListening(true);
-    recognition.onend = () => setListening(false);
-
-    recognition.onresult = (event) => {
-      const transcript = Array.from(event.results)
-        .map(r => r[0].transcript)
-        .join('');
-
-      if (transcript.trim()) {
-        const detectedLang = detectLang(transcript); // Foydalanuvchi qaysi tilda gapirdi
-        setChatMessages(prev => [...prev, { role: 'user', text: transcript, time: new Date() }]);
-        chatMutation.mutate({ question: transcript, lang: detectedLang });
-      }
-    };
-
-    recognition.onerror = () => {
-      setListening(false);
-      toast.error(language === 'uz' ? 'Ovoz tanilmadi' : 'Голос не распознан');
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
+    startCommandListening();
   };
 
   // Image upload handler
@@ -361,6 +420,24 @@ export default function AIPage() {
     ? ['Bugungi hisobot', '50 dona gul tuvak 7000 dan sotildi', 'Elektr uchun 500000 xarajat qo\'sh', 'Kam qolgan mahsulotlar']
     : ['Отчёт за сегодня', 'Продано 50 цветочных горшков по 7000', 'Добавь расход 500000 за электричество', 'Заканчивающиеся товары'];
 
+  // Ahmad yaratgan hujjatni yuklab olish
+  const downloadDocument = async (doc) => {
+    try {
+      const res = doc.kind === 'sales_excel'
+        ? await reportsAPI.downloadSalesExcel(doc.month)
+        : await reportsAPI.downloadPDF(doc.month);
+      const ext = doc.kind === 'sales_excel' ? 'xlsx' : 'pdf';
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `teknoplast-${doc.month}.${ext}`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error(language === 'uz' ? 'Yuklab olinmadi' : 'Не удалось скачать');
+    }
+  };
+
   // Kunlik hisobot tugmasi
   const handleDailyReport = async () => {
     try {
@@ -418,6 +495,12 @@ export default function AIPage() {
                     <img src={msg.imageUrl} alt="uploaded" className="max-w-xs rounded-lg mb-2" />
                   )}
                   <p className="whitespace-pre-wrap">{msg.text}</p>
+                  {msg.document && (
+                    <button onClick={() => downloadDocument(msg.document)}
+                      className="mt-2 flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs hover:bg-emerald-700">
+                      <Image size={14} /> {language === 'uz' ? 'Yuklab olish' : 'Скачать'} ({msg.document.kind === 'sales_excel' ? 'Excel' : 'PDF'})
+                    </button>
+                  )}
                   {msg.role === 'assistant' && msg.text && (
                     <button onClick={() => speak(msg.text, i)}
                       className={`mt-1 transition-all ${speakingMsgId === i ? 'text-emerald-600 animate-pulse' : 'text-gray-400 hover:text-emerald-600'}`}
@@ -506,6 +589,19 @@ export default function AIPage() {
                 }`}
                 title={language === 'uz' ? 'Ovozli buyruq' : 'Голосовая команда'}>
                 {listening ? <MicOff size={18} /> : <Mic size={18} />}
+              </button>
+
+              {/* Wake word button — "Ahmad" chaqiruvi */}
+              <button onClick={toggleWake}
+                className={`w-10 h-10 flex items-center justify-center rounded-lg transition-all ${
+                  wakeEnabled
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-emerald-100 hover:text-emerald-700'
+                }`}
+                title={wakeEnabled
+                  ? (language === 'uz' ? "'Ahmad' chaqiruvi yoniq — o'chirish" : "Вызов 'Ахмад' включён — выключить")
+                  : (language === 'uz' ? "'Ahmad' deb chaqirish (avto-tinglash)" : "Вызов по слову 'Ахмад'")}>
+                {wakeEnabled ? <Volume2 size={18} /> : <span className="text-xs font-bold">A</span>}
               </button>
 
               {/* Image button */}

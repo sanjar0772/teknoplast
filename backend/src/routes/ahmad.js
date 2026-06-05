@@ -133,6 +133,71 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'update_price',
+    description: 'Mahsulot narxini o\'zgartirish. Masalan "gul tuvak narxini 8000 qil".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        product_name: { type: 'string' },
+        new_price: { type: 'number' },
+      },
+      required: ['product_name', 'new_price'],
+    },
+  },
+  {
+    name: 'update_stock',
+    description: 'Mahsulot ombordagi sonini o\'zgartirish. Masalan "chelak omborini 50 qil".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        product_name: { type: 'string' },
+        new_quantity: { type: 'number' },
+      },
+      required: ['product_name', 'new_quantity'],
+    },
+  },
+  {
+    name: 'lookup',
+    description: 'Mahsulot narxi yoki ombordagi sonini bilish (faqat o\'qish). Masalan "gul tuvak narxi qancha?", "omborda nechta chelak bor?".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        product_name: { type: 'string' },
+        what: { type: 'string', enum: ['price', 'stock', 'both'], description: 'price=narx, stock=ombor, both=ikkalasi' },
+      },
+      required: ['product_name'],
+    },
+  },
+  {
+    name: 'list_debtors',
+    description: 'Qarzdorlar ro\'yxatini berish. "Kim qarzdor?", "qarzdorlar".',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'record_payment',
+    description: 'Mijoz to\'lovini yozish. Masalan "Dilshod 500000 to\'ladi".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        customer_name: { type: 'string' },
+        amount: { type: 'number' },
+      },
+      required: ['customer_name', 'amount'],
+    },
+  },
+  {
+    name: 'generate_document',
+    description: 'Hujjat tayyorlash: oylik hisobot PDF yoki sotuvlar Excel. "oylik hisobotni Excel qil", "PDF hisobot".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        doc_type: { type: 'string', enum: ['monthly_pdf', 'sales_excel'], description: 'monthly_pdf=oylik PDF, sales_excel=sotuvlar Excel' },
+        month: { type: 'string', description: 'YYYY-MM, aytilmasa shu oy' },
+      },
+      required: ['doc_type'],
+    },
+  },
 ];
 
 // ---------- Hisobot ma'lumotlari ----------
@@ -199,7 +264,7 @@ function reportToText(r, lang) {
 // Tabiiy tildagi buyruq -> javob yoki amal (tasdiqlash uchun)
 router.post('/command', async (req, res) => {
   try {
-    const { text, language } = req.body;
+    const { text, language, history } = req.body;
     const lang = language === 'ru' ? 'ru' : 'uz';
     if (!text?.trim()) return res.status(400).json({ error: lang === 'ru' ? 'Текст пустой' : 'Matn bo\'sh' });
 
@@ -209,20 +274,29 @@ router.post('/command', async (req, res) => {
 
     const system = lang === 'ru'
       ? `Вы Ахмад — голосовой помощник завода пластиковых изделий Технопласт.
-Если пользователь просит выполнить операцию (продажа, расход, приход, новый клиент) — вызовите соответствующий инструмент.
-Если просит отчёт/статистику — вызовите get_report.
-Если это вопрос — ответьте кратко на русском. Представляйтесь как Ахмад. Числа: 1 000 000 сум.`
+Используйте инструменты для операций: продажа, расход, приход, новый клиент, изменить цену, изменить склад, оплата долга.
+Для отчётов — get_report. Для поиска цены/остатка — lookup. Для должников — list_debtors. Для документов — generate_document.
+Помните предыдущие сообщения разговора. Если это вопрос — ответьте кратко на русском. Представляйтесь как Ахмад. Числа: 1 000 000 сум.`
       : `Siz Ahmad — Teknoplast plastik zavod ovozli yordamchisisiz.
-Agar foydalanuvchi amal bajarishni so'rasa (sotuv, xarajat, kirim, yangi mijoz) — mos toolni chaqiring.
-Agar hisobot/statistika so'rasa — get_report toolini chaqiring.
-Agar oddiy savol bo'lsa — o'zbek tilida qisqa javob bering. O'zingizni Ahmad deb tanishtiring. Raqamlar: 1 000 000 so'm.`;
+Amallar uchun toollardan foydalaning: sotuv, xarajat, kirim, yangi mijoz, narx o'zgartirish, ombor o'zgartirish, qarz to'lovi.
+Hisobot uchun get_report. Narx/ombor qidirish uchun lookup. Qarzdorlar uchun list_debtors. Hujjat uchun generate_document.
+Oldingi suhbat xabarlarini eslab qoling. Oddiy savol bo'lsa — o'zbek tilida qisqa javob. O'zingizni Ahmad deb tanishtiring. Raqamlar: 1 000 000 so'm.`;
+
+    // Suhbat xotirasi — oxirgi 6 ta xabar
+    const messages = [];
+    if (Array.isArray(history)) {
+      for (const h of history.slice(-6)) {
+        if (h.role && h.text) messages.push({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.text) });
+      }
+    }
+    messages.push({ role: 'user', content: text });
 
     const msg = await claude.messages.create({
       model: MODEL,
       max_tokens: 1024,
       system,
       tools: TOOLS,
-      messages: [{ role: 'user', content: text }],
+      messages,
     });
 
     const textBlock = msg.content.find(b => b.type === 'text');
@@ -234,20 +308,74 @@ Agar oddiy savol bo'lsa — o'zbek tilida qisqa javob bering. O'zingizni Ahmad d
     }
 
     const lead = textBlock?.text ? textBlock.text + '\n' : '';
+    const inp = toolBlock.input || {};
 
-    // get_report — darhol bajaramiz (ruxsat shart emas)
+    // ===== DARHOL bajariladigan (read-only) toollar =====
     if (toolBlock.name === 'get_report') {
-      const period = toolBlock.input?.period || 'today';
-      const data = await gatherReport(period);
+      const data = await gatherReport(inp.period || 'today');
       return res.json({ response: reportToText(data, lang) });
     }
 
-    // Yozuv amallari — tasdiqlash uchun action qaytaramiz
-    const inp = toolBlock.input || {};
+    if (toolBlock.name === 'lookup') {
+      const p = await findProduct(inp.product_name);
+      if (!p) return res.json({ response: lang === 'ru' ? `Товар "${inp.product_name}" не найден.` : `"${inp.product_name}" topilmadi.` });
+      const what = inp.what || 'both';
+      let r;
+      if (what === 'price') r = lang === 'ru' ? `${p.name}: цена ${fmt(p.price)} сум.` : `${p.name}: narxi ${fmt(p.price)} so'm.`;
+      else if (what === 'stock') r = lang === 'ru' ? `${p.name}: на складе ${p.stock_quantity} шт.` : `${p.name}: omborda ${p.stock_quantity} dona.`;
+      else r = lang === 'ru' ? `${p.name}: цена ${fmt(p.price)} сум, на складе ${p.stock_quantity} шт.` : `${p.name}: narxi ${fmt(p.price)} so'm, omborda ${p.stock_quantity} dona.`;
+      return res.json({ response: r });
+    }
+
+    if (toolBlock.name === 'list_debtors') {
+      const debtors = await query(`
+        SELECT COALESCE(c.name, s.customer_name, 'Noma''lum') as name,
+               SUM(s.total_amount - s.payment_amount) as debt
+        FROM sales s LEFT JOIN customers c ON s.customer_id = c.id
+        WHERE s.status!='PAID' AND (s.total_amount - s.payment_amount) > 0.01
+        GROUP BY COALESCE(c.name, s.customer_name)
+        ORDER BY debt DESC LIMIT 8
+      `);
+      if (!debtors.rows.length) return res.json({ response: lang === 'ru' ? 'Должников нет.' : 'Qarzdorlar yo\'q.' });
+      const list = debtors.rows.map(d => `${d.name} — ${fmt(d.debt)}`).join('; ');
+      const total = debtors.rows.reduce((a, d) => a + Number(d.debt), 0);
+      return res.json({ response: lang === 'ru' ? `Должники: ${list}. Итого: ${fmt(total)} сум.` : `Qarzdorlar: ${list}. Jami: ${fmt(total)} so'm.` });
+    }
+
+    if (toolBlock.name === 'generate_document') {
+      const month = inp.month || new Date().toISOString().slice(0, 7);
+      const docType = inp.doc_type === 'sales_excel' ? 'sales_excel' : 'monthly_pdf';
+      const document = { kind: docType, month };
+      const r = docType === 'sales_excel'
+        ? (lang === 'ru' ? `Excel с продажами за ${month} готов. Нажмите для скачивания.` : `${month} sotuvlar Excel tayyor. Yuklab olish uchun bosing.`)
+        : (lang === 'ru' ? `PDF отчёт за ${month} готов. Нажмите для скачивания.` : `${month} oylik PDF hisobot tayyor. Yuklab olish uchun bosing.`);
+      return res.json({ response: r, document });
+    }
+
+    // ===== TASDIQLASH talab qiladigan (write) toollar =====
     let action = null;
     let desc = '';
 
-    if (toolBlock.name === 'create_sale') {
+    if (toolBlock.name === 'update_price') {
+      const p = await findProduct(inp.product_name);
+      if (!p) return res.json({ response: lang === 'ru' ? `Товар "${inp.product_name}" не найден.` : `"${inp.product_name}" topilmadi.` });
+      action = { type: 'UPDATE_PRICE', data: { product_id: p.id, product_name: p.name, new_price: inp.new_price } };
+      desc = lang === 'ru'
+        ? `Изменить цену: ${p.name} — ${fmt(p.price)} → ${fmt(inp.new_price)} сум`
+        : `Narxni o'zgartirish: ${p.name} — ${fmt(p.price)} → ${fmt(inp.new_price)} so'm`;
+    } else if (toolBlock.name === 'update_stock') {
+      const p = await findProduct(inp.product_name);
+      if (!p) return res.json({ response: lang === 'ru' ? `Товар "${inp.product_name}" не найден.` : `"${inp.product_name}" topilmadi.` });
+      action = { type: 'UPDATE_STOCK', data: { product_id: p.id, product_name: p.name, new_quantity: inp.new_quantity } };
+      desc = lang === 'ru'
+        ? `Изменить склад: ${p.name} — ${p.stock_quantity} → ${inp.new_quantity} шт`
+        : `Omborni o'zgartirish: ${p.name} — ${p.stock_quantity} → ${inp.new_quantity} dona`;
+    } else if (toolBlock.name === 'record_payment') {
+      action = { type: 'RECORD_PAYMENT', data: { customer_name: inp.customer_name, amount: inp.amount } };
+      desc = lang === 'ru'
+        ? `Оплата долга: ${inp.customer_name} — ${fmt(inp.amount)} сум`
+        : `Qarz to'lovi: ${inp.customer_name} — ${fmt(inp.amount)} so'm`;
+    } else if (toolBlock.name === 'create_sale') {
       const product = await findProduct(inp.product_name);
       if (!product) {
         return res.json({ response: (lang === 'ru' ? `Товар "${inp.product_name}" не найден.` : `"${inp.product_name}" mahsuloti topilmadi.`) });
@@ -421,6 +549,51 @@ router.post('/confirm-action', async (req, res) => {
         [d.name, d.phone || null, d.company_name || null, 'RETAIL', req.user.id]
       );
       return res.json({ success: true, message: `Mijoz qo'shildi: ${d.name}` });
+    }
+
+    // --- Narx o'zgartirish ---
+    if (action.type === 'UPDATE_PRICE') {
+      const d = action.data;
+      await query('UPDATE products SET price=$1, updated_at=NOW() WHERE id=$2', [d.new_price, d.product_id]);
+      return res.json({ success: true, message: `${d.product_name} narxi ${fmt(d.new_price)} so'm bo'ldi` });
+    }
+
+    // --- Ombor o'zgartirish ---
+    if (action.type === 'UPDATE_STOCK') {
+      const d = action.data;
+      await query('UPDATE products SET stock_quantity=$1, updated_at=NOW() WHERE id=$2', [parseInt(d.new_quantity), d.product_id]);
+      return res.json({ success: true, message: `${d.product_name} ombori ${d.new_quantity} dona bo'ldi` });
+    }
+
+    // --- Qarz to'lovi ---
+    if (action.type === 'RECORD_PAYMENT') {
+      const d = action.data;
+      // Mijozning to'lanmagan sotuvlarini eski sanadan boshlab to'laymiz
+      const unpaid = await query(`
+        SELECT s.id, (s.total_amount - s.payment_amount) as debt, s.total_amount, s.payment_amount
+        FROM sales s LEFT JOIN customers c ON s.customer_id = c.id
+        WHERE s.status!='PAID' AND (s.total_amount - s.payment_amount) > 0.01
+          AND (LOWER(c.name) LIKE LOWER($1) OR LOWER(s.customer_name) LIKE LOWER($1))
+        ORDER BY s.sale_date ASC
+      `, [`%${d.customer_name}%`]);
+
+      if (!unpaid.rows.length) {
+        return res.json({ success: false, message: `${d.customer_name} uchun qarz topilmadi` });
+      }
+
+      let remaining = Number(d.amount);
+      let paidCount = 0;
+      for (const sale of unpaid.rows) {
+        if (remaining <= 0) break;
+        const debt = Number(sale.debt);
+        const pay = Math.min(remaining, debt);
+        const newPaid = Number(sale.payment_amount) + pay;
+        const newStatus = newPaid >= Number(sale.total_amount) ? 'PAID' : 'PARTIAL';
+        await query('UPDATE sales SET payment_amount=$1, status=$2 WHERE id=$3', [newPaid, newStatus, sale.id]);
+        remaining -= pay;
+        paidCount++;
+      }
+      return res.json({ success: true, message: `${d.customer_name}: ${fmt(d.amount)} so'm to'lov yozildi (${paidCount} ta sotuv)` });
     }
 
     // --- Kirim (PENDING) ---

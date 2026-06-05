@@ -128,12 +128,12 @@ router.get('/expense-optimization', async (req, res, next) => {
 // POST /api/ai/chat
 router.post('/chat', async (req, res, next) => {
   try {
-    const { question } = req.body;
+    const { question, language } = req.body;
     if (!question?.trim()) return res.status(400).json({ error: 'Savol kiritilmagan' });
 
     const start = Date.now();
     const context = await buildChatContext();
-    const answer = await aiService.chat(question, context, req.user);
+    const answer = await aiService.chat(question, context, req.user, language);
     const processingTime = Date.now() - start;
 
     await query(

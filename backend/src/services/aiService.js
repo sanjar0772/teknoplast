@@ -8,11 +8,11 @@ Aniq, qisqa va foydali javoblar bering. O'zingizni "Ahmad" deb tanishtiring.
 Raqamlarni formatlang: 1 000 000 so'm ko'rinishida. Foizlarni ham ko'rsating.
 Tavsiyalar bering va muammolarga yechim toping.`;
 
-async function callClaude(prompt, maxTokens = 2000) {
+async function callClaude(prompt, maxTokens = 2000, systemOverride = null) {
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: maxTokens,
-    system: SYSTEM_PROMPT,
+    system: systemOverride || SYSTEM_PROMPT,
     messages: [{ role: 'user', content: prompt }],
   });
   return msg.content[0].text;
@@ -117,18 +117,40 @@ JSON formatida javob bering:
   }
 }
 
-async function chat(question, context, user) {
-  const prompt = `Foydalanuvchi: ${user.full_name} (${user.role})
+async function chat(question, context, user, language) {
+  // Til: 'ru' bo'lsa rus tilida, aks holda o'zbek tilida
+  const isRu = language === 'ru';
+
+  const systemPrompt = isRu
+    ? `Вы Ахмад — помощник завода пластиковых изделий Технопласт.
+Отвечайте ТОЛЬКО на русском языке. Кратко, точно и полезно. Представляйтесь как "Ахмад".
+Форматируйте числа: 1 000 000 сум. Показывайте проценты.
+Давайте рекомендации и решайте проблемы.`
+    : `Siz Ahmad — Teknoplast plastik mahsulotlar fabrikasining yordamchisisiz.
+FAQAT o'zbek tilida javob bering. Qisqa, aniq va foydali. O'zingizni "Ahmad" deb tanishtiring.
+Raqamlarni formatlang: 1 000 000 so'm. Foizlarni ko'rsating.
+Tavsiyalar bering va muammolarga yechim toping.`;
+
+  const prompt = isRu
+    ? `Пользователь: ${user.full_name} (${user.role})
+Текущие данные: ${JSON.stringify(context)}
+
+Вопрос: ${question}
+
+Краткий и точный ответ на русском языке. Числа пишите полностью.`
+    : `Foydalanuvchi: ${user.full_name} (${user.role})
 Joriy ma'lumotlar: ${JSON.stringify(context)}
 
 Savol: ${question}
 
-Qisqa va aniq javob bering. Raqamlarni to'liq yozing.`;
+Qisqa va aniq javob o'zbek tilida bering. Raqamlarni to'liq yozing.`;
 
   try {
-    return await callClaude(prompt, 1000);
+    return await callClaude(prompt, 1000, systemPrompt);
   } catch (err) {
-    return 'Kechirasiz, hozir javob bera olmayman. Keyinroq urinib ko\'ring.';
+    return isRu
+      ? 'Извините, сейчас не могу ответить. Попробуйте позже.'
+      : 'Kechirasiz, hozir javob bera olmayman. Keyinroq urinib ko\'ring.';
   }
 }
 

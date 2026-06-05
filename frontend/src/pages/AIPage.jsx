@@ -73,13 +73,15 @@ export default function AIPage() {
 
   // Chat
   const chatMutation = useMutation({
-    mutationFn: (question) => aiAPI.chat(question),
+    mutationFn: ({ question, lang }) => aiAPI.chat(question, lang),
     onSuccess: (res) => {
       const answer = res.data.answer;
+      const newIdx = chatMessages.length + 1; // user xabaridan keyingi index
       setChatMessages(prev => [...prev, {
         role: 'assistant', text: answer, time: new Date()
       }]);
-      speak(answer);
+      // Javob tilini matndan aniqlab gapiramiz
+      speak(answer, newIdx);
 
       // Agar tizimga qo'shish kerak bo'lsa
       if (res.data.action) {
@@ -111,13 +113,15 @@ export default function AIPage() {
       return res.json();
     },
     onSuccess: (data) => {
+      const answer = data.response || data.text || (language === 'uz' ? 'Rasmni o\'qib bo\'ldim.' : 'Изображение прочитано.');
+      const newIdx = chatMessages.length + 1;
       setChatMessages(prev => [...prev, {
         role: 'assistant',
-        text: data.response || data.text || (language === 'uz' ? 'Rasmni o\'qib bo\'ldim.' : 'Изображение прочитано.'),
+        text: answer,
         time: new Date(),
         imageData: data.extracted,
       }]);
-      speak(data.response || data.text);
+      speak(answer, newIdx);
 
       if (data.action) {
         setPendingAction(data.action);
@@ -131,13 +135,59 @@ export default function AIPage() {
     },
   });
 
-  // Text-to-Speech
-  const speak = (text) => {
+  // Til avto-aniqlash — matn rus yoki o'zbek tilidami?
+  const detectLang = (text) => {
+    if (!text) return language;
+    // Kirill harflari bo'lsa va o'zbek-kirill emas — rus tili
+    const cyrillic = (text.match(/[а-яА-ЯёЁ]/g) || []).length;
+    const latin = (text.match(/[a-zA-Z]/g) || []).length;
+    // O'zbekcha lotin belgilari (o', g', sh, ch) yoki ko'p lotin — o'zbek
+    if (cyrillic > latin) return 'ru';
+    return 'uz';
+  };
+
+  // Text-to-Speech — Ahmad ovozi (erkak, o'g'il bola)
+  const [speakingMsgId, setSpeakingMsgId] = useState(null);
+
+  const speak = (text, msgId = null, forceLang = null) => {
     if (!('speechSynthesis' in window) || !text) return;
+
+    // Agar hozir shu xabar gapirilayotgan bo'lsa — to'xtat (ikki marta bosish)
+    if (speakingMsgId === msgId && msgId !== null) {
+      window.speechSynthesis.cancel();
+      setSpeakingMsgId(null);
+      return;
+    }
+
     window.speechSynthesis.cancel();
+    const spokenLang = forceLang || detectLang(text); // Javob tilini matndan aniqlaymiz
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = language === 'uz' ? 'uz-UZ' : 'ru-RU';
-    utterance.rate = 0.9;
+    utterance.lang = spokenLang === 'uz' ? 'uz-UZ' : 'ru-RU';
+    utterance.rate = 1.05;
+    utterance.pitch = 1.7; // Yuqori pitch — o'g'il bola ovozi
+
+    // O'g'il bola / erkak ovozini tanlash
+    const voices = window.speechSynthesis.getVoices();
+    const targetLang = spokenLang === 'uz' ? 'uz' : 'ru';
+    // Avval shu tilda ovoz qidiramiz, topilmasa rus tilini ishlatamiz (uz ko'pincha yo'q)
+    const langVoices = voices.filter(v => v.lang.startsWith(targetLang));
+    const fallbackVoices = voices.filter(v => v.lang.startsWith('ru'));
+    const pool = langVoices.length ? langVoices : fallbackVoices;
+
+    // Erkak ovozini afzal ko'ramiz
+    const chosen = pool.find(v =>
+      v.name.toLowerCase().includes('male') ||
+      v.name.toLowerCase().includes('dmitr') ||
+      v.name.toLowerCase().includes('pavel') ||
+      v.name.toLowerCase().includes('artem')
+    ) || pool[0];
+
+    if (chosen) utterance.voice = chosen;
+
+    setSpeakingMsgId(msgId);
+    utterance.onend = () => setSpeakingMsgId(null);
+    utterance.onerror = () => setSpeakingMsgId(null);
+
     window.speechSynthesis.speak(utterance);
   };
 
@@ -169,8 +219,9 @@ export default function AIPage() {
         .join('');
 
       if (transcript.trim()) {
+        const detectedLang = detectLang(transcript); // Foydalanuvchi qaysi tilda gapirdi
         setChatMessages(prev => [...prev, { role: 'user', text: transcript, time: new Date() }]);
-        chatMutation.mutate(transcript);
+        chatMutation.mutate({ question: transcript, lang: detectedLang });
       }
     };
 
@@ -235,9 +286,21 @@ export default function AIPage() {
 
   const sendMessage = () => {
     if (!message.trim()) return;
+    const detectedLang = detectLang(message); // Yozgan til
     setChatMessages(prev => [...prev, { role: 'user', text: message, time: new Date() }]);
-    chatMutation.mutate(message);
+    chatMutation.mutate({ question: message, lang: detectedLang });
     setMessage('');
+  };
+
+  // Chat bo'sh joyiga ikki marta bosish — oxirgi Ahmad xabarini eshittirish/to'xtatish
+  const handleChatDoubleClick = () => {
+    // Oxirgi assistant xabarini topamiz
+    for (let i = chatMessages.length - 1; i >= 0; i--) {
+      if (chatMessages[i].role === 'assistant' && chatMessages[i].text) {
+        speak(chatMessages[i].text, i);
+        break;
+      }
+    }
   };
 
   useEffect(() => {
@@ -287,7 +350,8 @@ export default function AIPage() {
       {/* CHAT */}
       {activeTab === 'chat' && (
         <div className="card p-0 flex flex-col" style={{ height: '65vh' }}>
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <div className="flex-1 overflow-y-auto p-6 space-y-4" onDoubleClick={handleChatDoubleClick}
+            title={language === 'uz' ? 'Bo\'sh joyga 2 marta bosing — oxirgi javobni eshitish' : 'Двойной клик — прослушать последний ответ'}>
             {chatMessages.map((msg, i) => (
               <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {msg.role === 'assistant' && <AhmadAvatar />}
@@ -301,7 +365,9 @@ export default function AIPage() {
                   )}
                   <p className="whitespace-pre-wrap">{msg.text}</p>
                   {msg.role === 'assistant' && msg.text && (
-                    <button onClick={() => speak(msg.text)} className="mt-1 text-gray-400 hover:text-emerald-600">
+                    <button onClick={() => speak(msg.text, i)}
+                      className={`mt-1 transition-all ${speakingMsgId === i ? 'text-emerald-600 animate-pulse' : 'text-gray-400 hover:text-emerald-600'}`}
+                      title={speakingMsgId === i ? (language === 'uz' ? 'To\'xtatish' : 'Остановить') : (language === 'uz' ? 'Eshitish (2 marta bosing — to\'xtatish)' : 'Прослушать (2 раза — стоп)')}>
                       <Volume2 size={14} />
                     </button>
                   )}

@@ -152,7 +152,7 @@ export const aiAPI = {
   getSalaryAnalysis: (month) => api.get('/ai/salary-analysis', { params: { month } }),
   getSalesForecast: () => api.get('/ai/sales-forecast'),
   getExpenseOptimization: (month) => api.get('/ai/expense-optimization', { params: { month } }),
-  chat: (question) => api.post('/ai/chat', { question }),
+  chat: (question, language) => api.post('/ai/chat', { question, language }),
   getChatHistory: () => api.get('/ai/chat-history'),
 };
 

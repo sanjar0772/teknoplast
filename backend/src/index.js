@@ -11,7 +11,11 @@ const db = require('./db');
 
 const app = express();
 
-app.use(helmet());
+app.set('trust proxy', 1);
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true,
@@ -22,7 +26,7 @@ app.use(express.urlencoded({ extended: true }));
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 100,
   message: { error: 'Juda ko\'p urinish. 15 daqiqadan so\'ng qayta urinib ko\'ring.' },
 });
 app.use('/api/auth/login', loginLimiter);
@@ -44,6 +48,17 @@ app.use('/api/ai', require('./routes/ai'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString(), env: process.env.NODE_ENV });
+});
+
+// Frontend static files (Railway uchun - Nginx yo'q)
+const path = require('path');
+const frontendDist = path.join(__dirname, '../../frontend/dist');
+app.use(express.static(frontendDist));
+
+// SPA fallback — barcha yo'llar index.html'ga
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) return next();
+  res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
 app.use(notFound);

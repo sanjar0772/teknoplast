@@ -1,0 +1,210 @@
+const express = require('express');
+const { query } = require('../db');
+const { authenticate } = require('../middleware/auth');
+const { requireRole } = require('../middleware/rbac');
+const reportService = require('../services/reportService');
+
+const router = express.Router();
+router.use(authenticate);
+
+// GET /api/reports/dashboard — Bosh sahifa statistika
+router.get('/dashboard', async (req, res, next) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const thisMonth = new Date().toISOString().slice(0, 7);
+
+    const [todaySales, monthSales, monthExpenses, employees, lowStock, machines] = await Promise.all([
+      query(`SELECT COALESCE(SUM(total_amount),0) as total, COUNT(*) as count FROM sales WHERE strftime('%Y-%m-%d',sale_date)=$1`, [today]),
+      query(`SELECT COALESCE(SUM(total_amount),0) as total, COALESCE(SUM(CASE WHEN status='PAID' THEN total_amount ELSE 0 END),0) as paid FROM sales WHERE TO_CHAR(sale_date,'YYYY-MM')=$1`, [thisMonth]),
+      query(`SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE TO_CHAR(expense_date,'YYYY-MM')=$1`, [thisMonth]),
+      query(`SELECT COUNT(*) as total, COUNT(CASE WHEN is_active=1 THEN 1 END) as active FROM employees`),
+      query(`SELECT COUNT(*) as count FROM products WHERE stock_quantity < 10 AND is_active=1`),
+      query(`SELECT status, COUNT(*) as count FROM machines WHERE is_active=1 GROUP BY status`),
+    ]);
+
+    const profit = parseFloat(monthSales.rows[0].total) - parseFloat(monthExpenses.rows[0].total);
+
+    // 6 oylik sotuv trendi
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const sixMonthsAgoStr = sixMonthsAgo.toISOString().slice(0, 10);
+    const salesTrend = await query(`
+      SELECT strftime('%Y-%m', sale_date) as month, SUM(total_amount) as revenue, COUNT(*) as count
+      FROM sales WHERE sale_date >= $1
+      GROUP BY strftime('%Y-%m', sale_date) ORDER BY month
+    `, [sixMonthsAgoStr]);
+
+    // Top 5 mahsulot
+    const topProducts = await query(`
+      SELECT p.name, SUM(s.quantity) as qty, SUM(s.total_amount) as revenue
+      FROM sales s JOIN products p ON s.product_id = p.id
+      WHERE TO_CHAR(s.sale_date,'YYYY-MM') = $1
+      GROUP BY p.name ORDER BY revenue DESC LIMIT 5
+    `, [thisMonth]);
+
+    const machineStatus = {};
+    machines.rows.forEach(r => { machineStatus[r.status] = parseInt(r.count); });
+
+    res.json({
+      today: { sales: todaySales.rows[0] },
+      month: {
+        sales: monthSales.rows[0],
+        expenses: monthExpenses.rows[0].total,
+        profit,
+      },
+      employees: employees.rows[0],
+      low_stock: parseInt(lowStock.rows[0].count),
+      machines: machineStatus,
+      sales_trend: salesTrend.rows,
+      top_products: topProducts.rows,
+    });
+  } catch (err) { next(err); }
+});
+
+// GET /api/reports/debts — Qarzdorlik (aging) hisoboti
+router.get('/debts', async (req, res, next) => {
+  try {
+    const rows = (await query(`
+      SELECT s.id, s.sale_date, s.total_amount, s.payment_amount,
+             (s.total_amount - s.payment_amount) as debt,
+             s.customer_name, s.customer_phone,
+             c.name as customer_db_name, c.phone as customer_db_phone, c.id as customer_id,
+             CAST(julianday('now') - julianday(s.sale_date) AS INTEGER) as days_old
+      FROM sales s
+      LEFT JOIN customers c ON s.customer_id = c.id
+      WHERE s.status != 'PAID' AND (s.total_amount - s.payment_amount) > 0.01
+      ORDER BY days_old DESC
+    `)).rows;
+
+    const buckets = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
+    let total = 0;
+    const items = rows.map(r => {
+      const debt = parseFloat(r.debt);
+      const days = parseInt(r.days_old) || 0;
+      total += debt;
+      const bucket = days <= 30 ? '0-30' : days <= 60 ? '31-60' : days <= 90 ? '61-90' : '90+';
+      buckets[bucket] += debt;
+      return {
+        sale_id: r.id,
+        customer: r.customer_db_name || r.customer_name || 'Noma\'lum',
+        phone: r.customer_db_phone || r.customer_phone || null,
+        customer_id: r.customer_id || null,
+        sale_date: r.sale_date,
+        total_amount: parseFloat(r.total_amount),
+        paid: parseFloat(r.payment_amount),
+        debt,
+        days_old: days,
+        bucket,
+      };
+    });
+
+    res.json({ total_debt: total, count: items.length, buckets, items });
+  } catch (err) { next(err); }
+});
+
+// GET /api/reports/monthly?month=2024-01
+router.get('/monthly', async (req, res, next) => {
+  try {
+    const { month } = req.query;
+    const period = month || new Date().toISOString().slice(0, 7);
+
+    const [sales, expenses, production, salaries] = await Promise.all([
+      query(`
+        SELECT COALESCE(SUM(total_amount),0) as total,
+               COALESCE(SUM(CASE WHEN status='PAID' THEN total_amount ELSE 0 END),0) as paid,
+               COUNT(*) as count
+        FROM sales WHERE TO_CHAR(sale_date,'YYYY-MM')=$1
+      `, [period]),
+      query(`
+        SELECT category, COALESCE(SUM(amount),0) as total
+        FROM expenses WHERE TO_CHAR(expense_date,'YYYY-MM')=$1
+        GROUP BY category
+      `, [period]),
+      query(`
+        SELECT SUM(quantity_produced) as total_qty, COUNT(DISTINCT employee_id) as workers
+        FROM employee_production WHERE month=$1
+      `, [period]),
+      query(`
+        SELECT COALESCE(SUM(net_amount),0) as total, COUNT(*) as count,
+               COUNT(CASE WHEN status='PAID' THEN 1 END) as paid_count
+        FROM salaries WHERE month=$1
+      `, [period]),
+    ]);
+
+    const totalExpenses = expenses.rows.reduce((acc, r) => acc + parseFloat(r.total), 0);
+    const revenue = parseFloat(sales.rows[0].total);
+    const profit = revenue - totalExpenses;
+    const margin = revenue > 0 ? ((profit / revenue) * 100).toFixed(1) : 0;
+
+    res.json({
+      period,
+      sales: sales.rows[0],
+      expenses: { by_category: expenses.rows, total: totalExpenses },
+      production: production.rows[0],
+      salaries: salaries.rows[0],
+      profit_loss: { revenue, expenses: totalExpenses, profit, margin: parseFloat(margin) },
+    });
+  } catch (err) { next(err); }
+});
+
+// GET /api/reports/pdf/monthly?month=2024-01
+router.get('/pdf/monthly', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, next) => {
+  try {
+    const { month } = req.query;
+    const period = month || new Date().toISOString().slice(0, 7);
+
+    const monthData = await fetch(`http://localhost:${process.env.PORT || 5000}/api/reports/monthly?month=${period}`, {
+      headers: { authorization: req.headers.authorization }
+    }).then(r => r.json());
+
+    const pdfBuffer = await reportService.generateMonthlyPDF(monthData);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="teknoplast-${period}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err) { next(err); }
+});
+
+// GET /api/reports/excel/sales?month=2024-01
+router.get('/excel/sales', requireRole('OWNER', 'ACCOUNTANT', 'SALES_HEAD'), async (req, res, next) => {
+  try {
+    const { month } = req.query;
+    const period = month || new Date().toISOString().slice(0, 7);
+
+    const salesData = await query(`
+      SELECT s.*, p.name as product_name, p.unit, u.full_name as created_by_name
+      FROM sales s JOIN products p ON s.product_id = p.id JOIN users u ON s.created_by = u.id
+      WHERE TO_CHAR(s.sale_date,'YYYY-MM') = $1 ORDER BY s.sale_date
+    `, [period]);
+
+    const excelBuffer = await reportService.generateSalesExcel(salesData.rows, period);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="sotuv-${period}.xlsx"`);
+    res.send(excelBuffer);
+  } catch (err) { next(err); }
+});
+
+// GET /api/reports/excel/salaries?month=2024-01
+router.get('/excel/salaries', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, next) => {
+  try {
+    const { month } = req.query;
+    const period = month || new Date().toISOString().slice(0, 7);
+
+    const salaryData = await query(`
+      SELECT s.*, e.name as employee_name, e.type as employee_type,
+             ep.total_produced, ep.work_days
+      FROM salaries s JOIN employees e ON s.employee_id = e.id
+      LEFT JOIN (
+        SELECT employee_id, SUM(quantity_produced) as total_produced, COUNT(*) as work_days
+        FROM employee_production WHERE month=$1 GROUP BY employee_id
+      ) ep ON ep.employee_id = s.employee_id
+      WHERE s.month = $1 ORDER BY e.name
+    `, [period]);
+
+    const excelBuffer = await reportService.generateSalaryExcel(salaryData.rows, period);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="maoshlar-${period}.xlsx"`);
+    res.send(excelBuffer);
+  } catch (err) { next(err); }
+});
+
+module.exports = router;

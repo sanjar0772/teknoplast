@@ -1,0 +1,88 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const morgan = require('morgan');
+const rateLimit = require('express-rate-limit');
+const cron = require('node-cron');
+
+const { errorHandler, notFound } = require('./middleware/errorHandler');
+const db = require('./db');
+
+const app = express();
+
+app.use(helmet());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true,
+}));
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Juda ko\'p urinish. 15 daqiqadan so\'ng qayta urinib ko\'ring.' },
+});
+app.use('/api/auth/login', loginLimiter);
+
+// Routes
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/sales', require('./routes/sales'));
+app.use('/api/customers', require('./routes/customers'));
+app.use('/api/intakes', require('./routes/intakes'));
+app.use('/api/fulfillment', require('./routes/fulfillment'));
+app.use('/api/expenses', require('./routes/expenses'));
+app.use('/api/employees', require('./routes/employees'));
+app.use('/api/production', require('./routes/production'));
+app.use('/api/salaries', require('./routes/salaries'));
+app.use('/api/products', require('./routes/products'));
+app.use('/api/machines', require('./routes/machines'));
+app.use('/api/reports', require('./routes/reports'));
+app.use('/api/ai', require('./routes/ai'));
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', time: new Date().toISOString(), env: process.env.NODE_ENV });
+});
+
+app.use(notFound);
+app.use(errorHandler);
+
+// Avtomatik zaxira — har kuni soat 02:00 da
+const { runBackup } = require('./services/backupService');
+cron.schedule('0 2 * * *', () => {
+  console.log('🕑 Kunlik avtomatik backup boshlandi...');
+  runBackup();
+});
+
+// Smart alerts — har soat tekshirish
+cron.schedule('0 * * * *', async () => {
+  try {
+    const aiService = require('./services/aiService');
+    const alerts = await aiService.checkAlerts(db);
+    for (const alert of alerts) {
+      await db.query(
+        `INSERT INTO smart_alerts (type, severity, message)
+         SELECT $1, $2, $3
+         WHERE NOT EXISTS (
+           SELECT 1 FROM smart_alerts WHERE message=$3 AND is_resolved=false
+             AND triggered_date > NOW() - INTERVAL '24 hours'
+         )`,
+        [alert.type, alert.severity, alert.message]
+      );
+    }
+    if (alerts.length) console.log(`🔔 ${alerts.length} ta yangi alert yaratildi`);
+  } catch (err) {
+    console.error('Alert tekshirishda xato:', err.message);
+  }
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`🚀 Teknoplast Backend: http://localhost:${PORT}`);
+  console.log(`📊 Dashboard: http://localhost:${process.env.FRONTEND_PORT || 5173}`);
+  console.log(`🌍 Muhit: ${process.env.NODE_ENV || 'development'}`);
+});
+
+module.exports = app;

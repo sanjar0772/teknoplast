@@ -1,0 +1,162 @@
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { body, validationResult } = require('express-validator');
+const { query } = require('../db');
+const { authenticate } = require('../middleware/auth');
+
+const router = express.Router();
+
+// POST /api/auth/login
+router.post('/login', [
+  body('phone').notEmpty().withMessage('Telefon raqam kiritilmagan'),
+  body('password').isLength({ min: 6 }).withMessage('Parol kamida 6 belgi'),
+], async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { phone, password } = req.body;
+    const result = await query(
+      'SELECT * FROM users WHERE phone = $1 AND is_active = true',
+      [phone]
+    );
+
+    if (!result.rows.length) {
+      return res.status(401).json({ error: 'Telefon raqam yoki parol noto\'g\'ri' });
+    }
+
+    const user = result.rows[0];
+    const isValid = await bcrypt.compare(password, user.password_hash);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Telefon raqam yoki parol noto\'g\'ri' });
+    }
+
+    await query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
+    await query(
+      'INSERT INTO audit_logs (user_id, action, table_name) VALUES ($1, $2, $3)',
+      [user.id, 'LOGIN', 'users']
+    );
+
+    const token = jwt.sign(
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        phone: user.phone,
+        full_name: user.full_name,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/auth/register (faqat OWNER)
+router.post('/register', authenticate, [
+  body('phone').notEmpty().withMessage('Telefon kiritilmagan'),
+  body('password').isLength({ min: 6 }).withMessage('Parol kamida 6 belgi'),
+  body('full_name').notEmpty().withMessage('Ism kiritilmagan'),
+  body('role').isIn(['OWNER', 'ACCOUNTANT', 'SALES_HEAD', 'PRODUCTION_HEAD', 'KIRIMCHI', 'OMBORCHI']).withMessage('Noto\'g\'ri rol'),
+], async (req, res, next) => {
+  try {
+    if (req.user.role !== 'OWNER') {
+      return res.status(403).json({ error: 'Faqat ega yangi foydalanuvchi qo\'sha oladi' });
+    }
+
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { phone, password, full_name, role } = req.body;
+    const password_hash = await bcrypt.hash(password, 10);
+
+    const result = await query(
+      'INSERT INTO users (phone, password_hash, full_name, role) VALUES ($1, $2, $3, $4) RETURNING id, phone, full_name, role',
+      [phone, password_hash, full_name, role]
+    );
+
+    res.status(201).json({ user: result.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/auth/me
+router.get('/me', authenticate, (req, res) => {
+  res.json({ user: req.user });
+});
+
+// PUT /api/auth/change-password
+router.put('/change-password', authenticate, [
+  body('old_password').notEmpty(),
+  body('new_password').isLength({ min: 6 }),
+], async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { old_password, new_password } = req.body;
+    const result = await query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
+    const isValid = await bcrypt.compare(old_password, result.rows[0].password_hash);
+
+    if (!isValid) {
+      return res.status(400).json({ error: 'Eski parol noto\'g\'ri' });
+    }
+
+    const new_hash = await bcrypt.hash(new_password, 10);
+    await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [new_hash, req.user.id]);
+
+    res.json({ message: 'Parol muvaffaqiyatli o\'zgartirildi' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/auth/users (faqat OWNER)
+router.get('/users', authenticate, async (req, res, next) => {
+  try {
+    if (req.user.role !== 'OWNER') {
+      return res.status(403).json({ error: 'Ruxsat yo\'q' });
+    }
+    const result = await query(
+      'SELECT id, phone, full_name, role, is_active, last_login, created_at FROM users ORDER BY created_at DESC'
+    );
+    res.json({ users: result.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/auth/users/:id/toggle (OWNER)
+router.put('/users/:id/toggle', authenticate, async (req, res, next) => {
+  try {
+    if (req.user.role !== 'OWNER') {
+      return res.status(403).json({ error: 'Ruxsat yo\'q' });
+    }
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ error: 'O\'zingizni bloklashingiz mumkin emas' });
+    }
+    const result = await query(
+      'UPDATE users SET is_active = NOT is_active, updated_at = NOW() WHERE id = $1 RETURNING id, is_active',
+      [req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
+    res.json({ user: result.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = router;

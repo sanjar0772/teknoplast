@@ -185,6 +185,20 @@ export default function AIPage() {
     return () => document.removeEventListener('click', stopOnClick);
   }, []);
 
+  // Ovoz uchun matnni tozalash — *, #, emoji, belgilarni olib tashlaymiz
+  const cleanForSpeech = (raw) => {
+    let t = String(raw);
+    // Markdown belgilari
+    t = t.replace(/[*_#`~>|]+/g, ' ');
+    // Emoji va boshqa belgilar (asosiy emoji diapazonlari)
+    t = t.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu, ' ');
+    // Strelka va boshqa belgilar
+    t = t.replace(/[→←↑↓➜➝➤✓✔✗✘•·●▪◦]/g, ' ');
+    // Ortiqcha bo'sh joylar
+    t = t.replace(/\s{2,}/g, ' ').trim();
+    return t;
+  };
+
   const speak = (text, msgId = null, forceLang = null) => {
     if (!('speechSynthesis' in window) || !text) return;
 
@@ -195,10 +209,13 @@ export default function AIPage() {
       return;
     }
 
+    const cleanText = cleanForSpeech(text);
+    if (!cleanText) return;
+
     window.speechSynthesis.cancel();
     speakStartRef.current = Date.now(); // shu klik to'xtatmasligi uchun
-    const spokenLang = forceLang || detectLang(text);
-    const utterance = new SpeechSynthesisUtterance(text);
+    const spokenLang = forceLang || detectLang(cleanText);
+    const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.rate = 1.05;
     utterance.pitch = 1.7; // Yuqori pitch — o'g'il bola ovozi
 

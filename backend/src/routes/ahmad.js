@@ -61,37 +61,92 @@ function genOrderRef() {
 }
 
 // ---------- TOOL DEFINITIONS ----------
-const TOOLS = [
+// O'qish (barcha foydalanuvchilar)
+const READ_TOOLS = [
   {
-    name: 'create_sale',
-    description: 'Sotuvni ro\'yxatga olish. Foydalanuvchi biror mahsulot sotilgani haqida aytganda chaqiriladi.',
+    name: 'get_report',
+    description: 'Hisobot/statistika: bugungi yoki oylik sotuv, xarajat, foyda, kam qolgan mahsulotlar, qarzdorlar.',
     input_schema: {
       type: 'object',
       properties: {
-        product_name: { type: 'string', description: 'Mahsulot nomi yoki kodi' },
-        quantity: { type: 'number', description: 'Dona soni' },
-        unit_price: { type: 'number', description: 'Bitta donaning narxi so\'mda. Aytilmasa yubormang.' },
-        customer_name: { type: 'string', description: 'Mijoz ismi (ixtiyoriy)' },
+        period: { type: 'string', enum: ['today', 'month'], description: 'today=bugun, month=shu oy' },
+      },
+    },
+  },
+  {
+    name: 'lookup',
+    description: 'Mahsulot narxi yoki ombordagi sonini bilish. "gul tuvak narxi qancha?", "omborda nechta chelak bor?".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        product_name: { type: 'string' },
+        what: { type: 'string', enum: ['price', 'stock', 'both'] },
+      },
+      required: ['product_name'],
+    },
+  },
+  {
+    name: 'list_debtors',
+    description: 'Qarzdorlar ro\'yxati. "Kim qarzdor?", "qarzdorlar ro\'yxati".',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_employees',
+    description: 'Xodimlar ro\'yxati. "1-smena stanokchilar kim?", "qancha xodim bor?", "2-smena ro\'yxati".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['STANOKCHI', 'DETALCHI', 'ISHCHI', 'OSHPAZ', 'SHOFIR', 'BOSHQA'] },
+        shift: { type: 'string', enum: ['1-SMENA', '2-SMENA'] },
+      },
+    },
+  },
+  {
+    name: 'generate_document',
+    description: 'Hujjat: oylik hisobot PDF yoki sotuvlar Excel.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        doc_type: { type: 'string', enum: ['monthly_pdf', 'sales_excel'] },
+        month: { type: 'string', description: 'YYYY-MM, aytilmasa shu oy' },
+      },
+      required: ['doc_type'],
+    },
+  },
+];
+
+// Yozish (faqat OWNER/admin)
+const WRITE_TOOLS = [
+  {
+    name: 'create_sale',
+    description: 'Sotuvni ro\'yxatga olish. "50 dona chelak 7000 dan sotildi".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        product_name: { type: 'string' },
+        quantity: { type: 'number' },
+        unit_price: { type: 'number', description: 'Aytilmasa yubormang' },
+        customer_name: { type: 'string', description: 'Ixtiyoriy' },
       },
       required: ['product_name', 'quantity'],
     },
   },
   {
     name: 'add_expense',
-    description: 'Xarajat (rasxod) qo\'shish. Pul sarflangani haqida aytilganda.',
+    description: 'Xarajat qo\'shish. "Elektr uchun 500000 xarajat qo\'sh".',
     input_schema: {
       type: 'object',
       properties: {
-        category: { type: 'string', enum: ['RAW_MATERIAL', 'ENERGY', 'MAINTENANCE', 'SALARY', 'TRANSPORT', 'OTHER'], description: 'Xarajat turi. Xom ashyo=RAW_MATERIAL, elektr/gaz=ENERGY, tamir=MAINTENANCE, maosh=SALARY, transport=TRANSPORT, boshqa=OTHER' },
-        amount: { type: 'number', description: 'Summa so\'mda' },
-        description: { type: 'string', description: 'Izoh' },
+        category: { type: 'string', enum: ['RAW_MATERIAL', 'ENERGY', 'MAINTENANCE', 'SALARY', 'TRANSPORT', 'OTHER'] },
+        amount: { type: 'number' },
+        description: { type: 'string' },
       },
       required: ['amount'],
     },
   },
   {
     name: 'add_customer',
-    description: 'Yangi mijoz (haridor) qo\'shish.',
+    description: 'Yangi mijoz qo\'shish.',
     input_schema: {
       type: 'object',
       properties: {
@@ -104,7 +159,7 @@ const TOOLS = [
   },
   {
     name: 'create_intake',
-    description: 'Ombnorga mahsulot kirimini ro\'yxatga olish (tasdiqlash uchun PENDING holatda yaratiladi).',
+    description: 'Omborga mahsulot kirimi (tasdiqlash kerak).',
     input_schema: {
       type: 'object',
       properties: {
@@ -112,10 +167,7 @@ const TOOLS = [
           type: 'array',
           items: {
             type: 'object',
-            properties: {
-              product_name: { type: 'string' },
-              quantity: { type: 'number' },
-            },
+            properties: { product_name: { type: 'string' }, quantity: { type: 'number' } },
             required: ['product_name', 'quantity'],
           },
         },
@@ -124,106 +176,88 @@ const TOOLS = [
     },
   },
   {
-    name: 'get_report',
-    description: 'Hisobot/statistika berish: bugungi yoki oylik sotuv, kam qolgan mahsulotlar, qarzdorlar. Foydalanuvchi hisobot, holat, statistika so\'raganda.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        period: { type: 'string', enum: ['today', 'month'], description: 'today=bugun, month=shu oy' },
-      },
-    },
-  },
-  {
     name: 'update_price',
-    description: 'Mahsulot narxini o\'zgartirish. Masalan "gul tuvak narxini 8000 qil".',
+    description: 'Mahsulot narxini o\'zgartirish. "gul tuvak narxini 8000 qil".',
     input_schema: {
       type: 'object',
-      properties: {
-        product_name: { type: 'string' },
-        new_price: { type: 'number' },
-      },
+      properties: { product_name: { type: 'string' }, new_price: { type: 'number' } },
       required: ['product_name', 'new_price'],
     },
   },
   {
     name: 'update_stock',
-    description: 'Mahsulot ombordagi sonini o\'zgartirish. Masalan "chelak omborini 50 qil".',
+    description: 'Mahsulot ombordagi sonini o\'zgartirish.',
     input_schema: {
       type: 'object',
-      properties: {
-        product_name: { type: 'string' },
-        new_quantity: { type: 'number' },
-      },
+      properties: { product_name: { type: 'string' }, new_quantity: { type: 'number' } },
       required: ['product_name', 'new_quantity'],
     },
   },
   {
-    name: 'lookup',
-    description: 'Mahsulot narxi yoki ombordagi sonini bilish (faqat o\'qish). Masalan "gul tuvak narxi qancha?", "omborda nechta chelak bor?".',
-    input_schema: {
-      type: 'object',
-      properties: {
-        product_name: { type: 'string' },
-        what: { type: 'string', enum: ['price', 'stock', 'both'], description: 'price=narx, stock=ombor, both=ikkalasi' },
-      },
-      required: ['product_name'],
-    },
-  },
-  {
-    name: 'list_debtors',
-    description: 'Qarzdorlar ro\'yxatini berish. "Kim qarzdor?", "qarzdorlar".',
-    input_schema: { type: 'object', properties: {} },
-  },
-  {
     name: 'record_payment',
-    description: 'Mijoz to\'lovini yozish. Masalan "Dilshod 500000 to\'ladi".',
+    description: 'Mijoz qarz to\'lovini yozish. "Dilshod 500000 to\'ladi".',
     input_schema: {
       type: 'object',
-      properties: {
-        customer_name: { type: 'string' },
-        amount: { type: 'number' },
-      },
+      properties: { customer_name: { type: 'string' }, amount: { type: 'number' } },
       required: ['customer_name', 'amount'],
     },
   },
   {
-    name: 'generate_document',
-    description: 'Hujjat tayyorlash: oylik hisobot PDF yoki sotuvlar Excel. "oylik hisobotni Excel qil", "PDF hisobot".',
-    input_schema: {
-      type: 'object',
-      properties: {
-        doc_type: { type: 'string', enum: ['monthly_pdf', 'sales_excel'], description: 'monthly_pdf=oylik PDF, sales_excel=sotuvlar Excel' },
-        month: { type: 'string', description: 'YYYY-MM, aytilmasa shu oy' },
-      },
-      required: ['doc_type'],
-    },
-  },
-  {
-    name: 'get_employees',
-    description: 'Xodimlar ro\'yxatini ko\'rish. "1-smena stanokchilar kim?", "qancha xodim bor?", "2-smena ro\'yxati".',
-    input_schema: {
-      type: 'object',
-      properties: {
-        type: { type: 'string', enum: ['STANOKCHI', 'DETALCHI', 'ISHCHI', 'OSHPAZ', 'SHOFIR', 'BOSHQA'], description: 'Xodim turi (ixtiyoriy)' },
-        shift: { type: 'string', enum: ['1-SMENA', '2-SMENA'], description: 'Smena (faqat STANOKCHIlar uchun)' },
-      },
-    },
-  },
-  {
     name: 'add_production',
-    description: 'Xodim ishlab chiqarishini yozish. "Sarvar bugun 200 chelak yasadi", "Xasan 150 dona ishlab chiqardi".',
+    description: 'Xodim ishlab chiqarishini yozish. "Sarvar bugun 200 chelak yasadi".',
     input_schema: {
       type: 'object',
       properties: {
-        employee_name: { type: 'string', description: 'Xodim ismi' },
-        product_name: { type: 'string', description: 'Mahsulot nomi (ixtiyoriy)' },
-        quantity: { type: 'number', description: 'Ishlab chiqarilgan miqdor (dona)' },
-        date: { type: 'string', description: 'Sana YYYY-MM-DD (aytilmasa bugun)' },
+        employee_name: { type: 'string' },
+        product_name: { type: 'string', description: 'Ixtiyoriy' },
+        quantity: { type: 'number' },
+        date: { type: 'string', description: 'YYYY-MM-DD, aytilmasa bugun' },
       },
       required: ['employee_name', 'quantity'],
     },
   },
+  {
+    name: 'add_employee',
+    description: 'Yangi xodim qo\'shish. "Sarvar Toshmatov stanokchi 1-smena kunlik 50000 so\'m".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'To\'liq ismi' },
+        type: { type: 'string', enum: ['STANOKCHI', 'DETALCHI', 'ISHCHI', 'OSHPAZ', 'SHOFIR', 'BOSHQA'], description: 'Xodim turi' },
+        shift: { type: 'string', enum: ['1-SMENA', '2-SMENA'], description: 'Smena (STANOKCHI uchun)' },
+        daily_tariff: { type: 'number', description: 'Kunlik tarif so\'mda' },
+        phone: { type: 'string', description: 'Telefon (ixtiyoriy)' },
+      },
+      required: ['name', 'type', 'daily_tariff'],
+    },
+  },
+  {
+    name: 'remove_employee',
+    description: 'Xodimni nofaol qilish (o\'chirish). "Sarvarni ishdan bo\'shat", "Xasanni o\'chir".',
+    input_schema: {
+      type: 'object',
+      properties: { employee_name: { type: 'string' } },
+      required: ['employee_name'],
+    },
+  },
+  {
+    name: 'update_employee',
+    description: 'Xodim ma\'lumotini o\'zgartirish: smena, tarif, telefon. "Sarvarni 2-smenaga o\'tkaz", "Xasan tarifini 60000 qil".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        employee_name: { type: 'string' },
+        shift: { type: 'string', enum: ['1-SMENA', '2-SMENA'], description: 'Yangi smena' },
+        daily_tariff: { type: 'number', description: 'Yangi kunlik tarif' },
+        phone: { type: 'string', description: 'Yangi telefon' },
+      },
+      required: ['employee_name'],
+    },
+  },
 ];
+
+const ALL_TOOLS = [...READ_TOOLS, ...WRITE_TOOLS];
+const READ_TOOL_NAMES = new Set(READ_TOOLS.map(t => t.name));
 
 // ---------- Hisobot ma'lumotlari ----------
 async function gatherReport(period) {
@@ -297,19 +331,26 @@ router.post('/command', async (req, res) => {
       return res.json({ response: lang === 'ru' ? 'Ахмад: нужен API ключ' : 'Ahmad: API kaliti kerak' });
     }
 
+    const isOwner = req.user?.role === 'OWNER';
+    const activeTools = isOwner ? ALL_TOOLS : READ_TOOLS;
+
     const system = lang === 'ru'
-      ? `Вы Ахмад — голосовой помощник завода пластиковых изделий Технопласт.
-Используйте инструменты для операций: продажа, расход, приход, новый клиент, изменить цену, изменить склад, оплата долга, запись производства.
-Для отчётов — get_report. Для поиска цены/остатка — lookup. Для должников — list_debtors. Для документов — generate_document.
-Список сотрудников/смен — get_employees. Запись производства — add_production.
-Помните предыдущие сообщения разговора. Если это вопрос — ответьте кратко на русском. Представляйтесь как Ахмад. Числа: 1 000 000 сум.
-ВАЖНО: не используйте символы *, #, эмодзи или маркдаун — только чистый текст, так как ответ озвучивается голосом.`
-      : `Siz Ahmad — Teknoplast plastik zavod ovozli yordamchisisiz.
-Amallar uchun toollardan foydalaning: sotuv, xarajat, kirim, yangi mijoz, narx o'zgartirish, ombor o'zgartirish, qarz to'lovi, ishlab chiqarish yozish.
-Hisobot uchun get_report. Narx/ombor qidirish uchun lookup. Qarzdorlar uchun list_debtors. Hujjat uchun generate_document.
-Xodimlar ro'yxati/smena uchun get_employees. Ishlab chiqarish yozish uchun add_production.
-Oldingi suhbat xabarlarini eslab qoling. Oddiy savol bo'lsa — o'zbek tilida qisqa javob. O'zingizni Ahmad deb tanishtiring. Raqamlar: 1 000 000 so'm.
-MUHIM: *, #, emoji yoki markdown belgilaridan foydalanmang — faqat toza matn, chunki javob ovozda o'qiladi.`;
+      ? `Вы Ахмад — умный голосовой помощник завода Технопласт (пластиковые изделия).
+Роль текущего пользователя: ${isOwner ? 'АДМИНИСТРАТОР (все права)' : 'СОТРУДНИК (только просмотр)'}.
+${isOwner
+  ? 'Вы можете выполнять любые операции: продажи, расходы, приход, сотрудники, производство, цены, склад.'
+  : 'Вы можете только просматривать: отчёты, остатки, сотрудников, должников. Изменения — только для администратора.'}
+Инструменты: get_report (отчёт), lookup (цена/склад), list_debtors (должники), get_employees (сотрудники), generate_document (PDF/Excel)${isOwner ? ', create_sale, add_expense, add_customer, create_intake, update_price, update_stock, record_payment, add_production, add_employee, remove_employee, update_employee' : ''}.
+Помните историю разговора (до 6 сообщений). Краткие ответы. Числа: 1 000 000 сум. Представляйтесь как Ахмад.
+ВАЖНО: без *, #, эмодзи, маркдауна — только чистый текст (ответ озвучивается).`
+      : `Siz Ahmad — Teknoplast plastik zavod aqlli yordamchisisiz.
+Joriy foydalanuvchi roli: ${isOwner ? 'ADMIN (to\'liq huquq)' : 'XODIM (faqat ko\'rish)'}.
+${isOwner
+  ? 'Siz har qanday amalni bajara olasiz: sotuv, xarajat, kirim, xodim, ishlab chiqarish, narx, ombor.'
+  : 'Siz faqat ko\'ra olasiz: hisobot, ombor, xodimlar, qarzdorlar. O\'zgartirish faqat admin uchun.'}
+Toollar: get_report, lookup, list_debtors, get_employees, generate_document${isOwner ? ', create_sale, add_expense, add_customer, create_intake, update_price, update_stock, record_payment, add_production, add_employee, remove_employee, update_employee' : ''}.
+Suhbat tarixini esda tuting (6 xabar). Qisqa javoblar. Raqamlar: 1 000 000 so\'m. O\'zingizni Ahmad deb tanishtiring.
+MUHIM: *, #, emoji, markdown ishlatmang — faqat toza matn (ovozda o\'qiladi).`;
 
     // Suhbat xotirasi — oxirgi 6 ta xabar
     const messages = [];
@@ -324,7 +365,7 @@ MUHIM: *, #, emoji yoki markdown belgilaridan foydalanmang — faqat toza matn, 
       model: MODEL,
       max_tokens: 1024,
       system,
-      tools: TOOLS,
+      tools: activeTools,
       messages,
     });
 
@@ -492,6 +533,51 @@ MUHIM: *, #, emoji yoki markdown belgilaridan foydalanmang — faqat toza matn, 
         : `Kirim (tasdiqlash uchun): ${list}${notFound.length ? '. Topilmadi: ' + notFound.join(', ') : ''}`;
     }
 
+    // ===== XODIM AMALLAR (OWNER only) =====
+    if (toolBlock.name === 'add_employee') {
+      const exists = await query(
+        "SELECT id FROM employees WHERE LOWER(name)=LOWER($1) AND is_active=1 LIMIT 1",
+        [inp.name]
+      );
+      if (exists.rows.length) {
+        return res.json({ response: lang === 'ru' ? `Сотрудник "${inp.name}" уже существует.` : `"${inp.name}" xodim allaqachon mavjud.` });
+      }
+      const TYPE_LABEL = { STANOKCHI: 'Stanokchi', DETALCHI: 'Detalchi', ISHCHI: 'Ishchi', OSHPAZ: 'Oshpaz', SHOFIR: 'Shofir', BOSHQA: 'Boshqa' };
+      action = { type: 'ADD_EMPLOYEE', data: {
+        name: inp.name, type: inp.type || 'ISHCHI',
+        shift: inp.shift || '1-SMENA', daily_tariff: inp.daily_tariff || 0, phone: inp.phone || null,
+      }};
+      desc = lang === 'ru'
+        ? `Добавить сотрудника: ${inp.name} — ${TYPE_LABEL[inp.type] || inp.type}${inp.type === 'STANOKCHI' ? ', смена ' + (inp.shift || '1-SMENA') : ''}, тариф ${fmt(inp.daily_tariff)} сум`
+        : `Xodim qo'shish: ${inp.name} — ${TYPE_LABEL[inp.type] || inp.type}${inp.type === 'STANOKCHI' ? ', smena ' + (inp.shift || '1-SMENA') : ''}, tarif ${fmt(inp.daily_tariff)} so'm`;
+    } else if (toolBlock.name === 'remove_employee') {
+      const empR = await query(
+        "SELECT id, name FROM employees WHERE LOWER(name) LIKE LOWER($1) AND is_active=1 LIMIT 1",
+        [`%${inp.employee_name}%`]
+      );
+      if (!empR.rows.length) return res.json({ response: lang === 'ru' ? `Сотрудник "${inp.employee_name}" не найден.` : `"${inp.employee_name}" xodim topilmadi.` });
+      action = { type: 'REMOVE_EMPLOYEE', data: { employee_id: empR.rows[0].id, employee_name: empR.rows[0].name } };
+      desc = lang === 'ru' ? `Уволить: ${empR.rows[0].name}` : `Xodimni o'chirish: ${empR.rows[0].name}`;
+    } else if (toolBlock.name === 'update_employee') {
+      const empR = await query(
+        "SELECT id, name, shift, daily_tariff, phone FROM employees WHERE LOWER(name) LIKE LOWER($1) AND is_active=1 LIMIT 1",
+        [`%${inp.employee_name}%`]
+      );
+      if (!empR.rows.length) return res.json({ response: lang === 'ru' ? `Сотрудник "${inp.employee_name}" не найден.` : `"${inp.employee_name}" xodim topilmadi.` });
+      const emp = empR.rows[0];
+      const changes = [];
+      if (inp.shift) changes.push(lang === 'ru' ? `смена → ${inp.shift}` : `smena → ${inp.shift}`);
+      if (inp.daily_tariff) changes.push(lang === 'ru' ? `тариф → ${fmt(inp.daily_tariff)} сум` : `tarif → ${fmt(inp.daily_tariff)} so'm`);
+      if (inp.phone) changes.push(`tel → ${inp.phone}`);
+      action = { type: 'UPDATE_EMPLOYEE', data: {
+        employee_id: emp.id, employee_name: emp.name,
+        shift: inp.shift || emp.shift, daily_tariff: inp.daily_tariff || emp.daily_tariff, phone: inp.phone || emp.phone,
+      }};
+      desc = lang === 'ru'
+        ? `Изменить данные ${emp.name}: ${changes.join(', ')}`
+        : `${emp.name} ma'lumotlarini o'zgartirish: ${changes.join(', ')}`;
+    }
+
     return res.json({
       response: lead + desc,
       action: action ? { ...action, description: desc } : null,
@@ -529,12 +615,20 @@ router.post('/read-image', upload.single('image'), async (req, res) => {
     }
 
     const systemPrompt = lang === 'ru'
-      ? `Вы Ахмад — помощник завода Технопласт. Внимательно прочитайте изображение (накладная, чек, список заказа, прайс).
-Извлеките товары: название, количество, цену. Если это список продаж/прихода — дайте JSON массив в блоке \`\`\`json.
-Каждый элемент: {"name":"...","quantity":N,"price":N,"kind":"sale|intake|product"}. Отвечайте на русском.`
-      : `Siz Ahmad — Teknoplast yordamchisisiz. Rasmni diqqat bilan o'qing (nakladnoy, chek, buyurtma ro'yxati, narxnoma).
-Mahsulotlarni chiqaring: nom, miqdor, narx. Agar sotuv/kirim ro'yxati bo'lsa — \`\`\`json blokida massiv bering.
-Har biri: {"name":"...","quantity":N,"price":N,"kind":"sale|intake|product"}. O'zbek tilida javob bering.`;
+      ? `Вы Ахмад — помощник завода Технопласт. Внимательно прочитайте изображение.
+Определите тип данных на изображении и извлеките всё в JSON массив в блоке \`\`\`json:
+- Накладная/чек/список продаж: {"name":"...","quantity":N,"price":N,"kind":"sale"}
+- Список прихода товаров: {"name":"...","quantity":N,"price":N,"kind":"intake"}
+- Список сотрудников/работников: {"name":"...","type":"STANOKCHI|DETALCHI|ISHCHI|OSHPAZ|SHOFIR|BOSHQA","shift":"1-SMENA|2-SMENA","daily_tariff":N,"phone":"...","kind":"employee"}
+- Список товаров/прайс: {"name":"...","quantity":N,"price":N,"kind":"product"}
+Если тип неоднозначен — выберите наиболее подходящий. Отвечайте на русском.`
+      : `Siz Ahmad — Teknoplast yordamchisisiz. Rasmni diqqat bilan o'qing.
+Rasmdagi ma'lumot turini aniqlang va hammasini \`\`\`json blokida massiv bering:
+- Nakladnoy/chek/sotuv ro'yxati: {"name":"...","quantity":N,"price":N,"kind":"sale"}
+- Mahsulot kirimi ro'yxati: {"name":"...","quantity":N,"price":N,"kind":"intake"}
+- Xodimlar/ishchilar ro'yxati: {"name":"...","type":"STANOKCHI|DETALCHI|ISHCHI|OSHPAZ|SHOFIR|BOSHQA","shift":"1-SMENA|2-SMENA","daily_tariff":N,"phone":"...","kind":"employee"}
+- Mahsulotlar/narxnoma: {"name":"...","quantity":N,"price":N,"kind":"product"}
+Tur noaniq bo'lsa — eng mosini tanlang. O'zbek tilida javob bering.`;
 
     const message = await claude.messages.create({
       model: MODEL,
@@ -558,9 +652,12 @@ Har biri: {"name":"...","quantity":N,"price":N,"kind":"sale|intake|product"}. O'
         if (Array.isArray(items) && items.length) {
           const kind = items[0].kind || 'product';
           if (kind === 'sale') {
-            action = { type: 'BULK_SALES', data: { items }, description: lang === 'ru' ? `${items.length} продаж добавить?` : `${items.length} ta sotuv qo'shaylikmi?` };
+            action = { type: 'BULK_SALES', data: { items }, description: lang === 'ru' ? `${items.length} та продаж добавить?` : `${items.length} ta sotuv qo'shaylikmi?` };
           } else if (kind === 'intake') {
             action = { type: 'BULK_INTAKE', data: { items }, description: lang === 'ru' ? `${items.length} позиций прихода добавить?` : `${items.length} ta kirim qo'shaylikmi?` };
+          } else if (kind === 'employee') {
+            const list = items.map(e => `${e.name} (${e.type || 'ISHCHI'}${e.shift ? ', ' + e.shift : ''})`).join(', ');
+            action = { type: 'BULK_ADD_EMPLOYEES', data: items, description: lang === 'ru' ? `Добавить ${items.length} сотрудников: ${list}` : `${items.length} ta xodim qo'shilsinmi: ${list}` };
           } else {
             action = { type: 'ADD_PRODUCTS', data: items, description: lang === 'ru' ? `${items.length} товаров добавить?` : `${items.length} ta mahsulot qo'shaylikmi?` };
           }
@@ -584,6 +681,12 @@ router.post('/confirm-action', async (req, res) => {
   try {
     const { action } = req.body;
     if (!action?.type) return res.status(400).json({ error: 'Action kerak' });
+
+    // Yozish amallarini faqat OWNER bajarishi mumkin
+    const READ_ONLY_ACTIONS = new Set(['GET_REPORT', 'LOOKUP', 'LIST_DEBTORS', 'GET_EMPLOYEES']);
+    if (!READ_ONLY_ACTIONS.has(action.type) && req.user?.role !== 'OWNER') {
+      return res.status(403).json({ success: false, message: 'Bu amalni faqat admin bajarishi mumkin' });
+    }
 
     // --- Bitta sotuv ---
     if (action.type === 'CREATE_SALE') {
@@ -773,6 +876,48 @@ router.post('/confirm-action', async (req, res) => {
         } catch {}
       }
       return res.json({ success: true, message: `${added} ta mahsulot qo'shildi` });
+    }
+
+    // --- Xodim qo'shish ---
+    if (action.type === 'ADD_EMPLOYEE') {
+      const d = action.data;
+      await query(
+        'INSERT INTO employees (name, type, shift, daily_tariff, phone, hire_date) VALUES ($1,$2,$3,$4,$5,$6)',
+        [d.name, d.type, d.shift || '1-SMENA', d.daily_tariff || 0, d.phone || null, new Date().toISOString().slice(0, 10)]
+      );
+      return res.json({ success: true, message: `Xodim qo'shildi: ${d.name}` });
+    }
+
+    // --- Ko'plab xodim qo'shish (rasmdan) ---
+    if (action.type === 'BULK_ADD_EMPLOYEES') {
+      let added = 0;
+      for (const e of (action.data || [])) {
+        try {
+          await query(
+            'INSERT INTO employees (name, type, shift, daily_tariff, phone, hire_date) VALUES ($1,$2,$3,$4,$5,$6)',
+            [e.name, e.type || 'ISHCHI', e.shift || '1-SMENA', e.daily_tariff || 0, e.phone || null, new Date().toISOString().slice(0, 10)]
+          );
+          added++;
+        } catch {}
+      }
+      return res.json({ success: true, message: `${added} ta xodim qo'shildi` });
+    }
+
+    // --- Xodimni nofaol qilish ---
+    if (action.type === 'REMOVE_EMPLOYEE') {
+      const d = action.data;
+      await query('UPDATE employees SET is_active=0, updated_at=NOW() WHERE id=$1', [d.employee_id]);
+      return res.json({ success: true, message: `${d.employee_name} nofaol qilindi` });
+    }
+
+    // --- Xodim ma'lumotini yangilash ---
+    if (action.type === 'UPDATE_EMPLOYEE') {
+      const d = action.data;
+      await query(
+        'UPDATE employees SET shift=$1, daily_tariff=$2, phone=$3, updated_at=NOW() WHERE id=$4',
+        [d.shift, d.daily_tariff, d.phone, d.employee_id]
+      );
+      return res.json({ success: true, message: `${d.employee_name} ma'lumotlari yangilandi` });
     }
 
     res.status(400).json({ error: 'Noma\'lum action turi' });

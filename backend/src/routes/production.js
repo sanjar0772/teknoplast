@@ -130,26 +130,26 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD'), [
     let calculated_amount = 0;
     let daily_tariff = emp.rows[0].daily_tariff;
 
-    // Agar mahsulot ma'lumotlari bo'lsa, tariff mahsulot bazasidan olamiz
     if (product_id) {
       const prod = await query('SELECT stanokchi_rate, detalchi_rate FROM products WHERE id=$1', [product_id]);
-      if (prod.rows.length) {
-        const product = prod.rows[0];
-        if (employee_type === 'STANOKCHI' && product.stanokchi_rate) {
-          calculated_amount = quantity_produced * product.stanokchi_rate;
-          daily_tariff = product.stanokchi_rate;
-        } else if (employee_type === 'DETALCHI' && product.detalchi_rate) {
-          calculated_amount = quantity_produced * product.detalchi_rate;
-          daily_tariff = product.detalchi_rate;
-        } else {
-          // Eski sistem: (quantity / 100) * daily_tariff
-          calculated_amount = (quantity_produced / 100) * daily_tariff;
-        }
+      const product = prod.rows[0] || {};
+      if (employee_type === 'STANOKCHI' && product.stanokchi_rate) {
+        daily_tariff = product.stanokchi_rate;
+        calculated_amount = quantity_produced * daily_tariff;
+      } else if (employee_type === 'DETALCHI') {
+        // Detalchi: har doim quantity × dona_tarifi (product rate ustuvor, yo'q bo'lsa employee tarifi)
+        if (product.detalchi_rate) daily_tariff = product.detalchi_rate;
+        calculated_amount = quantity_produced * daily_tariff;
       } else {
         calculated_amount = (quantity_produced / 100) * daily_tariff;
       }
     } else {
-      calculated_amount = (quantity_produced / 100) * daily_tariff;
+      // Mahsulot tanlanmagan
+      if (employee_type === 'DETALCHI') {
+        calculated_amount = quantity_produced * daily_tariff;
+      } else {
+        calculated_amount = (quantity_produced / 100) * daily_tariff;
+      }
     }
 
     const month = production_date.slice(0, 7);
@@ -208,25 +208,24 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, n
         let daily_tariff = emp.rows[0].daily_tariff;
         let calculated_amount = 0;
 
-        // Product-based rate
         if (entry.product_id) {
           const prod = await query('SELECT stanokchi_rate, detalchi_rate FROM products WHERE id=$1', [entry.product_id]);
-          if (prod.rows.length) {
-            const product = prod.rows[0];
-            if (employee_type === 'STANOKCHI' && product.stanokchi_rate) {
-              calculated_amount = entry.quantity_produced * product.stanokchi_rate;
-              daily_tariff = product.stanokchi_rate;
-            } else if (employee_type === 'DETALCHI' && product.detalchi_rate) {
-              calculated_amount = entry.quantity_produced * product.detalchi_rate;
-              daily_tariff = product.detalchi_rate;
-            } else {
-              calculated_amount = (entry.quantity_produced / 100) * daily_tariff;
-            }
+          const product = prod.rows[0] || {};
+          if (employee_type === 'STANOKCHI' && product.stanokchi_rate) {
+            daily_tariff = product.stanokchi_rate;
+            calculated_amount = entry.quantity_produced * daily_tariff;
+          } else if (employee_type === 'DETALCHI') {
+            if (product.detalchi_rate) daily_tariff = product.detalchi_rate;
+            calculated_amount = entry.quantity_produced * daily_tariff;
           } else {
             calculated_amount = (entry.quantity_produced / 100) * daily_tariff;
           }
         } else {
-          calculated_amount = (entry.quantity_produced / 100) * daily_tariff;
+          if (employee_type === 'DETALCHI') {
+            calculated_amount = entry.quantity_produced * daily_tariff;
+          } else {
+            calculated_amount = (entry.quantity_produced / 100) * daily_tariff;
+          }
         }
 
         const production = await saveProductionWithStock(client, {

@@ -54,6 +54,16 @@ export default function ProductionPage() {
     setEntries(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: value } : e));
   };
 
+  const empMap = {};
+  (employees?.employees || []).forEach(e => { empMap[e.id] = e; });
+
+  const calcEarnings = (entry) => {
+    const emp = empMap[entry.employee_id];
+    if (!emp || !entry.quantity_produced) return 0;
+    if (emp.type === 'DETALCHI') return entry.quantity_produced * emp.daily_tariff;
+    return (entry.quantity_produced / 100) * emp.daily_tariff;
+  };
+
   const saveBulk = () => {
     const valid = entries.filter(e => e.employee_id && e.quantity_produced > 0);
     if (!valid.length) return toast.error('Kamida bitta xodim kiritilsin');
@@ -150,49 +160,83 @@ export default function ProductionPage() {
 
             <p className="text-sm text-gray-500 mb-4">Sana: <strong>{new Date(date).toLocaleDateString('uz-UZ')}</strong></p>
 
-            <div className="space-y-3">
-              {entries.map((entry, i) => (
-                <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                  <div className="col-span-5">
-                    <select
-                      value={entry.employee_id}
-                      onChange={e => updateEntry(i, 'employee_id', e.target.value)}
-                      className="select text-sm"
-                    >
-                      <option value="">Xodim tanlang</option>
-                      {employees?.employees?.map(emp => (
-                        <option key={emp.id} value={emp.id}>{emp.name}</option>
-                      ))}
-                    </select>
+            <div className="space-y-2">
+              {/* Sarlavha */}
+              <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 font-medium px-1">
+                <span className="col-span-4">Xodim</span>
+                <span className="col-span-3">Tayyor mahsulot</span>
+                <span className="col-span-2">Dona</span>
+                <span className="col-span-2 text-green-600">Hisoblangan</span>
+                <span className="col-span-1"></span>
+              </div>
+
+              {entries.map((entry, i) => {
+                const emp = empMap[entry.employee_id];
+                const isDetalchi = emp?.type === 'DETALCHI';
+                const earned = calcEarnings(entry);
+                return (
+                  <div key={i} className={`grid grid-cols-12 gap-2 items-center p-2 rounded-lg ${isDetalchi ? 'bg-orange-50 border border-orange-100' : 'bg-gray-50'}`}>
+                    <div className="col-span-4">
+                      <select
+                        value={entry.employee_id}
+                        onChange={e => updateEntry(i, 'employee_id', e.target.value)}
+                        className="select text-sm w-full"
+                      >
+                        <option value="">Xodim tanlang</option>
+                        {employees?.employees?.map(emp => (
+                          <option key={emp.id} value={emp.id}>
+                            {emp.name} {emp.type === 'DETALCHI' ? '(D)' : emp.type === 'STANOKCHI' ? '(S)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {isDetalchi && (
+                        <p className="text-xs text-orange-600 mt-0.5">Detalchi — {fmt(emp.daily_tariff)} so'm/dona</p>
+                      )}
+                    </div>
+                    <div className="col-span-3">
+                      <select
+                        value={entry.product_id}
+                        onChange={e => updateEntry(i, 'product_id', e.target.value)}
+                        className="select text-sm w-full"
+                      >
+                        <option value="">{isDetalchi ? 'Tayyor mahsulot' : 'Mahsulot'}</option>
+                        {products?.products?.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <input
+                        type="number" min="0"
+                        placeholder="Dona"
+                        value={entry.quantity_produced || ''}
+                        onChange={e => updateEntry(i, 'quantity_produced', parseInt(e.target.value) || 0)}
+                        className="input text-sm"
+                      />
+                    </div>
+                    <div className="col-span-2 text-right">
+                      {earned > 0 && (
+                        <span className="text-sm font-semibold text-green-700">{fmt(earned)} so'm</span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setEntries(prev => prev.filter((_, idx) => idx !== i))}
+                      className="col-span-1 text-red-400 hover:text-red-600 flex justify-center"
+                    ><X size={16} /></button>
                   </div>
-                  <div className="col-span-3">
-                    <select
-                      value={entry.product_id}
-                      onChange={e => updateEntry(i, 'product_id', e.target.value)}
-                      className="select text-sm"
-                    >
-                      <option value="">Mahsulot</option>
-                      {products?.products?.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="col-span-3">
-                    <input
-                      type="number" min="0"
-                      placeholder="Miqdor (dona)"
-                      value={entry.quantity_produced}
-                      onChange={e => updateEntry(i, 'quantity_produced', parseInt(e.target.value) || 0)}
-                      className="input text-sm"
-                    />
-                  </div>
-                  <button
-                    onClick={() => setEntries(prev => prev.filter((_, idx) => idx !== i))}
-                    className="col-span-1 text-red-400 hover:text-red-600"
-                  ><X size={16} /></button>
-                </div>
-              ))}
+                );
+              })}
             </div>
+
+            {/* Jami hisoblangan maosh */}
+            {entries.length > 0 && (
+              <div className="mt-3 p-3 bg-green-50 rounded-lg flex justify-between items-center">
+                <span className="text-sm text-gray-600">Jami hisoblangan:</span>
+                <span className="font-bold text-green-700 text-lg">
+                  {fmt(entries.reduce((sum, e) => sum + calcEarnings(e), 0))} so'm
+                </span>
+              </div>
+            )}
 
             <div className="flex gap-3 mt-4">
               <button onClick={addEntry} className="btn-secondary btn-sm">

@@ -140,7 +140,12 @@ export default function EmployeesPage() {
                     : <span className="text-gray-400">—</span>
                   }
                 </td>
-                <td>{fmt(emp.daily_tariff)} so'm</td>
+                <td>
+                  {fmt(emp.daily_tariff)} so'm
+                  <span className="text-xs text-gray-400 ml-1">
+                    {emp.type === 'DETALCHI' ? '/dona' : '/kun'}
+                  </span>
+                </td>
                 <td>{emp.phone || '—'}</td>
                 <td>{new Date(emp.hire_date).toLocaleDateString('uz-UZ')}</td>
                 <td>
@@ -182,8 +187,11 @@ export default function EmployeesPage() {
               </select>
             </div>
             <div>
-              <label className="label">Kunlik tarif *</label>
-              <input {...register('daily_tariff', { required: true, min: 0 })} type="number" className="input" />
+              <label className="label">
+                {watchedType === 'DETALCHI' ? 'Dona tarifi (1 ta uchun, so\'m) *' : 'Kunlik tarif *'}
+              </label>
+              <input {...register('daily_tariff', { required: true, min: 0 })} type="number" className="input"
+                placeholder={watchedType === 'DETALCHI' ? 'Masalan: 500 (1 dona uchun)' : 'Kunlik so\'m'} />
             </div>
           </div>
           {watchedType === 'STANOKCHI' && (

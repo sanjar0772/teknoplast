@@ -145,4 +145,124 @@ router.put('/:id/reject', requireRole('OWNER', 'SALES_HEAD'), async (req, res, n
   } catch (err) { next(err); }
 });
 
+// ===== PRODUCTION INTAKE (STANOKCHI/DETALCHI OUTPUT) =====
+
+// GET /api/intakes/production/pending — KIRIMCHI uchun pending production
+router.get('/production/pending', async (req, res, next) => {
+  try {
+    const result = await query(`
+      SELECT ep.*, e.name as employee_name, e.type as employee_type,
+             p.name as product_name, p.stanokchi_rate, p.detalchi_rate,
+             CASE
+               WHEN e.type = 'STANOKCHI' THEN ep.quantity_produced * p.stanokchi_rate
+               WHEN e.type = 'DETALCHI' THEN ep.quantity_produced * p.detalchi_rate
+               ELSE 0
+             END as calculated_salary
+      FROM employee_production ep
+      JOIN employees e ON ep.employee_id = e.id
+      LEFT JOIN products p ON ep.product_id = p.id
+      WHERE ep.recorded_by IS NULL
+      ORDER BY ep.production_date DESC
+    `);
+    res.json({ pending_production: result.rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/intakes/production/record — KIRIMCHI qayd qiladi (single)
+router.post('/production/record', requireRole('OWNER', 'KIRIMCHI'), async (req, res, next) => {
+  try {
+    const { production_id, notes } = req.body;
+    if (!production_id) return res.status(400).json({ error: 'Production ID kerak' });
+
+    const result = await query(
+      `UPDATE employee_production
+       SET recorded_by=$1, recorded_at=NOW(), kirimchi_notes=$2, updated_at=NOW()
+       WHERE id=$3 AND recorded_by IS NULL
+       RETURNING *`,
+      [req.user.id, notes || null, production_id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Production topilmadi yoki allaqachon qayd qilingan' });
+    }
+
+    logAudit(req, {
+      action: 'PRODUCTION_RECORDED', table: 'employee_production', recordId: production_id,
+      newValues: { recorded_by: req.user.id, kirimchi_notes: notes },
+    });
+
+    res.json({ message: 'Production qayd qilindi', production: result.rows[0] });
+  } catch (err) { next(err); }
+});
+
+// POST /api/intakes/production/record-bulk — KIRIMCHI ko'p production qayd qiladi
+router.post('/production/record-bulk', requireRole('OWNER', 'KIRIMCHI'), async (req, res, next) => {
+  try {
+    const { production_ids, notes } = req.body;
+    if (!Array.isArray(production_ids) || !production_ids.length) {
+      return res.status(400).json({ error: 'Production IDs kerak' });
+    }
+
+    const client = await require('../db').getClient();
+    const recorded = [];
+
+    try {
+      await client.query('BEGIN');
+
+      for (const prod_id of production_ids) {
+        const result = await client.query(
+          `UPDATE employee_production
+           SET recorded_by=$1, recorded_at=NOW(), kirimchi_notes=$2, updated_at=NOW()
+           WHERE id=$3 AND recorded_by IS NULL
+           RETURNING *`,
+          [req.user.id, notes || null, prod_id]
+        );
+        if (result.rows.length) {
+          recorded.push(result.rows[0]);
+        }
+      }
+
+      await client.query('COMMIT');
+
+      logAudit(req, {
+        action: 'PRODUCTION_RECORDED_BULK', table: 'employee_production',
+        recordId: recorded.map(r => r.id).join(','),
+        newValues: { count: recorded.length },
+      });
+
+      res.json({ message: `${recorded.length} ta production qayd qilindi`, count: recorded.length });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (err) { next(err); }
+});
+
+// GET /api/intakes/production/recorded — KIRIMCHI qayd qilgan production
+router.get('/production/recorded', async (req, res, next) => {
+  try {
+    const { date, employee_id } = req.query;
+    let sql = `
+      SELECT ep.*, e.name as employee_name, e.type as employee_type,
+             p.name as product_name, u.full_name as recorded_by_name
+      FROM employee_production ep
+      JOIN employees e ON ep.employee_id = e.id
+      LEFT JOIN products p ON ep.product_id = p.id
+      LEFT JOIN users u ON ep.recorded_by = u.id
+      WHERE ep.recorded_by IS NOT NULL
+    `;
+    const params = [];
+    let idx = 1;
+
+    if (date) { sql += ` AND ep.production_date = $${idx++}`; params.push(date); }
+    if (employee_id) { sql += ` AND ep.employee_id = $${idx++}`; params.push(employee_id); }
+
+    sql += ' ORDER BY ep.production_date DESC';
+    const result = await query(sql, params);
+    res.json({ recorded_production: result.rows });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

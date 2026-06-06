@@ -464,6 +464,9 @@ if (USE_PG) {
       `ALTER TABLE products ADD COLUMN detalchi_rate REAL DEFAULT 0`,
       `ALTER TABLE products ADD COLUMN cost_price REAL DEFAULT 0`,
       `ALTER TABLE employee_production ADD COLUMN production_type TEXT DEFAULT 'FINISHED'`,
+      `ALTER TABLE employee_production ADD COLUMN recorded_by TEXT REFERENCES users(id)`,
+      `ALTER TABLE employee_production ADD COLUMN recorded_at TEXT`,
+      `ALTER TABLE employee_production ADD COLUMN kirimchi_notes TEXT`,
       `ALTER TABLE employees ADD COLUMN shift TEXT DEFAULT 'ERTALAB'`,
       `ALTER TABLE machines ADD COLUMN code TEXT UNIQUE`,
     ];

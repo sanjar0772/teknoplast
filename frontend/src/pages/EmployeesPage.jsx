@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Users } from 'lucide-react';
+import { Plus, X, Users, Trash2 } from 'lucide-react';
 import { employeesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -70,6 +70,26 @@ export default function EmployeesPage() {
     },
   });
 
+  // Bitta xodimni butunlay o'chirish
+  const deleteMutation = useMutation({
+    mutationFn: (emp) => employeesAPI.remove(emp.id),
+    onSuccess: (res) => {
+      toast.success(res?.data?.message || 'Xodim o\'chirildi');
+      qc.invalidateQueries({ queryKey: ['employees'] });
+    },
+    onError: (err) => toast.error(err?.response?.data?.error || 'O\'chirishda xato'),
+  });
+
+  // Hamma xodimni o'chirish
+  const deleteAllMutation = useMutation({
+    mutationFn: () => employeesAPI.removeAll(),
+    onSuccess: (res) => {
+      toast.success(res?.data?.message || 'Hamma xodim o\'chirildi');
+      qc.invalidateQueries({ queryKey: ['employees'] });
+    },
+    onError: (err) => toast.error(err?.response?.data?.error || 'O\'chirishda xato'),
+  });
+
   const canWrite = isOwner() || isProductionHead();
 
   const typeCount = (data?.employees || []).reduce((acc, e) => {
@@ -81,11 +101,25 @@ export default function EmployeesPage() {
     <div className="space-y-6">
       <div className="page-header">
         <h1 className="page-title">Xodimlar</h1>
-        {canWrite && (
-          <button onClick={openCreate} className="btn-primary btn-sm">
-            <Plus size={14} /> Xodim qo'shish
-          </button>
-        )}
+        <div className="flex gap-2">
+          {isOwner() && (data?.employees || []).length > 0 && (
+            <button
+              onClick={() => {
+                const total = (data?.employees || []).length;
+                if (window.confirm(`HAMMA xodimni (${total} ta) BUTUNLAY o'chirasizmi?\nBarcha xodimlar va ularning maosh/ishlab chiqarish yozuvlari o'chadi. Qaytarib bo'lmaydi!`))
+                  deleteAllMutation.mutate();
+              }}
+              disabled={deleteAllMutation.isPending}
+              className="btn-sm bg-red-600 text-white hover:bg-red-700 rounded-lg px-3 flex items-center gap-1">
+              <Trash2 size={14} /> Hammasini o'chirish
+            </button>
+          )}
+          {canWrite && (
+            <button onClick={openCreate} className="btn-primary btn-sm">
+              <Plus size={14} /> Xodim qo'shish
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Stats */}
@@ -158,11 +192,20 @@ export default function EmployeesPage() {
                     <button onClick={() => openEdit(emp)} className="btn-secondary btn-sm">Tahrirlash</button>
                     <button
                       onClick={() => {
-                        if (window.confirm(emp.is_active ? `${emp.name}ni nofaol qilasizmi?` : `${emp.name}ni faollashtirасизmi?`))
+                        if (window.confirm(emp.is_active ? `${emp.name}ni nofaol qilasizmi?` : `${emp.name}ni faollashtirasizmi?`))
                           deactivateMutation.mutate(emp);
                       }}
-                      className={`btn-sm ${emp.is_active ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg px-2' : 'bg-green-50 text-green-600 hover:bg-green-100 border border-green-200 rounded-lg px-2'}`}>
-                      {emp.is_active ? "O'chirish" : 'Faollashtirish'}
+                      className={`btn-sm ${emp.is_active ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200 rounded-lg px-2' : 'bg-green-50 text-green-600 hover:bg-green-100 border border-green-200 rounded-lg px-2'}`}>
+                      {emp.is_active ? 'Nofaol' : 'Faollashtirish'}
+                    </button>
+                    <button
+                      title="Butunlay o'chirish"
+                      onClick={() => {
+                        if (window.confirm(`${emp.name}ni BUTUNLAY o'chirasizmi?\nBu xodim va uning maosh/ishlab chiqarish yozuvlari butunlay o'chadi. Qaytarib bo'lmaydi!`))
+                          deleteMutation.mutate(emp);
+                      }}
+                      className="btn-sm bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg px-2 flex items-center">
+                      <Trash2 size={14} />
                     </button>
                   </td>
                 )}

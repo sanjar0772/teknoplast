@@ -117,4 +117,21 @@ router.delete('/all', requireRole('OWNER'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// DELETE /api/employees/:id — bitta xodimni butunlay o'chirish (OWNER, PRODUCTION_HEAD)
+// Bog'liq yozuvlar ham o'chadi: salaries, employee_production. Mashina operatori NULL bo'ladi.
+router.delete('/:id', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    const emp = await query('SELECT name FROM employees WHERE id=$1', [id]);
+    if (!emp.rows.length) return res.status(404).json({ error: 'Xodim topilmadi' });
+
+    await query('UPDATE machines SET operator_id = NULL WHERE operator_id = $1', [id]);
+    await query('DELETE FROM salaries WHERE employee_id = $1', [id]);
+    await query('DELETE FROM employee_production WHERE employee_id = $1', [id]);
+    await query('DELETE FROM employees WHERE id = $1', [id]);
+
+    res.json({ success: true, message: `${emp.rows[0].name} butunlay o'chirildi` });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

@@ -97,6 +97,8 @@ export const employeesAPI = {
   getById: (id) => api.get(`/employees/${id}`),
   create: (data) => api.post('/employees', data),
   update: (id, data) => api.put(`/employees/${id}`, data),
+  remove: (id) => api.delete(`/employees/${id}`),        // bitta xodimni butunlay o'chirish
+  removeAll: () => api.delete('/employees/all'),          // hamma xodimni o'chirish
 };
 
 // Production

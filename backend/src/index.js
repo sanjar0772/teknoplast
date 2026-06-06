@@ -62,7 +62,6 @@ app.get('/api/health', (req, res) => {
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)
-const path = require('path');
 const frontendDist = path.join(__dirname, '../../frontend/dist');
 app.use(express.static(frontendDist));
 

@@ -439,6 +439,7 @@ if (USE_PG) {
       is_active INTEGER DEFAULT 1,
       phone TEXT,
       address TEXT,
+      shift TEXT DEFAULT '1-SMENA',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     )`);

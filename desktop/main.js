@@ -1,6 +1,10 @@
 const { app, BrowserWindow, session, shell, Menu } = require('electron');
 const path = require('path');
 
+// HTTP keshni BUTUNLAY o'chiramiz — har doim serverdan eng yangi frontend keladi.
+// Bu "eski versiya ko'rinyapti / yangi tugmalar chiqmayapti" muammosini ildizidan yo'q qiladi.
+app.commandLine.appendSwitch('disable-http-cache');
+
 // TEKNOPLAST sayt manzili (Railway). Kerak bo'lsa o'zgartiring yoki
 // TEKNOPLAST_URL muhit o'zgaruvchisi orqali boshqaring.
 const APP_URL = process.env.TEKNOPLAST_URL || 'https://teknoplast-production.up.railway.app';
@@ -68,6 +72,15 @@ app.whenReady().then(async () => {
       label: 'TEKNOPLAST',
       submenu: [
         { label: 'Yangilash', accelerator: 'F5', click: () => mainWindow?.reload() },
+        {
+          label: 'To\'liq yangilash (keshni tozalash)',
+          accelerator: 'CmdOrCtrl+Shift+R',
+          click: async () => {
+            try { await session.defaultSession.clearCache(); } catch {}
+            try { await session.defaultSession.clearStorageData(); } catch {}
+            mainWindow?.webContents.reloadIgnoringCache();
+          },
+        },
         { label: 'To\'liq ekran', accelerator: 'F11', click: () => mainWindow?.setFullScreen(!mainWindow.isFullScreen()) },
         { type: 'separator' },
         { label: 'Chiqish', accelerator: 'Alt+F4', role: 'quit' },

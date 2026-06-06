@@ -66,8 +66,8 @@ router.get('/summary', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/expenses
-router.post('/', requireRole('OWNER', 'ACCOUNTANT'), [
+// POST /api/expenses (TAMINOTCHI faqat RAW_MATERIAL, ACCOUNTANT/OWNER barcha)
+router.post('/', requireRole('OWNER', 'ACCOUNTANT', 'TAMINOTCHI'), [
   body('category').isIn(['RAW_MATERIAL', 'ENERGY', 'MAINTENANCE', 'SALARY', 'TRANSPORT', 'OTHER']),
   body('amount').isFloat({ min: 0.01 }),
   body('description').optional().trim(),
@@ -77,6 +77,12 @@ router.post('/', requireRole('OWNER', 'ACCOUNTANT'), [
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { category, amount, description, expense_date } = req.body;
+
+    // TAMINOTCHI faqat RAW_MATERIAL expenses qo'shishi mumkin
+    if (req.user.role === 'TAMINOTCHI' && category !== 'RAW_MATERIAL') {
+      return res.status(403).json({ error: 'TAMINOTCHI faqat RAW_MATERIAL expenses qo\'shishi mumkin' });
+    }
+
     const result = await query(
       'INSERT INTO expenses (category, amount, description, expense_date, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING *',
       [category, amount, description, expense_date || new Date(), req.user.id]

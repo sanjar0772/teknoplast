@@ -215,15 +215,78 @@ router.get('/raw-materials/list', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/products/raw-materials/intake-history (TAMINOTCHI kiritgan xom ashyo va harajatlar)
+router.get('/raw-materials/intake-history', async (req, res, next) => {
+  try {
+    const { month, supplier_name } = req.query;
+    let sql = `
+      SELECT rm.*, COUNT(e.id) as expense_count, COALESCE(SUM(e.amount), 0) as total_cost,
+             MAX(e.created_at) as last_expense_date
+      FROM raw_materials rm
+      LEFT JOIN expenses e ON e.category='RAW_MATERIAL' AND e.description LIKE CONCAT('%', rm.name, '%')
+      WHERE 1=1
+    `;
+    const params = [];
+    let idx = 1;
+
+    if (month) {
+      sql += ` AND TO_CHAR(e.expense_date, 'YYYY-MM') = $${idx++}`;
+      params.push(month);
+    }
+    if (supplier_name) {
+      sql += ` AND rm.supplier_name ILIKE $${idx++}`;
+      params.push(`%${supplier_name}%`);
+    }
+
+    sql += ' GROUP BY rm.id ORDER BY rm.received_date DESC';
+    const result = await query(sql, params);
+    res.json({ intake_history: result.rows });
+  } catch (err) { next(err); }
+});
+
 // POST /api/products/raw-materials (TAMINOTCHI xom ashyo qo'shadi)
 router.post('/raw-materials', requireRole('OWNER', 'PRODUCTION_HEAD', 'TAMINOTCHI'), async (req, res, next) => {
   try {
-    const { name, quantity, unit, price_per_unit, received_date, supplier_name, min_stock_level } = req.body;
-    const result = await query(
-      'INSERT INTO raw_materials (name, quantity, unit, price_per_unit, received_date, stock_balance, supplier_name, min_stock_level) VALUES ($1,$2,$3,$4,$5,$2,$6,$7) RETURNING *',
-      [name, quantity, unit || 'kg', price_per_unit, received_date || new Date(), supplier_name, min_stock_level || 0]
-    );
-    res.status(201).json({ raw_material: result.rows[0] });
+    const { name, quantity, unit, price_per_unit, received_date, supplier_name, min_stock_level, create_expense } = req.body;
+
+    const client = await require('../db').getClient();
+    try {
+      await client.query('BEGIN');
+
+      // Xom ashyo qo'shish
+      const materialResult = await client.query(
+        'INSERT INTO raw_materials (name, quantity, unit, price_per_unit, received_date, stock_balance, supplier_name, min_stock_level) VALUES ($1,$2,$3,$4,$5,$2,$6,$7) RETURNING *',
+        [name, quantity, unit || 'kg', price_per_unit || 0, received_date || new Date(), supplier_name, min_stock_level || 0]
+      );
+      const raw_material = materialResult.rows[0];
+
+      let expense = null;
+
+      // Agar price_per_unit va create_expense=true bo'lsa, expense yaratamiz
+      if (create_expense && price_per_unit && quantity) {
+        const total_cost = quantity * price_per_unit;
+        const description = `${name} - ${quantity} ${unit || 'kg'} (Supplier: ${supplier_name || 'N/A'})`;
+
+        const expenseResult = await client.query(
+          'INSERT INTO expenses (category, amount, description, expense_date, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+          ['RAW_MATERIAL', total_cost, description, received_date || new Date(), req.user.id]
+        );
+        expense = expenseResult.rows[0];
+      }
+
+      await client.query('COMMIT');
+      logAudit(req, {
+        action: 'RAW_MATERIAL_ADDED', table: 'raw_materials', recordId: raw_material.id,
+        newValues: { name, quantity, unit, price_per_unit, supplier_name, expense_created: !!expense },
+      });
+
+      res.status(201).json({ raw_material, expense });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
   } catch (err) { next(err); }
 });
 

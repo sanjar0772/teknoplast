@@ -469,6 +469,8 @@ if (USE_PG) {
       `ALTER TABLE employee_production ADD COLUMN kirimchi_notes TEXT`,
       `ALTER TABLE employees ADD COLUMN shift TEXT DEFAULT 'ERTALAB'`,
       `ALTER TABLE machines ADD COLUMN code TEXT UNIQUE`,
+      `ALTER TABLE expenses ADD COLUMN raw_material_id TEXT REFERENCES raw_materials(id)`,
+      `ALTER TABLE expenses ADD COLUMN reference_type TEXT`,
     ];
     for (const m of migrations) {
       try {

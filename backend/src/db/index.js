@@ -161,6 +161,15 @@ if (USE_PG) {
     const SQL = await initSqlJs();
 
     if (fs.existsSync(DB_PATH)) {
+      // Deploy oldidan zaxira nusxa — ma'lumotlarga zarar yetmasligi uchun
+      try {
+        const backupPath = DB_PATH + '.backup';
+        fs.copyFileSync(DB_PATH, backupPath);
+        console.log('💾 Zaxira nusxa saqlandi:', backupPath);
+      } catch (e) {
+        console.warn('Zaxira nusxa xato (davom etilmoqda):', e.message);
+      }
+
       const buf = fs.readFileSync(DB_PATH);
       _db = new SQL.Database(buf);
       console.log('✅ SQLite bazasi yuklandi:', DB_PATH);

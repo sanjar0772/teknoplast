@@ -7,7 +7,7 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
-const { query } = require('../src/db');
+const { query, saveDB } = require('../src/db');
 
 // SHEET 1 - 1ST SHIFT (ERTALAB)
 const shift1 = [
@@ -170,6 +170,9 @@ async function addStanokchi() {
       console.log(`   ${t.shift.padEnd(10)} - ${t.count} ta (O'rtacha: ${t.avg_tariff?.toLocaleString('uz-UZ')} UZS)`);
     });
 
+    // Save database to disk
+    saveDB();
+    console.log('\n💾 Database saved!');
     process.exit(0);
   } catch (err) {
     console.error('❌ Xato:', err.message);

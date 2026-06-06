@@ -6,7 +6,7 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
-const { query } = require('../src/db');
+const { query, saveDB } = require('../src/db');
 
 // Jadvaldan barcha ishchilar (35 ta)
 const employees = [
@@ -130,6 +130,9 @@ async function addEmployees() {
       console.log(`   ${t.type}: ${t.count} ishchi (O'rtacha: ${t.avg_tariff.toLocaleString('uz-UZ')} UZS)`);
     });
 
+    // Save database to disk
+    saveDB();
+    console.log('💾 Database saved!');
     process.exit(0);
   } catch (err) {
     console.error('❌ Xato:', err.message);

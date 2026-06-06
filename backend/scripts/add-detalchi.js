@@ -6,7 +6,7 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
-const { query } = require('../src/db');
+const { query, saveDB } = require('../src/db');
 
 // 20 ta DETALCHI (ayollar)
 const detalchi = [
@@ -113,6 +113,9 @@ async function addDetalchi() {
     console.log(`   Women: ${gender.rows[0]?.women || 0}`);
     console.log(`   Total: ${gender.rows[0]?.total || 0}`);
 
+    // Save database to disk
+    saveDB();
+    console.log('\n💾 Database saved!');
     process.exit(0);
   } catch (err) {
     console.error('❌ Xato:', err.message);

@@ -100,4 +100,21 @@ router.put('/bulk/update-types', requireRole('OWNER'), async (req, res, next) =>
   } catch (err) { next(err); }
 });
 
+// DELETE /api/employees/all — HAMMA xodimni butunlay o'chirish (faqat OWNER)
+// Bog'liq yozuvlar ham o'chadi: salaries, employee_production. Mashinalar saqlanadi (operator NULL).
+router.delete('/all', requireRole('OWNER'), async (req, res, next) => {
+  try {
+    const before = await query('SELECT COUNT(*) c FROM employees');
+    const count = Number(before.rows[0].c || 0);
+
+    // FK tartibida: avval bog'liqlar, keyin xodimlar
+    await query('UPDATE machines SET operator_id = NULL WHERE operator_id IS NOT NULL');
+    await query('DELETE FROM salaries');
+    await query('DELETE FROM employee_production');
+    await query('DELETE FROM employees');
+
+    res.json({ success: true, deleted: count, message: `${count} ta xodim va ularning yozuvlari o'chirildi` });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

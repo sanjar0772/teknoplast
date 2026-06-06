@@ -471,6 +471,10 @@ if (USE_PG) {
       `ALTER TABLE machines ADD COLUMN code TEXT UNIQUE`,
       `ALTER TABLE expenses ADD COLUMN raw_material_id TEXT REFERENCES raw_materials(id)`,
       `ALTER TABLE expenses ADD COLUMN reference_type TEXT`,
+      `ALTER TABLE salaries ADD COLUMN tax_amount REAL DEFAULT 0`,
+      `ALTER TABLE salaries ADD COLUMN social_security REAL DEFAULT 0`,
+      `ALTER TABLE salaries ADD COLUMN work_days INTEGER DEFAULT 0`,
+      `ALTER TABLE salaries ADD COLUMN total_produced INTEGER DEFAULT 0`,
     ];
     for (const m of migrations) {
       try {

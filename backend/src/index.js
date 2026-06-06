@@ -41,6 +41,7 @@ app.use('/api/expenses', require('./routes/expenses'));
 app.use('/api/employees', require('./routes/employees'));
 app.use('/api/production', require('./routes/production'));
 app.use('/api/salaries', require('./routes/salaries'));
+app.use('/api/salary-slip', require('./routes/salary-slip'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/machines', require('./routes/machines'));
 app.use('/api/reports', require('./routes/reports'));

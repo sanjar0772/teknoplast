@@ -77,4 +77,26 @@ router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, nex
   } catch (err) { next(err); }
 });
 
+// PUT /api/employees/bulk-update — Bir necha ishchining turini o'zgartirish
+router.put('/bulk/update-types', requireRole('OWNER'), async (req, res, next) => {
+  try {
+    const { updates } = req.body;
+    if (!Array.isArray(updates) || !updates.length) {
+      return res.status(400).json({ error: 'Updates array bo\'sh' });
+    }
+
+    const updated = [];
+    for (const u of updates) {
+      if (!u.id || !u.type) continue;
+      const result = await query(
+        'UPDATE employees SET type=$1, updated_at=NOW() WHERE id=$2 RETURNING *',
+        [u.type, u.id]
+      );
+      if (result.rows.length) updated.push(result.rows[0]);
+    }
+
+    res.json({ updated, count: updated.length });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

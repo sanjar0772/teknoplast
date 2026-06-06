@@ -497,6 +497,7 @@ if (USE_PG) {
       { phone: '+998904444444', password: 'Production123!', name: 'Ishlab chiqarish',   role: 'PRODUCTION_HEAD' },
       { phone: '+998905555555', password: 'Kirim123!',      name: 'Kirimchi',           role: 'KIRIMCHI' },
       { phone: '+998906666666', password: 'Ombor123!',      name: 'Omborchi',           role: 'OMBORCHI' },
+      { phone: '+998907777777', password: 'Taminot123!',    name: 'Taminotchi',         role: 'TAMINOTCHI' },
     ];
 
     for (const u of users) {
@@ -506,13 +507,14 @@ if (USE_PG) {
         [id, u.phone, hash, u.name, u.role]);
     }
 
-    console.log('👤 7 ta foydalanuvchi yaratildi');
-    console.log('   OWNER:           +998901234567 / Admin123!');
-    console.log('   SALES_HEAD:      +998903333333 / Sales123!');
-    console.log('   ACCOUNTANT:      +998902222222 / Accountant123!');
-    console.log('   PRODUCTION_HEAD: +998904444444 / Production123!');
-    console.log('   KIRIMCHI:        +998905555555 / Kirim123!');
-    console.log('   OMBORCHI:        +998906666666 / Ombor123!');
+    console.log('👤 8 ta foydalanuvchi yaratildi');
+    console.log('   OWNER:            +998901234567 / Admin123!');
+    console.log('   SALES_HEAD:       +998903333333 / Sales123!');
+    console.log('   ACCOUNTANT:       +998902222222 / Accountant123!');
+    console.log('   PRODUCTION_HEAD:  +998904444444 / Production123!');
+    console.log('   KIRIMCHI:         +998905555555 / Kirim123!');
+    console.log('   OMBORCHI:         +998906666666 / Ombor123!');
+    console.log('   TAMINOTCHI:       +998907777777 / Taminot123!');
   }
 
   // Ana query funksiyasi

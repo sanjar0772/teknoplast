@@ -10,12 +10,13 @@ router.use(authenticate);
 // GET /api/employees
 router.get('/', async (req, res, next) => {
   try {
-    const { type, is_active = 'true', search } = req.query;
+    const { type, is_active = 'true', search, shift } = req.query;
     let sql = 'SELECT * FROM employees WHERE 1=1';
     const params = [];
     let idx = 1;
     if (is_active !== 'all') { sql += ` AND is_active = $${idx++}`; params.push(is_active === 'true'); }
     if (type)   { sql += ` AND type = $${idx++}`; params.push(type); }
+    if (shift)  { sql += ` AND shift = $${idx++}`; params.push(shift); }
     if (search) { sql += ` AND name ILIKE $${idx++}`; params.push(`%${search}%`); }
     sql += ' ORDER BY name';
     const result = await query(sql, params);
@@ -58,7 +59,7 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD'), [
     const { name, type, daily_tariff, hourly_tariff, hire_date, phone, address, shift } = req.body;
     const result = await query(
       'INSERT INTO employees (name, type, daily_tariff, hourly_tariff, hire_date, phone, address, shift) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-      [name, type, daily_tariff, hourly_tariff || null, hire_date || new Date(), phone, address, shift || 'ERTALAB']
+      [name, type, daily_tariff, hourly_tariff || null, hire_date || new Date(), phone, address, shift || '1-SMENA']
     );
     res.status(201).json({ employee: result.rows[0] });
   } catch (err) { next(err); }
@@ -70,7 +71,7 @@ router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, nex
     const { name, type, daily_tariff, hourly_tariff, phone, address, is_active, shift } = req.body;
     const result = await query(
       'UPDATE employees SET name=$1,type=$2,daily_tariff=$3,hourly_tariff=$4,phone=$5,address=$6,is_active=$7,shift=$8,updated_at=NOW() WHERE id=$9 RETURNING *',
-      [name, type, daily_tariff, hourly_tariff, phone, address, is_active, shift || 'ERTALAB', req.params.id]
+      [name, type, daily_tariff, hourly_tariff, phone, address, is_active, shift || '1-SMENA', req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Xodim topilmadi' });
     res.json({ employee: result.rows[0] });

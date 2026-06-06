@@ -7,7 +7,8 @@ import { employeesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
-const TYPES = { STANOKCHI: 'Stanokchi', ISHCHI: 'Ishchi', OSHPAZ: 'Oshpaz', SHOFIR: 'Shofir', BOSHQA: 'Boshqa' };
+const TYPES = { STANOKCHI: 'Stanokchi', DETALCHI: 'Detalchi', ISHCHI: 'Ishchi', OSHPAZ: 'Oshpaz', SHOFIR: 'Shofir', BOSHQA: 'Boshqa' };
+const SHIFTS = { '1-SMENA': '1-Smena', '2-SMENA': '2-Smena' };
 
 function Modal({ open, onClose, title, children }) {
   if (!open) return null;
@@ -47,7 +48,8 @@ export default function EmployeesPage() {
     },
   });
 
-  const { register, handleSubmit, reset, setValue } = useForm();
+  const { register, handleSubmit, reset, setValue, watch } = useForm();
+  const watchedType = watch('type');
 
   const openCreate = () => { reset(); setEditEmployee(null); setShowModal(true); };
   const openEdit = (emp) => {
@@ -93,25 +95,39 @@ export default function EmployeesPage() {
           <option value="">Barcha turlar</option>
           {Object.entries(TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
+        {filter.type === 'STANOKCHI' && (
+          <select value={filter.shift || ''} onChange={e => setFilter(f => ({ ...f, shift: e.target.value }))} className="select w-36">
+            <option value="">Barcha smenalar</option>
+            {Object.entries(SHIFTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        )}
       </div>
 
       {/* Table */}
       <div className="table-container">
         <table className="table">
           <thead>
-            <tr><th>Ismi</th><th>Turi</th><th>Kunlik tarif</th><th>Telefon</th><th>Yollangan sana</th><th>Holat</th>{canWrite && <th>Amal</th>}</tr>
+            <tr><th>Ismi</th><th>Turi</th><th>Smena</th><th>Kunlik tarif</th><th>Telefon</th><th>Yollangan sana</th><th>Holat</th>{canWrite && <th>Amal</th>}</tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={7} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
+              <tr><td colSpan={8} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
             ) : !data?.employees?.length ? (
-              <tr><td colSpan={7} className="text-center py-8 text-gray-400">
+              <tr><td colSpan={8} className="text-center py-8 text-gray-400">
                 <Users size={32} className="mx-auto mb-2 opacity-30" /><br />Xodim topilmadi
               </td></tr>
             ) : data.employees.map(emp => (
               <tr key={emp.id}>
                 <td className="font-medium">{emp.name}</td>
                 <td><span className="badge-blue">{TYPES[emp.type] || emp.type}</span></td>
+                <td>
+                  {emp.type === 'STANOKCHI'
+                    ? <span className={`badge ${emp.shift === '2-SMENA' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
+                        {SHIFTS[emp.shift] || emp.shift || '1-Smena'}
+                      </span>
+                    : <span className="text-gray-400">—</span>
+                  }
+                </td>
                 <td>{fmt(emp.daily_tariff)} so'm</td>
                 <td>{emp.phone || '—'}</td>
                 <td>{new Date(emp.hire_date).toLocaleDateString('uz-UZ')}</td>
@@ -150,6 +166,15 @@ export default function EmployeesPage() {
               <input {...register('daily_tariff', { required: true, min: 0 })} type="number" className="input" />
             </div>
           </div>
+          {watchedType === 'STANOKCHI' && (
+            <div>
+              <label className="label">Smena *</label>
+              <select {...register('shift')} className="select">
+                <option value="1-SMENA">1-Smena (Ertalab)</option>
+                <option value="2-SMENA">2-Smena (Kechqurun)</option>
+              </select>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Telefon</label>

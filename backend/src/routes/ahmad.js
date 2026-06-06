@@ -198,6 +198,31 @@ const TOOLS = [
       required: ['doc_type'],
     },
   },
+  {
+    name: 'get_employees',
+    description: 'Xodimlar ro\'yxatini ko\'rish. "1-smena stanokchilar kim?", "qancha xodim bor?", "2-smena ro\'yxati".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['STANOKCHI', 'DETALCHI', 'ISHCHI', 'OSHPAZ', 'SHOFIR', 'BOSHQA'], description: 'Xodim turi (ixtiyoriy)' },
+        shift: { type: 'string', enum: ['1-SMENA', '2-SMENA'], description: 'Smena (faqat STANOKCHIlar uchun)' },
+      },
+    },
+  },
+  {
+    name: 'add_production',
+    description: 'Xodim ishlab chiqarishini yozish. "Sarvar bugun 200 chelak yasadi", "Xasan 150 dona ishlab chiqardi".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        employee_name: { type: 'string', description: 'Xodim ismi' },
+        product_name: { type: 'string', description: 'Mahsulot nomi (ixtiyoriy)' },
+        quantity: { type: 'number', description: 'Ishlab chiqarilgan miqdor (dona)' },
+        date: { type: 'string', description: 'Sana YYYY-MM-DD (aytilmasa bugun)' },
+      },
+      required: ['employee_name', 'quantity'],
+    },
+  },
 ];
 
 // ---------- Hisobot ma'lumotlari ----------
@@ -274,13 +299,15 @@ router.post('/command', async (req, res) => {
 
     const system = lang === 'ru'
       ? `Вы Ахмад — голосовой помощник завода пластиковых изделий Технопласт.
-Используйте инструменты для операций: продажа, расход, приход, новый клиент, изменить цену, изменить склад, оплата долга.
+Используйте инструменты для операций: продажа, расход, приход, новый клиент, изменить цену, изменить склад, оплата долга, запись производства.
 Для отчётов — get_report. Для поиска цены/остатка — lookup. Для должников — list_debtors. Для документов — generate_document.
+Список сотрудников/смен — get_employees. Запись производства — add_production.
 Помните предыдущие сообщения разговора. Если это вопрос — ответьте кратко на русском. Представляйтесь как Ахмад. Числа: 1 000 000 сум.
 ВАЖНО: не используйте символы *, #, эмодзи или маркдаун — только чистый текст, так как ответ озвучивается голосом.`
       : `Siz Ahmad — Teknoplast plastik zavod ovozli yordamchisisiz.
-Amallar uchun toollardan foydalaning: sotuv, xarajat, kirim, yangi mijoz, narx o'zgartirish, ombor o'zgartirish, qarz to'lovi.
+Amallar uchun toollardan foydalaning: sotuv, xarajat, kirim, yangi mijoz, narx o'zgartirish, ombor o'zgartirish, qarz to'lovi, ishlab chiqarish yozish.
 Hisobot uchun get_report. Narx/ombor qidirish uchun lookup. Qarzdorlar uchun list_debtors. Hujjat uchun generate_document.
+Xodimlar ro'yxati/smena uchun get_employees. Ishlab chiqarish yozish uchun add_production.
 Oldingi suhbat xabarlarini eslab qoling. Oddiy savol bo'lsa — o'zbek tilida qisqa javob. O'zingizni Ahmad deb tanishtiring. Raqamlar: 1 000 000 so'm.
 MUHIM: *, #, emoji yoki markdown belgilaridan foydalanmang — faqat toza matn, chunki javob ovozda o'qiladi.`;
 
@@ -342,6 +369,54 @@ MUHIM: *, #, emoji yoki markdown belgilaridan foydalanmang — faqat toza matn, 
       const list = debtors.rows.map(d => `${d.name} — ${fmt(d.debt)}`).join('; ');
       const total = debtors.rows.reduce((a, d) => a + Number(d.debt), 0);
       return res.json({ response: lang === 'ru' ? `Должники: ${list}. Итого: ${fmt(total)} сум.` : `Qarzdorlar: ${list}. Jami: ${fmt(total)} so'm.` });
+    }
+
+    if (toolBlock.name === 'get_employees') {
+      const params = [];
+      let idx = 1;
+      let sql = "SELECT name, type, shift, daily_tariff, phone FROM employees WHERE is_active=1";
+      if (inp.type) { sql += ` AND type=$${idx++}`; params.push(inp.type); }
+      if (inp.shift) { sql += ` AND shift=$${idx++}`; params.push(inp.shift); }
+      sql += ' ORDER BY shift, name LIMIT 30';
+      const emps = await query(sql, params);
+      if (!emps.rows.length) return res.json({ response: lang === 'ru' ? 'Сотрудники не найдены.' : 'Xodimlar topilmadi.' });
+      const SHIFT_LABEL = { '1-SMENA': '1-Smena', '2-SMENA': '2-Smena' };
+      const TYPE_LABEL = { STANOKCHI: 'Stanokchi', DETALCHI: 'Detalchi', ISHCHI: 'Ishchi', OSHPAZ: 'Oshpaz', SHOFIR: 'Shofir', BOSHQA: 'Boshqa' };
+      const list = emps.rows.map(e => {
+        const shift = e.type === 'STANOKCHI' ? ` (${SHIFT_LABEL[e.shift] || e.shift})` : '';
+        return `${e.name} — ${TYPE_LABEL[e.type] || e.type}${shift}`;
+      }).join('; ');
+      const total = emps.rows.length;
+      return res.json({ response: lang === 'ru' ? `Сотрудников: ${total}. ${list}.` : `Xodimlar: ${total} ta. ${list}.` });
+    }
+
+    if (toolBlock.name === 'add_production') {
+      // Xodimni topamiz
+      const empR = await query(
+        "SELECT id, name, daily_tariff FROM employees WHERE LOWER(name) LIKE LOWER($1) AND is_active=1 LIMIT 1",
+        [`%${inp.employee_name}%`]
+      );
+      if (!empR.rows.length) {
+        return res.json({ response: lang === 'ru' ? `Сотрудник "${inp.employee_name}" не найден.` : `"${inp.employee_name}" xodim topilmadi.` });
+      }
+      const emp = empR.rows[0];
+      const product = inp.product_name ? await findProduct(inp.product_name) : null;
+      const prodDate = inp.date || new Date().toISOString().slice(0, 10);
+      const month = prodDate.slice(0, 7);
+      const calc = Number(emp.daily_tariff) || 0;
+
+      action = {
+        type: 'ADD_PRODUCTION',
+        data: {
+          employee_id: emp.id, employee_name: emp.name,
+          product_id: product?.id || null, product_name: product?.name || inp.product_name || null,
+          quantity: inp.quantity, production_date: prodDate, month,
+          daily_tariff: calc, calculated_amount: calc,
+        },
+      };
+      desc = lang === 'ru'
+        ? `Производство: ${emp.name} — ${inp.quantity} шт${product ? ', ' + product.name : ''} (${prodDate})`
+        : `Ishlab chiqarish: ${emp.name} — ${inp.quantity} dona${product ? ', ' + product.name : ''} (${prodDate})`;
     }
 
     if (toolBlock.name === 'generate_document') {
@@ -653,6 +728,36 @@ router.post('/confirm-action', async (req, res) => {
         } catch {}
       }
       return res.json({ success: true, message: `${added} ta sotuv yozildi` });
+    }
+
+    // --- Ishlab chiqarish yozuvi ---
+    if (action.type === 'ADD_PRODUCTION') {
+      const d = action.data;
+      const client = await getClient();
+      try {
+        await client.query('BEGIN');
+        const existing = await client.query(
+          'SELECT product_id, quantity_produced FROM employee_production WHERE employee_id=$1 AND production_date=$2',
+          [d.employee_id, d.production_date]
+        );
+        const old = existing.rows[0];
+        await client.query(
+          `INSERT INTO employee_production
+            (employee_id, product_id, production_date, quantity_produced, daily_tariff, calculated_amount, month, notes)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           ON CONFLICT (employee_id, production_date)
+           DO UPDATE SET product_id=$2, quantity_produced=$4, daily_tariff=$5, calculated_amount=$6, notes=$8, updated_at=NOW()`,
+          [d.employee_id, d.product_id || null, d.production_date, d.quantity, d.daily_tariff, d.calculated_amount, d.month, 'Ahmad orqali']
+        );
+        if (old && old.product_id) {
+          await client.query('UPDATE products SET stock_quantity = stock_quantity - $1, updated_at=NOW() WHERE id=$2', [old.quantity_produced, old.product_id]);
+        }
+        if (d.product_id) {
+          await client.query('UPDATE products SET stock_quantity = stock_quantity + $1, updated_at=NOW() WHERE id=$2', [d.quantity, d.product_id]);
+        }
+        await client.query('COMMIT');
+      } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+      return res.json({ success: true, message: `Ishlab chiqarish yozildi: ${d.employee_name} — ${d.quantity} dona` });
     }
 
     // --- Ko'plab mahsulot (rasmdan) ---

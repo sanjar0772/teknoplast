@@ -581,6 +581,11 @@ if (USE_PG) {
         // Ustun allaqachon mavjud — normal holat
       }
     }
+    // Data migratsiya: ERTALAB → 1-SMENA (STANOKCHI xodimlar uchun)
+    try {
+      _db.run("UPDATE employees SET shift='1-SMENA' WHERE type='STANOKCHI' AND (shift='ERTALAB' OR shift IS NULL)");
+      _db.run("UPDATE employees SET shift='1-SMENA' WHERE type='DETALCHI' AND (shift='ERTALAB' OR shift IS NULL)");
+    } catch (e) {}
   }
 
   function createSampleData() {

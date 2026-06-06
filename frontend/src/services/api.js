@@ -122,6 +122,7 @@ export const productsAPI = {
   updateBulk: (updates) => api.put('/products/bulk', { updates }),
   bulkDelete: (ids) => api.post('/products/bulk-delete', { ids }),
   updateStock: (id, data) => api.put(`/products/${id}/stock`, data),
+  setPricing: (id, data) => api.put(`/products/${id}/pricing`, data),
   getRawMaterials: () => api.get('/products/raw-materials/list'),
   createRawMaterial: (data) => api.post('/products/raw-materials', data),
   updateRawMaterialStock: (id, data) => api.put(`/products/raw-materials/${id}/stock`, data),

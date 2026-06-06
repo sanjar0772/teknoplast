@@ -188,8 +188,8 @@ router.put('/:id/stock', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), 
   } catch (err) { next(err); }
 });
 
-// PUT /api/products/:id/pricing — Stanok, Detalchi va cost price belgilash (OMBORCHI/OWNER)
-router.put('/:id/pricing', requireRole('OWNER', 'OMBORCHI', 'PRODUCTION_HEAD'), async (req, res, next) => {
+// PUT /api/products/:id/pricing — Stanok, Detalchi narhi belgilash (bugalter/OWNER)
+router.put('/:id/pricing', requireRole('OWNER', 'ACCOUNTANT', 'PRODUCTION_HEAD'), async (req, res, next) => {
   try {
     const { stanokchi_rate, detalchi_rate, cost_price } = req.body;
     const result = await query(

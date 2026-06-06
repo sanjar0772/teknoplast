@@ -133,23 +133,18 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD'), [
     if (product_id) {
       const prod = await query('SELECT stanokchi_rate, detalchi_rate FROM products WHERE id=$1', [product_id]);
       const product = prod.rows[0] || {};
-      if (employee_type === 'STANOKCHI' && product.stanokchi_rate) {
-        daily_tariff = product.stanokchi_rate;
+      if (employee_type === 'STANOKCHI') {
+        if (product.stanokchi_rate) daily_tariff = product.stanokchi_rate;
         calculated_amount = quantity_produced * daily_tariff;
       } else if (employee_type === 'DETALCHI') {
-        // Detalchi: har doim quantity × dona_tarifi (product rate ustuvor, yo'q bo'lsa employee tarifi)
         if (product.detalchi_rate) daily_tariff = product.detalchi_rate;
         calculated_amount = quantity_produced * daily_tariff;
       } else {
-        calculated_amount = (quantity_produced / 100) * daily_tariff;
+        calculated_amount = quantity_produced * daily_tariff;
       }
     } else {
-      // Mahsulot tanlanmagan
-      if (employee_type === 'DETALCHI') {
-        calculated_amount = quantity_produced * daily_tariff;
-      } else {
-        calculated_amount = (quantity_produced / 100) * daily_tariff;
-      }
+      // Mahsulot tanlanmagan — employee daily_tariff = dona tarifi (fallback)
+      calculated_amount = quantity_produced * daily_tariff;
     }
 
     const month = production_date.slice(0, 7);
@@ -211,21 +206,17 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, n
         if (entry.product_id) {
           const prod = await query('SELECT stanokchi_rate, detalchi_rate FROM products WHERE id=$1', [entry.product_id]);
           const product = prod.rows[0] || {};
-          if (employee_type === 'STANOKCHI' && product.stanokchi_rate) {
-            daily_tariff = product.stanokchi_rate;
+          if (employee_type === 'STANOKCHI') {
+            if (product.stanokchi_rate) daily_tariff = product.stanokchi_rate;
             calculated_amount = entry.quantity_produced * daily_tariff;
           } else if (employee_type === 'DETALCHI') {
             if (product.detalchi_rate) daily_tariff = product.detalchi_rate;
             calculated_amount = entry.quantity_produced * daily_tariff;
           } else {
-            calculated_amount = (entry.quantity_produced / 100) * daily_tariff;
+            calculated_amount = entry.quantity_produced * daily_tariff;
           }
         } else {
-          if (employee_type === 'DETALCHI') {
-            calculated_amount = entry.quantity_produced * daily_tariff;
-          } else {
-            calculated_amount = (entry.quantity_produced / 100) * daily_tariff;
-          }
+          calculated_amount = entry.quantity_produced * daily_tariff;
         }
 
         const production = await saveProductionWithStock(client, {

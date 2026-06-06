@@ -60,8 +60,7 @@ export default function ProductionPage() {
   const calcEarnings = (entry) => {
     const emp = empMap[entry.employee_id];
     if (!emp || !entry.quantity_produced) return 0;
-    if (emp.type === 'DETALCHI') return entry.quantity_produced * emp.daily_tariff;
-    return (entry.quantity_produced / 100) * emp.daily_tariff;
+    return entry.quantity_produced * emp.daily_tariff;
   };
 
   const saveBulk = () => {
@@ -139,7 +138,7 @@ export default function ProductionPage() {
                   <td className="font-medium">{row.employee_name}</td>
                   <td>{row.product_name || '—'}</td>
                   <td>{fmt(row.quantity_produced)} dona</td>
-                  <td>{fmt(row.daily_tariff)} so'm/100</td>
+                  <td>{fmt(row.daily_tariff)} so'm/dona</td>
                   <td className="font-semibold text-green-700">{fmt(row.calculated_amount)} so'm</td>
                 </tr>
               ))}

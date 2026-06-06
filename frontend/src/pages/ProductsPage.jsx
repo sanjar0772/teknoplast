@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Package } from 'lucide-react';
+import { Plus, X, Package, DollarSign } from 'lucide-react';
 import { productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -25,12 +25,14 @@ function Modal({ open, onClose, title, children }) {
 }
 
 export default function ProductsPage() {
-  const { isOwner, isProductionHead } = useAuthStore();
+  const { isOwner, isProductionHead, isAccountant } = useAuthStore();
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
   const [stockModal, setStockModal] = useState(null);
   const [stockForm, setStockForm] = useState({ quantity: 0, operation: 'add' });
+  const [pricingModal, setPricingModal] = useState(null);
+  const [pricingForm, setPricingForm] = useState({ stanokchi_rate: 0, detalchi_rate: 0 });
 
   const { data, isLoading } = useQuery({
     queryKey: ['products'],
@@ -60,6 +62,15 @@ export default function ProductsPage() {
     },
   });
 
+  const pricingMutation = useMutation({
+    mutationFn: ({ id, ...data }) => productsAPI.setPricing(id, data),
+    onSuccess: () => {
+      toast.success('Narxlar saqlandi');
+      qc.invalidateQueries({ queryKey: ['products'] });
+      setPricingModal(null);
+    },
+  });
+
   const { register, handleSubmit, reset, setValue } = useForm();
 
   const openEdit = (p) => {
@@ -68,7 +79,16 @@ export default function ProductsPage() {
     setShowModal(true);
   };
 
+  const openPricing = (p) => {
+    setPricingModal(p);
+    setPricingForm({
+      stanokchi_rate: p.stanokchi_rate || 0,
+      detalchi_rate: p.detalchi_rate || 0,
+    });
+  };
+
   const canWrite = isOwner() || isProductionHead();
+  const canPrice = isOwner() || isAccountant() || isProductionHead();
 
   return (
     <div className="space-y-6">
@@ -112,6 +132,22 @@ export default function ProductsPage() {
                   {p.stock_quantity} {p.unit}
                 </span>
               </div>
+              {(p.stanokchi_rate > 0 || p.detalchi_rate > 0) && (
+                <div className="border-t pt-2 mt-2 space-y-1">
+                  {p.stanokchi_rate > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-blue-600">Stanokchi tarif:</span>
+                      <span className="font-semibold text-blue-700">{fmt(p.stanokchi_rate)} so'm/dona</span>
+                    </div>
+                  )}
+                  {p.detalchi_rate > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-orange-600">Detalchi tarif:</span>
+                      <span className="font-semibold text-orange-700">{fmt(p.detalchi_rate)} so'm/dona</span>
+                    </div>
+                  )}
+                </div>
+              )}
               {p.raw_material_name && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Xom ashyo:</span>
@@ -120,12 +156,18 @@ export default function ProductsPage() {
               )}
             </div>
 
-            <div className="flex gap-2 mt-4">
+            <div className="flex gap-2 mt-4 flex-wrap">
               {canWrite && (
-                <>
-                  <button onClick={() => openEdit(p)} className="btn-secondary btn-sm flex-1">Tahrirlash</button>
-                  <button onClick={() => setStockModal(p)} className="btn-primary btn-sm flex-1">Ombor</button>
-                </>
+                <button onClick={() => openEdit(p)} className="btn-secondary btn-sm flex-1">Tahrirlash</button>
+              )}
+              {canWrite && (
+                <button onClick={() => setStockModal(p)} className="btn-primary btn-sm flex-1">Ombor</button>
+              )}
+              {canPrice && (
+                <button onClick={() => openPricing(p)}
+                  className="btn-sm flex-1 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 border border-yellow-200 rounded-lg px-2 flex items-center gap-1 justify-center">
+                  <DollarSign size={13} /> Narh
+                </button>
               )}
             </div>
           </div>
@@ -215,6 +257,59 @@ export default function ProductsPage() {
                 className="btn-primary flex-1"
               >
                 {stockMutation.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Pricing Modal — Bugalter/OWNER uchun */}
+      {pricingModal && (
+        <Modal open={!!pricingModal} onClose={() => setPricingModal(null)} title={`Ishlab chiqarish narhlari — ${pricingModal.name}`}>
+          <div className="space-y-4">
+            <p className="text-xs text-gray-500">
+              Bu narxlar stanokchi va detalchilar uchun 1 dona tayyorlash haqi.
+              Bo'sh qoldirilsa xodimning shaxsiy tarifi ishlatiladi.
+            </p>
+            <div className="bg-blue-50 rounded-lg p-3 space-y-2 text-sm">
+              {pricingModal.stanokchi_rate > 0 && (
+                <div>Joriy stanokchi: <strong>{fmt(pricingModal.stanokchi_rate)} so'm/dona</strong></div>
+              )}
+              {pricingModal.detalchi_rate > 0 && (
+                <div>Joriy detalchi: <strong>{fmt(pricingModal.detalchi_rate)} so'm/dona</strong></div>
+              )}
+              {!pricingModal.stanokchi_rate && !pricingModal.detalchi_rate && (
+                <div className="text-gray-400">Narxlar belgilanmagan</div>
+              )}
+            </div>
+            <div>
+              <label className="label">Stanokchi tarifi (1 dona, so'm)</label>
+              <input
+                type="number" min="0"
+                value={pricingForm.stanokchi_rate}
+                onChange={e => setPricingForm(f => ({ ...f, stanokchi_rate: parseFloat(e.target.value) || 0 }))}
+                className="input"
+                placeholder="Masalan: 150"
+              />
+            </div>
+            <div>
+              <label className="label">Detalchi tarifi (1 dona, so'm)</label>
+              <input
+                type="number" min="0"
+                value={pricingForm.detalchi_rate}
+                onChange={e => setPricingForm(f => ({ ...f, detalchi_rate: parseFloat(e.target.value) || 0 }))}
+                className="input"
+                placeholder="Masalan: 200"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setPricingModal(null)} className="btn-secondary flex-1">Bekor</button>
+              <button
+                onClick={() => pricingMutation.mutate({ id: pricingModal.id, ...pricingForm })}
+                disabled={pricingMutation.isPending}
+                className="btn-primary flex-1"
+              >
+                {pricingMutation.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
               </button>
             </div>
           </div>

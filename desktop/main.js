@@ -52,7 +52,10 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Eski keshni tozalaymiz — har doim eng yangi frontend yuklanadi
+  try { await session.defaultSession.clearCache(); } catch {}
+
   // Mikrofon / kamera ruxsatini avtomatik berish (Ahmad ovozli buyruq uchun)
   session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => {
     const allowed = ['media', 'microphone', 'audioCapture', 'camera', 'videoCapture', 'clipboard-read', 'notifications'];

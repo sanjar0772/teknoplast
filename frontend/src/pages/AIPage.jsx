@@ -363,12 +363,15 @@ export default function AIPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const isImageFile = (file.type || '').startsWith('image/');
     setChatMessages(prev => [...prev, {
       role: 'user',
-      text: language === 'uz' ? `Rasm yuborildi: ${file.name}` : `Фото отправлено: ${file.name}`,
+      text: isImageFile
+        ? (language === 'uz' ? `Rasm yuborildi: ${file.name}` : `Фото отправлено: ${file.name}`)
+        : (language === 'uz' ? `Fayl yuborildi: ${file.name}` : `Файл отправлен: ${file.name}`),
       time: new Date(),
-      isImage: true,
-      imageUrl: URL.createObjectURL(file),
+      isImage: isImageFile,
+      imageUrl: isImageFile ? URL.createObjectURL(file) : null,
     }]);
 
     imageMutation.mutate(file);
@@ -629,10 +632,12 @@ export default function AIPage() {
               {/* Image button */}
               <button onClick={() => fileInputRef.current?.click()}
                 className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100 text-gray-600 hover:bg-emerald-100 hover:text-emerald-700 transition-all"
-                title={language === 'uz' ? 'Rasm yuborish (nakladnoy, chek)' : 'Отправить фото (накладная, чек)'}>
+                title={language === 'uz' ? 'Fayl yuborish (rasm, PDF, Excel, Word, CSV)' : 'Отправить файл (фото, PDF, Excel, Word, CSV)'}>
                 <Camera size={18} />
               </button>
-              <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
+              <input ref={fileInputRef} type="file"
+                accept="image/*,application/pdf,.xlsx,.xls,.csv,.txt,.tsv,.docx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="hidden"
                 onChange={handleImageUpload} />
 
               {/* Text input */}

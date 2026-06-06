@@ -1,5 +1,6 @@
 const express = require('express');
 const multer = require('multer');
+const path = require('path');
 const { authenticate } = require('../middleware/auth');
 const { query, getClient } = require('../db');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -8,14 +9,158 @@ const fs = require('fs');
 const router = express.Router();
 router.use(authenticate);
 
+// Qo'llab-quvvatlanadigan fayl turlari (kengaytma bo'yicha)
+const SUPPORTED_EXT = new Set([
+  '.jpg', '.jpeg', '.png', '.gif', '.webp',        // rasm
+  '.pdf',                                            // PDF
+  '.xlsx', '.xls',                                   // Excel
+  '.csv', '.txt', '.tsv',                            // matn/jadval
+  '.docx',                                           // Word
+]);
+
+function isSupportedFile(file) {
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  if (SUPPORTED_EXT.has(ext)) return true;
+  // Ba'zi brauzerlar kengaytmasiz yuboradi — mimetype bo'yicha ham tekshiramiz
+  const m = file.mimetype || '';
+  return m.startsWith('image/') || m === 'application/pdf' || m.startsWith('text/');
+}
+
 const upload = multer({
   dest: '/tmp/ahmad-uploads/',
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) cb(null, true);
-    else cb(new Error('Faqat rasm fayllari'), false);
+    if (isSupportedFile(file)) cb(null, true);
+    else cb(new Error('Qo\'llab-quvvatlanmaydigan fayl turi'), false);
   },
 });
+
+// ---------- Narx/miqdor tozalash: "5 000", "5,000", "5.000" → 5000 ----------
+function cleanNum(v) {
+  if (v == null) return 0;
+  if (typeof v === 'number' && !isNaN(v)) return v;
+  const s = String(v).replace(/\s+/g, '').replace(/,/g, '');
+  return parseFloat(s) || 0;
+}
+
+// Matndan barcha to'liq { ... } obyektlarni ajratib, alohida parse qilish.
+// JSON uzilib qolgan (truncated) bo'lsa ham ishlaydi — to'liq obyektlarni oladi.
+function extractObjects(text) {
+  const out = [];
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '{') { if (depth === 0) start = i; depth++; }
+    else if (c === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        let s = text.slice(start, i + 1).replace(/,\s*([\]}])/g, '$1');
+        try { out.push(JSON.parse(s)); } catch { /* buzuq obyekt — o'tkazamiz */ }
+        start = -1;
+      }
+    }
+  }
+  return out;
+}
+
+// ---------- Claude javobidan JSON massivni mustahkam ajratish ----------
+// ```json ... ```, ``` ... ```, [ ... ], yoki UZILGAN JSON — barchasini tutadi
+function extractJsonArray(text) {
+  if (!text) return null;
+  const candidates = [];
+  let m = text.match(/```json\s*([\s\S]*?)\s*```/i);
+  if (m) candidates.push(m[1]);
+  m = text.match(/```\s*([\s\S]*?)\s*```/);
+  if (m) candidates.push(m[1]);
+  // balansli [ ... ] massiv
+  const start = text.indexOf('[');
+  if (start !== -1) {
+    let depth = 0;
+    for (let i = start; i < text.length; i++) {
+      if (text[i] === '[') depth++;
+      else if (text[i] === ']') {
+        depth--;
+        if (depth === 0) { candidates.push(text.slice(start, i + 1)); break; }
+      }
+    }
+  }
+  // 1) To'liq, to'g'ri JSON massivni sinaymiz
+  for (let raw of candidates) {
+    if (!raw) continue;
+    let s = raw.trim().replace(/,\s*([\]}])/g, '$1');
+    try {
+      const parsed = JSON.parse(s);
+      if (Array.isArray(parsed) && parsed.length) return parsed;
+      if (parsed && typeof parsed === 'object') return [parsed];
+    } catch { /* keyingisi */ }
+  }
+  // 2) JSON uzilgan bo'lsa — har bir { ... } obyektni alohida ajratamiz
+  const objs = extractObjects(text);
+  if (objs.length) return objs;
+  return null;
+}
+
+// ---------- Fayldan matn ajratish (Excel / Word / CSV / TXT) ----------
+async function excelToText(buffer) {
+  const ExcelJS = require('exceljs');
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer);
+  let out = '';
+  wb.eachSheet((sheet) => {
+    out += `\n# Varaq: ${sheet.name}\n`;
+    sheet.eachRow({ includeEmpty: false }, (row) => {
+      const vals = (row.values || []).slice(1).map((v) => {
+        if (v == null) return '';
+        if (typeof v === 'object') return String(v.text ?? v.result ?? v.hyperlink ?? '');
+        return String(v);
+      });
+      if (vals.some((x) => x !== '')) out += vals.join('\t') + '\n';
+    });
+  });
+  return out.trim();
+}
+
+async function docxToText(buffer) {
+  const mammoth = require('mammoth'); // ixtiyoriy dependency
+  const { value } = await mammoth.extractRawText({ buffer });
+  return (value || '').trim();
+}
+
+// Buffer -> Claude uchun content bloki yoki matn. {block} yoki {text} qaytaradi.
+async function fileToContent(buffer, ext, mediaType) {
+  // Rasm
+  if (mediaType.startsWith('image/') && !['.xlsx', '.xls', '.docx', '.csv', '.txt', '.tsv', '.pdf'].includes(ext)) {
+    return { block: { type: 'image', source: { type: 'base64', media_type: mediaType, data: buffer.toString('base64') } } };
+  }
+  // PDF
+  if (ext === '.pdf' || mediaType === 'application/pdf') {
+    return { block: { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: buffer.toString('base64') } } };
+  }
+  // Excel
+  if (ext === '.xlsx') {
+    return { text: await excelToText(buffer) };
+  }
+  if (ext === '.xls') {
+    // exceljs faqat .xlsx o'qiydi
+    throw new Error('UNSUPPORTED_XLS');
+  }
+  // Word
+  if (ext === '.docx') {
+    return { text: await docxToText(buffer) };
+  }
+  // CSV / TXT / TSV yoki text/* mimetype
+  if (['.csv', '.txt', '.tsv'].includes(ext) || mediaType.startsWith('text/')) {
+    return { text: buffer.toString('utf-8').trim() };
+  }
+  throw new Error('UNSUPPORTED_TYPE');
+}
 
 let claude;
 try {
@@ -603,70 +748,164 @@ router.get('/daily-report', async (req, res) => {
 router.post('/read-image', upload.single('image'), async (req, res) => {
   try {
     const lang = req.body.language === 'ru' ? 'ru' : 'uz';
-    if (!req.file) return res.status(400).json({ error: lang === 'ru' ? 'Изображение не загружено' : 'Rasm yuklanmadi' });
+    if (!req.file) return res.status(400).json({ error: lang === 'ru' ? 'Файл не загружен' : 'Fayl yuklanmadi' });
 
-    const imageBuffer = fs.readFileSync(req.file.path);
-    const base64Image = imageBuffer.toString('base64');
-    const mediaType = req.file.mimetype || 'image/jpeg';
-    fs.unlinkSync(req.file.path);
+    const fileBuffer = fs.readFileSync(req.file.path);
+    const mediaType = req.file.mimetype || '';
+    const ext = path.extname(req.file.originalname || '').toLowerCase();
+    try { fs.unlinkSync(req.file.path); } catch {}
 
     if (!claude) {
       return res.json({ response: lang === 'ru' ? 'Ахмад: нужен API ключ' : 'Ahmad: API kaliti kerak', text: '' });
     }
 
+    // Faylni Claude uchun content blokiga aylantiramiz (xatosiz)
+    let content;
+    try {
+      content = await fileToContent(fileBuffer, ext, mediaType);
+    } catch (e) {
+      let msg;
+      if (e.message === 'UNSUPPORTED_XLS') {
+        msg = lang === 'ru'
+          ? 'Старый формат .xls не поддерживается. Сохраните как .xlsx и отправьте снова.'
+          : 'Eski .xls format qo\'llab-quvvatlanmaydi. .xlsx sifatida saqlab qayta yuboring.';
+      } else if (e.code === 'MODULE_NOT_FOUND') {
+        msg = lang === 'ru'
+          ? 'Чтение Word (.docx) пока недоступно. Отправьте PDF, изображение, Excel или текст.'
+          : 'Word (.docx) o\'qish hozircha mavjud emas. PDF, rasm, Excel yoki matn yuboring.';
+      } else {
+        msg = lang === 'ru'
+          ? 'Этот формат не поддерживается. Отправьте изображение, PDF, Excel (.xlsx), CSV, TXT или Word (.docx).'
+          : 'Bu format qo\'llab-quvvatlanmaydi. Rasm, PDF, Excel (.xlsx), CSV, TXT yoki Word (.docx) yuboring.';
+      }
+      return res.json({ response: msg, text: '' });
+    }
+
+    // Matnli format bo'sh chiqsa
+    if (content.text !== undefined && !content.text.trim()) {
+      return res.json({ response: lang === 'ru' ? 'Файл пустой или не удалось прочитать данные.' : 'Fayl bo\'sh yoki ma\'lumot o\'qilmadi.', text: '' });
+    }
+
+    const isOwner = req.user?.role === 'OWNER';
+    const roleNote = isOwner
+      ? (lang === 'ru' ? 'Пользователь — АДМИНИСТРАТОР с полными правами.' : 'Foydalanuvchi — TO\'LIQ HUQUQLI ADMIN.')
+      : (lang === 'ru' ? 'Пользователь — сотрудник (только просмотр).' : 'Foydalanuvchi — xodim (faqat ko\'rish).');
+
     const systemPrompt = lang === 'ru'
-      ? `Вы Ахмад — помощник завода Технопласт. Внимательно прочитайте изображение.
-Определите тип данных на изображении и извлеките всё в JSON массив в блоке \`\`\`json:
-- Накладная/чек/список продаж: {"name":"...","quantity":N,"price":N,"kind":"sale"}
-- Список прихода товаров: {"name":"...","quantity":N,"price":N,"kind":"intake"}
-- Список сотрудников/работников: {"name":"...","type":"STANOKCHI|DETALCHI|ISHCHI|OSHPAZ|SHOFIR|BOSHQA","shift":"1-SMENA|2-SMENA","daily_tariff":N,"phone":"...","kind":"employee"}
-- Список товаров/прайс: {"name":"...","quantity":N,"price":N,"kind":"product"}
-Если тип неоднозначен — выберите наиболее подходящий. Отвечайте на русском.`
-      : `Siz Ahmad — Teknoplast yordamchisisiz. Rasmni diqqat bilan o'qing.
-Rasmdagi ma'lumot turini aniqlang va hammasini \`\`\`json blokida massiv bering:
-- Nakladnoy/chek/sotuv ro'yxati: {"name":"...","quantity":N,"price":N,"kind":"sale"}
-- Mahsulot kirimi ro'yxati: {"name":"...","quantity":N,"price":N,"kind":"intake"}
-- Xodimlar/ishchilar ro'yxati: {"name":"...","type":"STANOKCHI|DETALCHI|ISHCHI|OSHPAZ|SHOFIR|BOSHQA","shift":"1-SMENA|2-SMENA","daily_tariff":N,"phone":"...","kind":"employee"}
-- Mahsulotlar/narxnoma: {"name":"...","quantity":N,"price":N,"kind":"product"}
-Tur noaniq bo'lsa — eng mosini tanlang. O'zbek tilida javob bering.`;
+      ? `Вы Ахмад — помощник завода Технопласт. ${roleNote}
+Внимательно прочитайте предоставленный файл и извлеките ВСЮ информацию.
+
+ПРАВИЛА ВЫБОРА ТИПА (kind):
+- "employee" — список сотрудников/рабочих (имена + должность/смена/тариф)
+- "sale"     — накладная на ПРОДАЖУ, чек, исходящая накладная (продали клиенту)
+- "intake"   — накладная ПРИХОДА от поставщика (получили товар)
+- "product"  — ПРАЙС-ЛИСТ, каталог, список товаров с ценами, просто список продуктов
+
+ВАЖНО: Если файл содержит товары с ценами (прайс, каталог, price-list, нарx рўйхати) → ВСЕГДА "product"
+Если неясно → "product"
+
+ВАЖНЫЕ ПРАВИЛА:
+1. НИКОГДА не говорите "не могу прочитать" — всегда извлекайте данные
+2. Числа возвращайте как числа (не строки): цена 5000, количество 10
+3. Отсутствующие поля: числа = 0, строки = ""
+
+Верните JSON массив в блоке \`\`\`json:
+- "sale":     {"name":"название","quantity":1,"price":5000,"kind":"sale"}
+- "intake":   {"name":"название","quantity":10,"price":5000,"kind":"intake"}
+- "employee": {"name":"ФИО","type":"ISHCHI","shift":"1-SMENA","daily_tariff":50000,"phone":"","kind":"employee"}
+- "product":  {"name":"название","quantity":100,"price":5000,"kind":"product"}
+
+Отвечайте кратко на русском языке.`
+      : `Siz Ahmad — Teknoplast plastik zavod yordamchisisiz. ${roleNote}
+Berilgan faylni DIQQAT BILAN o'qing va barcha ma'lumotlarni chiqaring.
+
+TURNING TANLANISH QOIDALARI (kind):
+- "employee" — xodimlar/ishchilar ro'yxati (ism + lavozim/smena/tarif)
+- "sale"     — SOTUV nakladnoyi, chek, mijozga berilgan tovar
+- "intake"   — KIRIM nakladnoyi, yetkazib beruvchidan kelgan tovar
+- "product"  — NARXNOMA, katalog, tovar ro'yxati narxlar bilan, oddiy mahsulot ro'yxati
+
+MUHIM: Agar fayl narxlar bilan mahsulotlar bo'lsa (narxnoma, price-list) → DOIMO "product"
+Noaniq bo'lsa → "product"
+
+MUHIM QOIDALAR:
+1. HECH QACHON "o'kiy olmayman" DEMANG — doimo ma'lumot chiqaring
+2. Sonlarni son sifatida qaytaring (string emas): narx 5000, miqdor 10
+3. Ko'rsatilmagan maydonlar: sonlar = 0, matnlar = ""
+
+\`\`\`json blokida massiv qaytaring:
+- "sale":     {"name":"mahsulot nomi","quantity":1,"price":5000,"kind":"sale"}
+- "intake":   {"name":"mahsulot nomi","quantity":10,"price":5000,"kind":"intake"}
+- "employee": {"name":"ism familiya","type":"ISHCHI","shift":"1-SMENA","daily_tariff":50000,"phone":"","kind":"employee"}
+- "product":  {"name":"mahsulot nomi","quantity":100,"price":5000,"kind":"product"}
+
+O'zbek tilida qisqa javob bering.`;
+
+    // Content bloklarini yig'amiz
+    const instruction = lang === 'ru' ? 'Прочитайте и извлеките все данные.' : 'O\'qing va barcha ma\'lumotlarni chiqaring.';
+    const userContent = [];
+    if (content.block) userContent.push(content.block);
+    if (content.text !== undefined) {
+      const label = lang === 'ru' ? 'Содержимое файла:' : 'Fayl mazmuni:';
+      // Juda uzun matnni cheklaymiz (token chegarasi uchun)
+      const body = content.text.length > 60000 ? content.text.slice(0, 60000) : content.text;
+      userContent.push({ type: 'text', text: `${label}\n${body}` });
+    }
+    userContent.push({ type: 'text', text: instruction });
 
     const message = await claude.messages.create({
       model: MODEL,
-      max_tokens: 2500,
+      max_tokens: 8000, // ko'p mahsulotli ro'yxat uzilib qolmasligi uchun
       system: systemPrompt,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Image } },
-          { type: 'text', text: lang === 'ru' ? 'Прочитайте и извлеките все данные.' : 'O\'qing va barcha ma\'lumotlarni chiqaring.' },
-        ],
-      }],
+      messages: [{ role: 'user', content: userContent }],
     });
 
-    const responseText = message.content[0].text;
+    const textBlock = message.content.find((b) => b.type === 'text');
+    const responseText = textBlock ? textBlock.text : '';
     let action = null;
-    const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/);
-    if (jsonMatch) {
-      try {
-        const items = JSON.parse(jsonMatch[1]);
-        if (Array.isArray(items) && items.length) {
-          const kind = items[0].kind || 'product';
-          if (kind === 'sale') {
-            action = { type: 'BULK_SALES', data: { items }, description: lang === 'ru' ? `${items.length} та продаж добавить?` : `${items.length} ta sotuv qo'shaylikmi?` };
-          } else if (kind === 'intake') {
-            action = { type: 'BULK_INTAKE', data: { items }, description: lang === 'ru' ? `${items.length} позиций прихода добавить?` : `${items.length} ta kirim qo'shaylikmi?` };
-          } else if (kind === 'employee') {
-            const list = items.map(e => `${e.name} (${e.type || 'ISHCHI'}${e.shift ? ', ' + e.shift : ''})`).join(', ');
-            action = { type: 'BULK_ADD_EMPLOYEES', data: items, description: lang === 'ru' ? `Добавить ${items.length} сотрудников: ${list}` : `${items.length} ta xodim qo'shilsinmi: ${list}` };
-          } else {
-            action = { type: 'ADD_PRODUCTS', data: items, description: lang === 'ru' ? `${items.length} товаров добавить?` : `${items.length} ta mahsulot qo'shaylikmi?` };
-          }
-        }
-      } catch {}
+    const items = extractJsonArray(responseText);
+    console.log(`Ahmad read-image: JSON ${items ? items.length + ' ta element topildi' : 'TOPILMADI'}`);
+    if (items && items.length) {
+      // kind ni eng ko'p uchragan turdan aniqlaymiz (ba'zi elementlarda yo'q bo'lishi mumkin)
+      const kindCount = {};
+      for (const it of items) { const k = it.kind || 'product'; kindCount[k] = (kindCount[k] || 0) + 1; }
+      const kind = Object.keys(kindCount).sort((a, b) => kindCount[b] - kindCount[a])[0] || 'product';
+      if (kind === 'sale') {
+        action = { type: 'BULK_SALES', data: { items }, description: lang === 'ru' ? `${items.length} та продаж добавить?` : `${items.length} ta sotuv qo'shaylikmi?` };
+      } else if (kind === 'intake') {
+        action = { type: 'BULK_INTAKE', data: { items }, description: lang === 'ru' ? `${items.length} позиций прихода добавить?` : `${items.length} ta kirim qo'shaylikmi?` };
+      } else if (kind === 'employee') {
+        const list = items.map(e => `${e.name} (${e.type || 'ISHCHI'}${e.shift ? ', ' + e.shift : ''})`).join(', ');
+        action = { type: 'BULK_ADD_EMPLOYEES', data: items, description: lang === 'ru' ? `Добавить ${items.length} сотрудников: ${list}` : `${items.length} ta xodim qo'shilsinmi: ${list}` };
+      } else {
+        const nameList = items.slice(0, 5).map(i => i.name).join(', ') + (items.length > 5 ? '...' : '');
+        action = { type: 'ADD_PRODUCTS', data: items, description: lang === 'ru' ? `${items.length} товаров добавить в базу? (${nameList})` : `${items.length} ta mahsulot bazaga qo'shaylikmi? (${nameList})` };
+      }
+    }
+
+    // Javob matnidan JSON bloklarni va XOM JSON ni (fence'siz) tozalaymiz
+    let cleanResponse = responseText
+      .replace(/```json[\s\S]*?```/gi, '')   // ```json ... ```
+      .replace(/```[\s\S]*?```/g, '')         // ``` ... ```
+      .replace(/\[\s*\{[\s\S]*?\}\s*\]?/g, '') // xom [ {...}, {...} ] massiv (uzilgan bo'lsa ham)
+      .replace(/\{[^{}]*"kind"[^{}]*\}/g, '')  // alohida qolgan { ... "kind" ... } obyektlar
+      .replace(/,\s*$/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    // Agar action bor bo'lsa — har doim toza, tushunarli xabar beramiz
+    if (action) {
+      cleanResponse = lang === 'ru'
+        ? `Файл прочитан. ${action.description}`
+        : `Fayl o'qildi. ${action.description}`;
+    } else if (!cleanResponse) {
+      cleanResponse = lang === 'ru'
+        ? 'Файл прочитан, но данные не распознаны. Попробуйте более чёткий файл.'
+        : 'Fayl o\'qildi, lekin ma\'lumot aniqlanmadi. Aniqroq fayl yuboring.';
     }
 
     res.json({
-      response: responseText.replace(/```json[\s\S]*?```/g, '').trim(),
+      response: cleanResponse,
       text: responseText,
       action,
     });
@@ -784,7 +1023,14 @@ router.post('/confirm-action', async (req, res) => {
         const resolved = [];
         for (const it of items) {
           const p = await findProduct(it.name || it.product_name);
-          if (p) resolved.push({ product_id: p.id, quantity: it.quantity });
+          if (p) {
+            const price = cleanNum(it.price ?? it.unit_price ?? 0);
+            // Agar narx berilgan bo'lsa — mahsulot narxini yangilaymiz
+            if (price > 0) {
+              await query('UPDATE products SET price=$1, updated_at=NOW() WHERE id=$2', [price, p.id]);
+            }
+            resolved.push({ product_id: p.id, quantity: cleanNum(it.quantity) || 1 });
+          }
         }
         items = resolved;
       }
@@ -812,8 +1058,8 @@ router.post('/confirm-action', async (req, res) => {
         try {
           const p = await findProduct(it.name || it.product_name);
           if (!p) continue;
-          const price = it.price || p.price;
-          const qty = parseInt(it.quantity) || 1;
+          const price = cleanNum(it.price) || cleanNum(p.price);
+          const qty = cleanNum(it.quantity) || 1;
           if (p.stock_quantity < qty) continue;
           const total = price * qty;
           const client = await getClient();
@@ -863,19 +1109,44 @@ router.post('/confirm-action', async (req, res) => {
       return res.json({ success: true, message: `Ishlab chiqarish yozildi: ${d.employee_name} — ${d.quantity} dona` });
     }
 
-    // --- Ko'plab mahsulot (rasmdan) ---
+    // --- Ko'plab mahsulot (rasmdan/PDFdan/Exceldan) ---
     if (action.type === 'ADD_PRODUCTS') {
-      let added = 0;
+      let added = 0, updated = 0, skipped = 0;
       for (const p of action.data) {
         try {
-          await query(
-            'INSERT INTO products (name, type, price, unit, stock_quantity) VALUES ($1,$2,$3,$4,$5)',
-            [p.name || p.nomi, 'PLASTIK', p.price || p.narx || 0, 'dona', p.quantity || p.miqdor || 0]
+          const name = (p.name || p.nomi || '').trim();
+          if (!name) { skipped++; continue; }
+          const price    = cleanNum(p.price ?? p.narx ?? p.unit_price ?? 0);
+          const quantity = cleanNum(p.quantity ?? p.miqdor ?? p.stock_quantity ?? 0);
+          // Allaqachon mavjud bo'lsa — narx va miqdorni yangilash
+          const exists = await query(
+            'SELECT id, price, stock_quantity FROM products WHERE LOWER(name)=LOWER($1) LIMIT 1',
+            [name]
           );
-          added++;
-        } catch {}
+          if (exists.rows.length) {
+            const row = exists.rows[0];
+            const updates = ['updated_at=NOW()'];
+            const vals = [];
+            let idx = 1;
+            if (price > 0) { updates.push(`price=$${idx++}`); vals.push(price); }
+            if (quantity > 0) { updates.push(`stock_quantity=$${idx++}`); vals.push(quantity); }
+            vals.push(row.id);
+            await query(`UPDATE products SET ${updates.join(',')} WHERE id=$${idx}`, vals);
+            updated++;
+          } else {
+            await query(
+              'INSERT INTO products (name, type, price, unit, stock_quantity, is_active) VALUES ($1,$2,$3,$4,$5,1)',
+              [name, 'PLASTIK', price, 'dona', quantity]
+            );
+            added++;
+          }
+        } catch (e) { console.error('ADD_PRODUCTS item error:', e.message); skipped++; }
       }
-      return res.json({ success: true, message: `${added} ta mahsulot qo'shildi` });
+      const total = added + updated;
+      return res.json({
+        success: true,
+        message: `${total} ta mahsulot: ${added} yangi qo'shildi, ${updated} ta narx/miqdor yangilandi${skipped ? ', ' + skipped + ' ta o\'tkazildi' : ''}`,
+      });
     }
 
     // --- Xodim qo'shish ---

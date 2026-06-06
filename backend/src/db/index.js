@@ -659,12 +659,20 @@ if (USE_PG) {
 
       // RETURNING * handling
       if (hasReturning && tableName) {
-        const rowidResult = db.exec('SELECT last_insert_rowid()');
-        const rowid = rowidResult[0]?.values[0]?.[0];
         let rows = [];
 
-        if ((isInsert || isUpdate) && rowid) {
-          rows = sqliteQuery(db, `SELECT * FROM ${tableName} WHERE rowid = ?`, [rowid]);
+        if (isInsert) {
+          // INSERT — last_insert_rowid() to'g'ri ishlaydi
+          const rowidResult = db.exec('SELECT last_insert_rowid()');
+          const rowid = rowidResult[0]?.values[0]?.[0];
+          if (rowid) rows = sqliteQuery(db, `SELECT * FROM ${tableName} WHERE rowid = ?`, [rowid]);
+        } else if (isUpdate) {
+          // UPDATE — last_insert_rowid() NOTO'G'RI. WHERE id=$N orqali qaytaramiz.
+          const m = text.match(/WHERE\s+id\s*=\s*\$(\d+)/i);
+          if (m) {
+            const idVal = normalizedParams[parseInt(m[1]) - 1];
+            rows = sqliteQuery(db, `SELECT * FROM ${tableName} WHERE id = ?`, [idVal]);
+          }
         }
 
         saveDB();

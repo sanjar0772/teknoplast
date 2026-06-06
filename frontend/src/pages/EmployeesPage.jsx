@@ -51,12 +51,24 @@ export default function EmployeesPage() {
   const { register, handleSubmit, reset, setValue, watch } = useForm();
   const watchedType = watch('type');
 
-  const openCreate = () => { reset(); setEditEmployee(null); setShowModal(true); };
+  const openCreate = () => {
+    reset({ type: 'STANOKCHI', shift: '1-SMENA', hire_date: new Date().toISOString().slice(0, 10) });
+    setEditEmployee(null);
+    setShowModal(true);
+  };
   const openEdit = (emp) => {
     setEditEmployee(emp);
     Object.entries(emp).forEach(([k, v]) => setValue(k, v));
     setShowModal(true);
   };
+
+  const deactivateMutation = useMutation({
+    mutationFn: (emp) => employeesAPI.update(emp.id, { ...emp, is_active: !emp.is_active }),
+    onSuccess: (_, emp) => {
+      toast.success(emp.is_active ? 'Xodim nofaol qilindi' : 'Xodim faollashtirildi');
+      qc.invalidateQueries({ queryKey: ['employees'] });
+    },
+  });
 
   const canWrite = isOwner() || isProductionHead();
 
@@ -137,8 +149,16 @@ export default function EmployeesPage() {
                   </span>
                 </td>
                 {canWrite && (
-                  <td>
+                  <td className="flex gap-1">
                     <button onClick={() => openEdit(emp)} className="btn-secondary btn-sm">Tahrirlash</button>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(emp.is_active ? `${emp.name}ni nofaol qilasizmi?` : `${emp.name}ni faollashtirасизmi?`))
+                          deactivateMutation.mutate(emp);
+                      }}
+                      className={`btn-sm ${emp.is_active ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg px-2' : 'bg-green-50 text-green-600 hover:bg-green-100 border border-green-200 rounded-lg px-2'}`}>
+                      {emp.is_active ? "O'chirish" : 'Faollashtirish'}
+                    </button>
                   </td>
                 )}
               </tr>
@@ -169,11 +189,14 @@ export default function EmployeesPage() {
           {watchedType === 'STANOKCHI' && (
             <div>
               <label className="label">Smena *</label>
-              <select {...register('shift')} className="select">
+              <select {...register('shift', { required: watchedType === 'STANOKCHI' })} className="select">
                 <option value="1-SMENA">1-Smena (Ertalab)</option>
                 <option value="2-SMENA">2-Smena (Kechqurun)</option>
               </select>
             </div>
+          )}
+          {watchedType !== 'STANOKCHI' && watchedType && (
+            <input type="hidden" {...register('shift')} value="" />
           )}
           <div className="grid grid-cols-2 gap-3">
             <div>

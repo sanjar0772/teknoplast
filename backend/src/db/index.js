@@ -30,7 +30,7 @@ if (USE_PG) {
   const path = require('path');
   const { v4: uuidv4 } = require('uuid');
 
-  const DB_PATH = path.join(process.cwd(), 'teknoplast.sqlite');
+  const DB_PATH = process.env.DATABASE_PATH || path.join(process.cwd(), 'teknoplast.sqlite');
   let _db = null;
   let _ready = false;
   let _inTransaction = false;

@@ -1,4 +1,13 @@
 require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
+
+// Railway volume papkasini oldindan yaratamiz (DATABASE_PATH uchun)
+if (process.env.DATABASE_PATH) {
+  const dir = path.dirname(process.env.DATABASE_PATH);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');

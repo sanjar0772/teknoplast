@@ -40,10 +40,12 @@ router.post('/login', [
       [user.id, 'LOGIN', 'users']
     );
 
+    const remember = req.body.remember !== false;
+    const expiresIn = remember ? (process.env.JWT_EXPIRES_IN || '30d') : '8h';
     const token = jwt.sign(
       { id: user.id, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      { expiresIn }
     );
 
     res.json({

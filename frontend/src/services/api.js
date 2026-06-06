@@ -7,7 +7,7 @@ const api = axios.create({
 });
 
 api.interceptors.request.use(config => {
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -19,7 +19,10 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       // Sessiya tugagan/bekor — BARCHA auth holatini tozalaymiz (zikl bo'lmasligi uchun)
       localStorage.removeItem('token');
+      localStorage.removeItem('auth_user');
       localStorage.removeItem('teknoplast-auth');
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('auth_user');
       if (!window.location.pathname.startsWith('/login')) {
         window.location.href = '/login';
       }

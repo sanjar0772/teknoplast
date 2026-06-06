@@ -11,14 +11,15 @@ export default function LoginPage() {
   const { login } = useAuthStore();
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [remember, setRemember] = useState(true);
 
   const { register, handleSubmit, formState: { errors } } = useForm();
 
   const onSubmit = async (data) => {
     try {
       setLoading(true);
-      const res = await authAPI.login(data);
-      login(res.data.token, res.data.user);
+      const res = await authAPI.login({ ...data, remember });
+      login(res.data.token, res.data.user, remember);
       toast.success(`Xush kelibsiz, ${res.data.user.full_name}!`);
       navigate('/');
     } catch {
@@ -76,6 +77,22 @@ export default function LoginPage() {
                 </button>
               </div>
               {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="remember"
+                checked={remember}
+                onChange={e => setRemember(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer"
+              />
+              <label htmlFor="remember" className="text-sm text-gray-600 cursor-pointer select-none">
+                Eslab qolish
+              </label>
+              <span className="ml-auto text-xs text-gray-400">
+                {remember ? '30 kun' : 'Faqat shu sessiya'}
+              </span>
             </div>
 
             <button

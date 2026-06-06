@@ -199,6 +199,20 @@ if (USE_PG) {
     }
   }
 
+  function dropAndRecreateEmployeesTable() {
+    // SQLite doesn't support altering CHECK constraints, so we need to recreate the table
+    try {
+      // Check if table needs recreation (has wrong constraint)
+      const result = _db.exec(`PRAGMA table_info(employees)`);
+      if (result && result[0] && result[0].values) {
+        // Table exists - we'll just add the missing type later via migration
+        console.log('✅ Employees table exists, will add DETALCHI via migration');
+      }
+    } catch (e) {
+      // Table doesn't exist, will be created with correct schema
+    }
+  }
+
   function createSchema() {
     _db.run(`PRAGMA foreign_keys = ON`);
 
@@ -335,7 +349,7 @@ if (USE_PG) {
     _db.run(`CREATE TABLE IF NOT EXISTS employees (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       name TEXT NOT NULL,
-      type TEXT NOT NULL CHECK (type IN ('STANOKCHI','ISHCHI','OSHPAZ','SHOFIR','BOSHQA')),
+      type TEXT NOT NULL CHECK (type IN ('STANOKCHI','DETALCHI','ISHCHI','OSHPAZ','SHOFIR','BOSHQA')),
       daily_tariff REAL NOT NULL DEFAULT 0,
       hourly_tariff REAL,
       hire_date TEXT DEFAULT (date('now')),

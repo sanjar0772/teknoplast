@@ -189,7 +189,7 @@ export default function ProductionPage() {
                         ))}
                       </select>
                       {isDetalchi && (
-                        <p className="text-xs text-orange-600 mt-0.5">Detalchi — {fmt(emp.daily_tariff)} so'm/dona</p>
+                        <p className="text-xs text-orange-600 mt-0.5">Detalchi — mahsulot narhidan</p>
                       )}
                     </div>
                     <div className="col-span-3">

@@ -141,10 +141,10 @@ export default function EmployeesPage() {
                   }
                 </td>
                 <td>
-                  {fmt(emp.daily_tariff)} so'm
-                  <span className="text-xs text-gray-400 ml-1">
-                    {emp.type === 'DETALCHI' ? '/dona' : '/kun'}
-                  </span>
+                  {emp.type === 'DETALCHI'
+                    ? <span className="text-gray-400 text-xs">Mahsulot narhidan</span>
+                    : <>{fmt(emp.daily_tariff)} so'm <span className="text-xs text-gray-400">/kun</span></>
+                  }
                 </td>
                 <td>{emp.phone || '—'}</td>
                 <td>{new Date(emp.hire_date).toLocaleDateString('uz-UZ')}</td>
@@ -179,20 +179,27 @@ export default function EmployeesPage() {
             <label className="label">Ismi *</label>
             <input {...register('name', { required: true })} className="input" placeholder="To'liq ismi" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className={watchedType === 'DETALCHI' ? '' : 'grid grid-cols-2 gap-3'}>
             <div>
               <label className="label">Turi *</label>
               <select {...register('type', { required: true })} className="select">
                 {Object.entries(TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
-            <div>
-              <label className="label">
-                {watchedType === 'DETALCHI' ? 'Dona tarifi (1 ta uchun, so\'m) *' : 'Kunlik tarif *'}
-              </label>
-              <input {...register('daily_tariff', { required: true, min: 0 })} type="number" className="input"
-                placeholder={watchedType === 'DETALCHI' ? 'Masalan: 500 (1 dona uchun)' : 'Kunlik so\'m'} />
-            </div>
+            {watchedType === 'DETALCHI' ? (
+              <>
+                <input type="hidden" {...register('daily_tariff')} value={0} />
+                <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-700">
+                  Detalchi haq to'lovi mahsulot narhidan hisoblanadi — "Mahsulotlar" sahifasida belgilanadi.
+                </div>
+              </>
+            ) : (
+              <div>
+                <label className="label">Kunlik tarif *</label>
+                <input {...register('daily_tariff', { required: true, min: 0 })} type="number" className="input"
+                  placeholder="Kunlik so'm" />
+              </div>
+            )}
           </div>
           {watchedType === 'STANOKCHI' && (
             <div>

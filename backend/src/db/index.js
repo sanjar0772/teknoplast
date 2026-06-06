@@ -164,8 +164,9 @@ if (USE_PG) {
       const buf = fs.readFileSync(DB_PATH);
       _db = new SQL.Database(buf);
       console.log('✅ SQLite bazasi yuklandi:', DB_PATH);
-      createSchema();   // Yangi jadvallarni qo'shadi (IF NOT EXISTS)
-      runMigrations();  // Mavjud jadvallarga yangi ustun qo'shadi
+      createSchema();          // Yangi jadvallarni qo'shadi (IF NOT EXISTS)
+      runMigrations();         // Mavjud jadvallarga yangi ustun qo'shadi
+      fixEmployeesConstraint(); // DETALCHI constraint ni tuzatadi
       saveDB();
     } else {
       _db = new SQL.Database();
@@ -199,17 +200,99 @@ if (USE_PG) {
     }
   }
 
-  function dropAndRecreateEmployeesTable() {
-    // SQLite doesn't support altering CHECK constraints, so we need to recreate the table
+  function fixEmployeesConstraint() {
     try {
-      // Check if table needs recreation (has wrong constraint)
-      const result = _db.exec(`PRAGMA table_info(employees)`);
-      if (result && result[0] && result[0].values) {
-        // Table exists - we'll just add the missing type later via migration
-        console.log('✅ Employees table exists, will add DETALCHI via migration');
+      const result = _db.exec("SELECT sql FROM sqlite_master WHERE type='table' AND name='employees'");
+      if (!result || !result[0]) return;
+      const tableSql = result[0].values[0][0];
+      if (tableSql.includes("'DETALCHI'")) return; // already fixed
+
+      console.log('🔧 Employees jadvalini DETALCHI bilan yangilash...');
+
+      // Backup all employees
+      const empResult = _db.exec(`
+        SELECT id, name, type, daily_tariff, hourly_tariff, hire_date,
+               is_active, phone, address, shift, created_at, updated_at
+        FROM employees
+      `);
+      const rows = (empResult && empResult[0]) ? empResult[0].values : [];
+
+      // Drop dependent tables first
+      _db.run('DROP TABLE IF EXISTS salaries');
+      _db.run('DROP TABLE IF EXISTS employee_production');
+      _db.run('DROP TABLE IF EXISTS employees');
+
+      // Recreate employees with DETALCHI
+      _db.run(`CREATE TABLE employees (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        name TEXT NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('STANOKCHI','DETALCHI','ISHCHI','OSHPAZ','SHOFIR','BOSHQA')),
+        daily_tariff REAL NOT NULL DEFAULT 0,
+        hourly_tariff REAL,
+        hire_date TEXT DEFAULT (date('now')),
+        is_active INTEGER DEFAULT 1,
+        phone TEXT,
+        address TEXT,
+        shift TEXT DEFAULT 'ERTALAB',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )`);
+
+      // Restore employees
+      for (const r of rows) {
+        const [id, name, type, daily_tariff, hourly_tariff, hire_date, is_active, phone, address, shift, created_at, updated_at] = r;
+        _db.run(
+          `INSERT INTO employees (id,name,type,daily_tariff,hourly_tariff,hire_date,is_active,phone,address,shift,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [id, name, type, daily_tariff || 0, hourly_tariff, hire_date, is_active ?? 1, phone || '', address || '', shift || 'ERTALAB', created_at, updated_at]
+        );
       }
+
+      // Recreate employee_production
+      _db.run(`CREATE TABLE IF NOT EXISTS employee_production (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        employee_id TEXT NOT NULL REFERENCES employees(id),
+        product_id TEXT REFERENCES products(id),
+        machine_id TEXT REFERENCES machines(id),
+        production_date TEXT NOT NULL,
+        quantity_produced INTEGER NOT NULL DEFAULT 0,
+        daily_tariff REAL NOT NULL,
+        calculated_amount REAL NOT NULL,
+        month TEXT NOT NULL,
+        notes TEXT,
+        production_type TEXT DEFAULT 'FINISHED',
+        recorded_by TEXT REFERENCES users(id),
+        recorded_at TEXT,
+        kirimchi_notes TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(employee_id, production_date)
+      )`);
+
+      // Recreate salaries
+      _db.run(`CREATE TABLE IF NOT EXISTS salaries (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        employee_id TEXT NOT NULL REFERENCES employees(id),
+        month TEXT NOT NULL,
+        total_calculated REAL NOT NULL DEFAULT 0,
+        bonuses REAL DEFAULT 0,
+        penalties REAL DEFAULT 0,
+        net_amount REAL NOT NULL DEFAULT 0,
+        status TEXT DEFAULT 'CALCULATED' CHECK (status IN ('CALCULATED','APPROVED','PAID')),
+        approved_by TEXT REFERENCES users(id),
+        paid_date TEXT,
+        notes TEXT,
+        tax_amount REAL DEFAULT 0,
+        social_security REAL DEFAULT 0,
+        work_days INTEGER DEFAULT 0,
+        total_produced INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(employee_id, month)
+      )`);
+
+      console.log(`✅ Employees jadval constraint tuzatildi. ${rows.length} ishchi saqlab qolindi.`);
     } catch (e) {
-      // Table doesn't exist, will be created with correct schema
+      console.error('❌ fixEmployeesConstraint xato:', e.message);
     }
   }
 

@@ -399,6 +399,19 @@ const WRITE_TOOLS = [
       required: ['employee_name'],
     },
   },
+  {
+    name: 'add_user',
+    description: 'Yangi TIZIM FOYDALANUVCHISI (login akkaunt) yaratish — xodimga tizimga kirish huquqi berish. "Azizga sotuvchi akkaunt och", "buxgalter uchun login yarat". MUHIM: parolni tizim avtomatik yaratadi — foydalanuvchidan parol SO\'RAMANG va parolni qabul qilmang. Faqat EGA.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        full_name: { type: 'string', description: 'To\'liq ism' },
+        phone: { type: 'string', description: 'Telefon raqami (login uchun), masalan +998901234567' },
+        role: { type: 'string', enum: ['OWNER', 'ACCOUNTANT', 'SALES_HEAD', 'PRODUCTION_HEAD', 'KIRIMCHI', 'OMBORCHI'], description: 'Rol: OWNER=ega, ACCOUNTANT=buxgalter, SALES_HEAD=sotuv boshlig\'i, PRODUCTION_HEAD=ishlab chiqarish boshlig\'i, KIRIMCHI=kirimchi, OMBORCHI=omborchi' },
+      },
+      required: ['full_name', 'phone', 'role'],
+    },
+  },
 ];
 
 const ALL_TOOLS = [...READ_TOOLS, ...WRITE_TOOLS];
@@ -485,7 +498,7 @@ router.post('/command', async (req, res) => {
 ${isOwner
   ? 'Вы можете выполнять любые операции: продажи, расходы, приход, сотрудники, производство, цены, склад.'
   : 'Вы можете только просматривать: отчёты, остатки, сотрудников, должников. Изменения — только для администратора.'}
-Инструменты: get_report (отчёт), lookup (цена/склад), list_debtors (должники), get_employees (сотрудники), generate_document (PDF/Excel)${isOwner ? ', create_sale, add_expense, add_customer, create_intake, update_price, update_stock, record_payment, add_production, add_employee, remove_employee, update_employee' : ''}.
+Инструменты: get_report (отчёт), lookup (цена/склад), list_debtors (должники), get_employees (сотрудники), generate_document (PDF/Excel)${isOwner ? ', create_sale, add_expense, add_customer, create_intake, update_price, update_stock, record_payment, add_production, add_employee, remove_employee, update_employee, add_user (создать логин-аккаунт)' : ''}.
 Помните историю разговора (до 6 сообщений). Краткие ответы. Числа: 1 000 000 сум. Представляйтесь как Ахмад.
 ВАЖНО: без *, #, эмодзи, маркдауна — только чистый текст (ответ озвучивается).`
       : `Siz Ahmad — Teknoplast plastik zavod aqlli yordamchisisiz.
@@ -493,7 +506,7 @@ Joriy foydalanuvchi roli: ${isOwner ? 'ADMIN (to\'liq huquq)' : 'XODIM (faqat ko
 ${isOwner
   ? 'Siz har qanday amalni bajara olasiz: sotuv, xarajat, kirim, xodim, ishlab chiqarish, narx, ombor.'
   : 'Siz faqat ko\'ra olasiz: hisobot, ombor, xodimlar, qarzdorlar. O\'zgartirish faqat admin uchun.'}
-Toollar: get_report, lookup, list_debtors, get_employees, generate_document${isOwner ? ', create_sale, add_expense, add_customer, create_intake, update_price, update_stock, record_payment, add_production, add_employee, remove_employee, update_employee' : ''}.
+Toollar: get_report, lookup, list_debtors, get_employees, generate_document${isOwner ? ', create_sale, add_expense, add_customer, create_intake, update_price, update_stock, record_payment, add_production, add_employee, remove_employee, update_employee, add_user (login akkaunt yaratish)' : ''}.
 Suhbat tarixini esda tuting (6 xabar). Qisqa javoblar. Raqamlar: 1 000 000 so\'m. O\'zingizni Ahmad deb tanishtiring.
 MUHIM: *, #, emoji, markdown ishlatmang — faqat toza matn (ovozda o\'qiladi).`;
 
@@ -738,6 +751,20 @@ MUHIM: *, #, emoji, markdown ishlatmang — faqat toza matn (ovozda o\'qiladi).`
       desc = lang === 'ru'
         ? `Изменить данные ${emp.name}: ${changes.join(', ')}`
         : `${emp.name} ma'lumotlarini o'zgartirish: ${changes.join(', ')}`;
+    } else if (toolBlock.name === 'add_user') {
+      const ROLE_LABEL = { OWNER: 'Ega (to\'liq huquq)', ACCOUNTANT: 'Buxgalter', SALES_HEAD: 'Sotuv boshlig\'i', PRODUCTION_HEAD: 'Ishlab chiqarish boshlig\'i', KIRIMCHI: 'Kirimchi', OMBORCHI: 'Omborchi' };
+      const role = String(inp.role || '').toUpperCase();
+      const phone = String(inp.phone || '').trim();
+      // Telefon allaqachon bandmi?
+      const dup = await query('SELECT id FROM users WHERE phone=$1', [phone]);
+      if (dup.rows.length) {
+        return res.json({ response: lang === 'ru' ? `Пользователь с телефоном ${phone} уже существует.` : `${phone} telefonli foydalanuvchi allaqachon mavjud.` });
+      }
+      action = { type: 'ADD_USER', data: { full_name: inp.full_name, phone, role } };
+      const warn = role === 'OWNER' ? (lang === 'ru' ? ' (ВНИМАНИЕ: ЕГА — полный доступ!)' : ' (DIQQAT: EGA — to\'liq huquq!)') : '';
+      desc = lang === 'ru'
+        ? `Новый пользователь: ${inp.full_name} — ${ROLE_LABEL[role] || role}, тел: ${phone}. Пароль создаст система.${warn}`
+        : `Yangi foydalanuvchi: ${inp.full_name} — ${ROLE_LABEL[role] || role}, tel: ${phone}. Parolni tizim yaratadi.${warn}`;
     }
 
     return res.json({
@@ -986,6 +1013,31 @@ router.post('/confirm-action', async (req, res) => {
         [d.category || 'OTHER', d.amount, d.description || 'Ahmad orqali', new Date().toISOString().slice(0, 10), req.user.id]
       );
       return res.json({ success: true, message: `Xarajat yozildi: ${fmt(d.amount)} so'm` });
+    }
+
+    // --- Yangi tizim foydalanuvchisi (login akkaunt) — faqat EGA ---
+    if (action.type === 'ADD_USER') {
+      const bcrypt = require('bcryptjs');
+      const crypto = require('crypto');
+      const d = action.data || {};
+      const ROLES = ['OWNER', 'ACCOUNTANT', 'SALES_HEAD', 'PRODUCTION_HEAD', 'KIRIMCHI', 'OMBORCHI'];
+      const full_name = String(d.full_name || '').trim();
+      const phone = String(d.phone || '').trim();
+      const role = String(d.role || '').toUpperCase();
+      if (!full_name || !phone) return res.json({ success: false, message: 'Ism va telefon kerak' });
+      if (!ROLES.includes(role)) return res.json({ success: false, message: 'Noto\'g\'ri rol' });
+      const dup = await query('SELECT id FROM users WHERE phone=$1', [phone]);
+      if (dup.rows.length) return res.json({ success: false, message: `${phone} telefonli foydalanuvchi allaqachon mavjud` });
+      // Kuchli vaqtinchalik parol (chalkash belgilarsiz: 0/O, 1/l/I yo'q)
+      const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ', lc = 'abcdefghijkmnpqrstuvwxyz', nn = '23456789';
+      const pick = s => s[crypto.randomInt(s.length)];
+      const tempPass = pick(A) + pick(A) + pick(lc) + pick(lc) + pick(nn) + pick(nn) + pick(nn) + pick(nn);
+      const hash = await bcrypt.hash(tempPass, 10);
+      await query('INSERT INTO users (phone, password_hash, full_name, role) VALUES ($1,$2,$3,$4)', [phone, hash, full_name, role]);
+      return res.json({
+        success: true,
+        message: `Foydalanuvchi yaratildi: ${full_name} (${role})\n📱 Login (telefon): ${phone}\n🔑 Vaqtinchalik parol: ${tempPass}\n\n⚠️ Parolni xodimga yetkazing. U kirgach "Parolni o'zgartirish" orqali yangilasin. Bu parol qayta ko'rsatilmaydi.`,
+      });
     }
 
     // --- Mijoz ---

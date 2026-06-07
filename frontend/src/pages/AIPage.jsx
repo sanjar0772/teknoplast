@@ -392,7 +392,12 @@ export default function AIPage() {
           : `${okWord} ${data.message || (language === 'uz' ? 'Tizimga qo\'shildi.' : 'Добавлено.')}`;
         const idx = chatMessages.length;
         setChatMessages(prev => [...prev, { role: 'assistant', text: msgTxt, time: new Date() }]);
-        speak(msgTxt, idx);
+        // Yangi foydalanuvchi parolini OVOZDA o'qimaymiz (xavfsizlik) — faqat ekranda
+        if (pendingAction.type === 'ADD_USER' && data.success !== false) {
+          speak(language === 'uz' ? 'Foydalanuvchi yaratildi. Login va parol ekranda ko\'rsatilgan.' : 'Пользователь создан. Логин и пароль показаны на экране.', idx);
+        } else {
+          speak(msgTxt, idx);
+        }
       } catch (err) {
         const status = err.response?.status;
         const errMsg = status === 403

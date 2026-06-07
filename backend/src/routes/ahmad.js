@@ -814,12 +814,15 @@ router.post('/read-image', upload.single('image'), async (req, res) => {
 
 ПРАВИЛА ВЫБОРА ТИПА (kind):
 - "employee" — список сотрудников/рабочих (имена + должность/смена/тариф)
+- "customer" — список КЛИЕНТОВ/покупателей (имя или фирма + телефон/адрес/долг; БЕЗ товаров и цен)
 - "sale"     — накладная на ПРОДАЖУ, чек, исходящая накладная (продали клиенту)
 - "intake"   — накладная ПРИХОДА от поставщика (получили товар)
 - "product"  — ПРАЙС-ЛИСТ, каталог, список товаров с ценами, просто список продуктов
 
-ВАЖНО: Если файл содержит товары с ценами (прайс, каталог, price-list, нарx рўйхати) → ВСЕГДА "product"
-Если неясно → "product"
+ВАЖНО:
+- Список людей или фирм с телефоном/адресом, БЕЗ колонки товара/цены → ВСЕГДА "customer"
+- Файл с товарами и ценами (прайс, каталог, price-list) → ВСЕГДА "product"
+- Если неясно → "product"
 
 ВАЖНЫЕ ПРАВИЛА:
 1. НИКОГДА не говорите "не могу прочитать" — всегда извлекайте данные
@@ -830,6 +833,7 @@ router.post('/read-image', upload.single('image'), async (req, res) => {
 - "sale":     {"name":"название","quantity":1,"price":5000,"kind":"sale"}
 - "intake":   {"name":"название","quantity":10,"price":5000,"kind":"intake"}
 - "employee": {"name":"ФИО","type":"ISHCHI","shift":"1-SMENA","daily_tariff":50000,"phone":"","kind":"employee"}
+- "customer": {"name":"имя клиента или фирма","phone":"+998...","company_name":"","address":"","kind":"customer"}
 - "product":  {"name":"название","quantity":100,"price":5000,"kind":"product"}
 
 Отвечайте кратко на русском языке.`
@@ -838,12 +842,15 @@ Berilgan faylni DIQQAT BILAN o'qing va barcha ma'lumotlarni chiqaring.
 
 TURNING TANLANISH QOIDALARI (kind):
 - "employee" — xodimlar/ishchilar ro'yxati (ism + lavozim/smena/tarif)
+- "customer" — MIJOZLAR/xaridorlar ro'yxati (ism yoki firma + telefon/manzil/qarz; mahsulot va narx ustuni YO'Q)
 - "sale"     — SOTUV nakladnoyi, chek, mijozga berilgan tovar
 - "intake"   — KIRIM nakladnoyi, yetkazib beruvchidan kelgan tovar
 - "product"  — NARXNOMA, katalog, tovar ro'yxati narxlar bilan, oddiy mahsulot ro'yxati
 
-MUHIM: Agar fayl narxlar bilan mahsulotlar bo'lsa (narxnoma, price-list) → DOIMO "product"
-Noaniq bo'lsa → "product"
+MUHIM:
+- Odamlar yoki firmalar ro'yxati telefon/manzil bilan, mahsulot/narx ustuni YO'Q bo'lsa → DOIMO "customer"
+- Narxlar bilan mahsulotlar bo'lsa (narxnoma, price-list) → DOIMO "product"
+- Noaniq bo'lsa → "product"
 
 MUHIM QOIDALAR:
 1. HECH QACHON "o'kiy olmayman" DEMANG — doimo ma'lumot chiqaring
@@ -854,6 +861,7 @@ MUHIM QOIDALAR:
 - "sale":     {"name":"mahsulot nomi","quantity":1,"price":5000,"kind":"sale"}
 - "intake":   {"name":"mahsulot nomi","quantity":10,"price":5000,"kind":"intake"}
 - "employee": {"name":"ism familiya","type":"ISHCHI","shift":"1-SMENA","daily_tariff":50000,"phone":"","kind":"employee"}
+- "customer": {"name":"mijoz ismi yoki firma","phone":"+998...","company_name":"","address":"","kind":"customer"}
 - "product":  {"name":"mahsulot nomi","quantity":100,"price":5000,"kind":"product"}
 
 O'zbek tilida qisqa javob bering.`;
@@ -894,6 +902,9 @@ O'zbek tilida qisqa javob bering.`;
       } else if (kind === 'employee') {
         const list = items.map(e => `${e.name} (${e.type || 'ISHCHI'}${e.shift ? ', ' + e.shift : ''})`).join(', ');
         action = { type: 'BULK_ADD_EMPLOYEES', data: items, description: lang === 'ru' ? `Добавить ${items.length} сотрудников: ${list}` : `${items.length} ta xodim qo'shilsinmi: ${list}` };
+      } else if (kind === 'customer') {
+        const nameList = items.slice(0, 6).map(c => c.name).filter(Boolean).join(', ') + (items.length > 6 ? '...' : '');
+        action = { type: 'BULK_ADD_CUSTOMERS', data: items, description: lang === 'ru' ? `Добавить ${items.length} клиентов: ${nameList}` : `${items.length} ta mijoz qo'shilsinmi: ${nameList}` };
       } else {
         const nameList = items.slice(0, 5).map(i => i.name).join(', ') + (items.length > 5 ? '...' : '');
         action = { type: 'ADD_PRODUCTS', data: items, description: lang === 'ru' ? `${items.length} товаров добавить в базу? (${nameList})` : `${items.length} ta mahsulot bazaga qo'shaylikmi? (${nameList})` };
@@ -981,10 +992,35 @@ router.post('/confirm-action', async (req, res) => {
     if (action.type === 'ADD_CUSTOMER') {
       const d = action.data;
       await query(
-        'INSERT INTO customers (name, phone, company_name, customer_type, created_by) VALUES ($1,$2,$3,$4,$5)',
-        [d.name, d.phone || null, d.company_name || null, 'RETAIL', req.user.id]
+        'INSERT INTO customers (name, phone, company_name, address, customer_type, created_by) VALUES ($1,$2,$3,$4,$5,$6)',
+        [d.name, d.phone || null, d.company_name || null, d.address || null, 'RETAIL', req.user.id]
       );
       return res.json({ success: true, message: `Mijoz qo'shildi: ${d.name}` });
+    }
+
+    // --- Ko'plab mijoz (PDF/rasm/Excel ro'yxatidan) ---
+    if (action.type === 'BULK_ADD_CUSTOMERS') {
+      let added = 0, skipped = 0;
+      for (const c of (action.data || [])) {
+        try {
+          const name = (c.name || c.nomi || c.fio || c.ism || '').toString().trim();
+          if (!name) { skipped++; continue; }
+          const phone   = (c.phone || c.tel || c.telefon || '').toString().trim() || null;
+          const company = (c.company_name || c.firma || c.company || c.kompaniya || '').toString().trim() || null;
+          const address = (c.address || c.manzil || c.addr || c.adres || '').toString().trim() || null;
+          // Takror bo'lmasligi uchun: shu nom (va tel) allaqachon bo'lsa o'tkazamiz
+          const exists = await query(
+            'SELECT id FROM customers WHERE LOWER(name)=LOWER($1) LIMIT 1', [name]
+          );
+          if (exists.rows.length) { skipped++; continue; }
+          await query(
+            'INSERT INTO customers (name, phone, company_name, address, customer_type, created_by) VALUES ($1,$2,$3,$4,$5,$6)',
+            [name, phone, company, address, 'RETAIL', req.user.id]
+          );
+          added++;
+        } catch (e) { console.error('BULK_ADD_CUSTOMERS item error:', e.message); skipped++; }
+      }
+      return res.json({ success: true, message: `${added} ta mijoz qo'shildi${skipped ? ', ' + skipped + ' ta o\'tkazildi (takror/bo\'sh)' : ''}` });
     }
 
     // --- Narx o'zgartirish ---

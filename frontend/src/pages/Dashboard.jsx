@@ -1,13 +1,15 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 import {
   TrendingUp, TrendingDown, Users, Package, AlertTriangle,
-  ShoppingCart, Banknote, Cog, RefreshCw
+  ShoppingCart, Banknote, Cog, RefreshCw, Target
 } from 'lucide-react';
-import { reportsAPI } from '../services/api';
+import { reportsAPI, salariesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -39,11 +41,27 @@ function KpiCard({ icon: Icon, iconBg, title, value, sub, trend }) {
 }
 
 export default function Dashboard() {
-  const { user } = useAuthStore();
+  const { user, isOwner } = useAuthStore();
+  const qc = useQueryClient();
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => reportsAPI.getDashboard().then(r => r.data),
     refetchInterval: 5 * 60 * 1000,
+  });
+
+  // Oylik savdo reja (faqat EGA belgilaydi) — bosh sahifada ko'rinadi
+  const planMonth = new Date().toISOString().slice(0, 7);
+  const { data: planData } = useQuery({
+    queryKey: ['salary-plan', planMonth],
+    queryFn: () => salariesAPI.getPlan({ month: planMonth }).then(r => r.data),
+    enabled: isOwner(),
+  });
+  const [planInput, setPlanInput] = useState('');
+  useEffect(() => { if (planData) setPlanInput(planData.plan || ''); }, [planData]);
+  const setPlanMutation = useMutation({
+    mutationFn: (plan) => salariesAPI.setPlan(plan),
+    onSuccess: () => { toast.success('✅ Oylik savdo reja saqlandi'); qc.invalidateQueries({ queryKey: ['salary-plan'] }); },
+    onError: (err) => toast.error(err?.response?.data?.error || 'Saqlashda xato'),
   });
 
   if (isLoading) return (
@@ -83,6 +101,56 @@ export default function Dashboard() {
           <RefreshCw size={14} /> Yangilash
         </button>
       </div>
+
+      {/* Oylik savdo reja — faqat EGA belgilaydi */}
+      {isOwner() && (
+        <div className="card p-5 border-2 border-indigo-200 bg-gradient-to-r from-indigo-50 to-white">
+          <div className="flex flex-wrap items-center gap-4 justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 bg-indigo-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Target size={22} className="text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-900">Oylik savdo reja (bonus uchun)</p>
+                <p className="text-xs text-gray-500">Savdo rejadan oshsa — oylik/foizli xodimlar oyligiga shuncha % bonus qo'shiladi</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="number" min="0" value={planInput}
+                onChange={e => setPlanInput(e.target.value)}
+                placeholder="Reja summasi (so'm)"
+                className="input w-52" />
+              <button onClick={() => setPlanMutation.mutate(Number(planInput) || 0)}
+                disabled={setPlanMutation.isPending}
+                className="btn-primary btn-sm whitespace-nowrap">
+                {setPlanMutation.isPending ? 'Saqlanmoqda...' : 'Reja saqlash'}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-4 text-sm">
+              <div>
+                <p className="text-xs text-gray-400">Bu oy savdo</p>
+                <p className="font-bold text-gray-900">{fmt(planData?.actual_sales)} so'm</p>
+              </div>
+              <div className="text-gray-300">/</div>
+              <div>
+                <p className="text-xs text-gray-400">Reja</p>
+                <p className="font-bold text-gray-900">{fmt(planData?.plan)} so'm</p>
+              </div>
+              <div className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1 ${
+                planData?.overage_pct > 0 ? 'bg-green-100 text-green-700' :
+                planData?.plan > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-400'}`}>
+                <TrendingUp size={14} />
+                {planData?.overage_pct > 0
+                  ? `+${planData.overage_pct}% bonus`
+                  : (planData?.plan > 0 ? 'Reja bajarilmadi' : 'Reja belgilanmagan')}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

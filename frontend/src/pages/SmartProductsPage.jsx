@@ -12,7 +12,8 @@ import 'ag-grid-community/styles/ag-theme-quartz.css';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-const COLOR_OPTIONS = ['oq', 'shaffof', "ko'k", 'qizil', 'yashil', 'sariq', 'qora', 'kulrang'];
+const COLOR_OPTIONS = ['oq', 'shaffof', "ko'k", 'qizil', 'yashil', 'sariq', 'qora', 'kulrang',
+  'pushti', 'havorang', 'mentol', 'binafsha', 'och yashil', 'och sariq', "to'q sariq"];
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
 export default function SmartProductsPage() {
@@ -146,9 +147,11 @@ export default function SmartProductsPage() {
       cellStyle: { color: '#374151' },
     },
     {
-      field: 'rang', headerName: 'Rang', width: 120, editable: true, filter: true,
+      field: 'rang', headerName: 'Rang', width: 130, editable: true,
+      filter: 'agTextColumnFilter',
       cellEditor: 'agSelectCellEditor',
       cellEditorParams: { values: COLOR_OPTIONS },
+      getQuickFilterText: p => p.data.rang || '',
     },
     {
       field: 'stock_quantity', headerName: 'Miqdor', width: 110, editable: true,

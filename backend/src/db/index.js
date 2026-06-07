@@ -29,6 +29,7 @@ if (USE_PG) {
   const fs = require('fs');
   const path = require('path');
   const { v4: uuidv4 } = require('uuid');
+  const { parseProductName } = require('../utils/parseProductName');
 
   const DB_PATH = process.env.DATABASE_PATH || path.join(process.cwd(), 'teknoplast.sqlite');
   let _db = null;
@@ -178,6 +179,7 @@ if (USE_PG) {
       runMigrations();         // Mavjud jadvallarga yangi ustun qo'shadi
       fixEmployeesConstraint(); // DETALCHI constraint ni tuzatadi
       relaxEmployeesTypeConstraint(); // type CHECK ni olib tashlaydi (yangi turlar uchun)
+      backfillProductMeta();   // nomdan rang/razmer/base_name to'ldiradi (kirill mahsulotlar uchun)
       saveDBSync();
     } else {
       _db = new SQL.Database();
@@ -399,6 +401,36 @@ if (USE_PG) {
       try { _db.run('ROLLBACK'); } catch {}
       try { _db.run('PRAGMA foreign_keys = ON'); } catch {}
       console.error('❌ relaxEmployeesTypeConstraint xato:', e.message);
+    }
+  }
+
+  // Kirill nomli mahsulotlarda base_name/rang/razmer bo'sh -> nomdan ajratib to'ldiramiz.
+  // `name` o'zgarmaydi. Faqat base_name IS NULL bo'lganlarni qayta ishlaymiz (idempotent +
+  // kelajakdagi kirill importlarni ham avtomatik tuzatadi).
+  function backfillProductMeta() {
+    try {
+      const res = _db.exec("SELECT id, name FROM products WHERE (base_name IS NULL OR base_name='') AND name IS NOT NULL AND name<>''");
+      if (!res || !res[0]) return;
+      const rows = res[0].values; // [[id, name], ...]
+      if (!rows.length) return;
+      let withColor = 0, total = 0;
+      for (const [id, name] of rows) {
+        const parsed = parseProductName(name);
+        if (!parsed) continue;
+        // base_name doimo (guruhlash uchun); rang/razmer faqat allaqachon bo'sh bo'lsa
+        _db.run(
+          "UPDATE products SET base_name=?, " +
+          "rang=COALESCE(NULLIF(rang,''), ?), " +
+          "razmer=COALESCE(NULLIF(razmer,''), ?), " +
+          "updated_at=datetime('now') WHERE id=?",
+          [parsed.base_name, parsed.rang || null, parsed.razmer || null, id]
+        );
+        total++;
+        if (parsed.rang) withColor++;
+      }
+      if (total) console.log(`🎨 Mahsulot meta to'ldirildi: ${total} ta (rang topilgan: ${withColor})`);
+    } catch (e) {
+      console.error('❌ backfillProductMeta xato:', e.message);
     }
   }
 

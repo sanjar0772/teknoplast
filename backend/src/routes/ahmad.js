@@ -357,6 +357,7 @@ const WRITE_TOOLS = [
         product_name: { type: 'string', description: 'Ixtiyoriy' },
         quantity: { type: 'number' },
         date: { type: 'string', description: 'YYYY-MM-DD, aytilmasa bugun' },
+        production_type: { type: 'string', enum: ['FINISHED', 'SEMI_FINISHED'], description: 'Stanokchi uchun: tayyor=FINISHED, yarim tayyor=SEMI_FINISHED. Aytilmasa FINISHED.' },
       },
       required: ['employee_name', 'quantity'],
     },
@@ -579,7 +580,7 @@ MUHIM: *, #, emoji, markdown ishlatmang — faqat toza matn (ovozda o\'qiladi).`
     if (toolBlock.name === 'add_production') {
       // Xodimni topamiz
       const empR = await query(
-        "SELECT id, name, daily_tariff FROM employees WHERE LOWER(name) LIKE LOWER($1) AND is_active=1 LIMIT 1",
+        "SELECT id, name, type, daily_tariff FROM employees WHERE LOWER(name) LIKE LOWER($1) AND is_active=1 LIMIT 1",
         [`%${inp.employee_name}%`]
       );
       if (!empR.rows.length) {
@@ -589,15 +590,32 @@ MUHIM: *, #, emoji, markdown ishlatmang — faqat toza matn (ovozda o\'qiladi).`
       const product = inp.product_name ? await findProduct(inp.product_name) : null;
       const prodDate = inp.date || new Date().toISOString().slice(0, 10);
       const month = prodDate.slice(0, 7);
-      const calc = Number(emp.daily_tariff) || 0;
+      const qty = Number(inp.quantity) || 0;
+
+      // Ishlab chiqarish turi: STANOKCHI tayyor/yarim; DETALCHI doim yarim tayyor
+      let ptype = inp.production_type === 'SEMI_FINISHED' ? 'SEMI_FINISHED' : 'FINISHED';
+      if (emp.type === 'DETALCHI') ptype = 'SEMI_FINISHED';
+
+      // Stanokchi/detalchi — mahsulot dona narxidan; boshqalar — kunlik tarif
+      let rate = Number(emp.daily_tariff) || 0;
+      let calcAmount;
+      if (product && (emp.type === 'STANOKCHI' || emp.type === 'DETALCHI')) {
+        const pr = await query('SELECT stanokchi_rate, stanokchi_semi_rate, detalchi_rate FROM products WHERE id=$1', [product.id]);
+        const prow = pr.rows[0] || {};
+        if (emp.type === 'STANOKCHI') rate = (ptype === 'SEMI_FINISHED' ? prow.stanokchi_semi_rate : prow.stanokchi_rate) || 0;
+        else rate = prow.detalchi_rate || 0;
+        calcAmount = qty * rate;
+      } else {
+        calcAmount = rate; // kunlik ishchi — kunlik tarif
+      }
 
       action = {
         type: 'ADD_PRODUCTION',
         data: {
           employee_id: emp.id, employee_name: emp.name,
           product_id: product?.id || null, product_name: product?.name || inp.product_name || null,
-          quantity: inp.quantity, production_date: prodDate, month,
-          daily_tariff: calc, calculated_amount: calc,
+          quantity: qty, production_date: prodDate, month,
+          daily_tariff: rate, calculated_amount: calcAmount, production_type: ptype,
         },
       };
       desc = lang === 'ru'
@@ -1092,11 +1110,11 @@ router.post('/confirm-action', async (req, res) => {
         const old = existing.rows[0];
         await client.query(
           `INSERT INTO employee_production
-            (employee_id, product_id, production_date, quantity_produced, daily_tariff, calculated_amount, month, notes)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+            (employee_id, product_id, production_date, quantity_produced, daily_tariff, calculated_amount, month, notes, production_type)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
            ON CONFLICT (employee_id, production_date)
-           DO UPDATE SET product_id=$2, quantity_produced=$4, daily_tariff=$5, calculated_amount=$6, notes=$8, updated_at=NOW()`,
-          [d.employee_id, d.product_id || null, d.production_date, d.quantity, d.daily_tariff, d.calculated_amount, d.month, 'Ahmad orqali']
+           DO UPDATE SET product_id=$2, quantity_produced=$4, daily_tariff=$5, calculated_amount=$6, notes=$8, production_type=$9, updated_at=NOW()`,
+          [d.employee_id, d.product_id || null, d.production_date, d.quantity, d.daily_tariff, d.calculated_amount, d.month, 'Ahmad orqali', d.production_type || 'FINISHED']
         );
         if (old && old.product_id) {
           await client.query('UPDATE products SET stock_quantity = stock_quantity - $1, updated_at=NOW() WHERE id=$2', [old.quantity_produced, old.product_id]);

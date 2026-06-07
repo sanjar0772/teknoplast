@@ -32,7 +32,7 @@ export default function ProductsPage() {
   const [stockModal, setStockModal] = useState(null);
   const [stockForm, setStockForm] = useState({ quantity: 0, operation: 'add' });
   const [pricingModal, setPricingModal] = useState(null);
-  const [pricingForm, setPricingForm] = useState({ stanokchi_rate: 0, detalchi_rate: 0 });
+  const [pricingForm, setPricingForm] = useState({ stanokchi_rate: 0, stanokchi_semi_rate: 0, detalchi_rate: 0 });
 
   const { data, isLoading } = useQuery({
     queryKey: ['products'],
@@ -83,6 +83,7 @@ export default function ProductsPage() {
     setPricingModal(p);
     setPricingForm({
       stanokchi_rate: p.stanokchi_rate || 0,
+      stanokchi_semi_rate: p.stanokchi_semi_rate || 0,
       detalchi_rate: p.detalchi_rate || 0,
     });
   };
@@ -132,17 +133,23 @@ export default function ProductsPage() {
                   {p.stock_quantity} {p.unit}
                 </span>
               </div>
-              {(p.stanokchi_rate > 0 || p.detalchi_rate > 0) && (
+              {(p.stanokchi_rate > 0 || p.stanokchi_semi_rate > 0 || p.detalchi_rate > 0) && (
                 <div className="border-t pt-2 mt-2 space-y-1">
                   {p.stanokchi_rate > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-blue-600">Stanokchi tarif:</span>
+                      <span className="text-blue-600">Stanokchi (tayyor):</span>
                       <span className="font-semibold text-blue-700">{fmt(p.stanokchi_rate)} so'm/dona</span>
+                    </div>
+                  )}
+                  {p.stanokchi_semi_rate > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-sky-600">Stanokchi (yarim):</span>
+                      <span className="font-semibold text-sky-700">{fmt(p.stanokchi_semi_rate)} so'm/dona</span>
                     </div>
                   )}
                   {p.detalchi_rate > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-orange-600">Detalchi tarif:</span>
+                      <span className="text-orange-600">Detalchi (yarim):</span>
                       <span className="font-semibold text-orange-700">{fmt(p.detalchi_rate)} so'm/dona</span>
                     </div>
                   )}
@@ -268,38 +275,37 @@ export default function ProductsPage() {
         <Modal open={!!pricingModal} onClose={() => setPricingModal(null)} title={`Ishlab chiqarish narhlari — ${pricingModal.name}`}>
           <div className="space-y-4">
             <p className="text-xs text-gray-500">
-              Bu narxlar stanokchi va detalchilar uchun 1 dona tayyorlash haqi.
-              Bo'sh qoldirilsa xodimning shaxsiy tarifi ishlatiladi.
+              Bu narxlar — 1 dona uchun ishchiga to'lanadigan haq (ishlab chiqarish narxi).
+              Stanokchi tayyor yoki yarim tayyor chiqaradi; detalchi faqat yarim tayyor bilan ishlaydi.
             </p>
-            <div className="bg-blue-50 rounded-lg p-3 space-y-2 text-sm">
-              {pricingModal.stanokchi_rate > 0 && (
-                <div>Joriy stanokchi: <strong>{fmt(pricingModal.stanokchi_rate)} so'm/dona</strong></div>
-              )}
-              {pricingModal.detalchi_rate > 0 && (
-                <div>Joriy detalchi: <strong>{fmt(pricingModal.detalchi_rate)} so'm/dona</strong></div>
-              )}
-              {!pricingModal.stanokchi_rate && !pricingModal.detalchi_rate && (
-                <div className="text-gray-400">Narxlar belgilanmagan</div>
-              )}
-            </div>
             <div>
-              <label className="label">Stanokchi tarifi (1 dona, so'm)</label>
+              <label className="label">Stanokchi — TAYYOR (1 dona, so'm)</label>
               <input
                 type="number" min="0"
                 value={pricingForm.stanokchi_rate}
                 onChange={e => setPricingForm(f => ({ ...f, stanokchi_rate: parseFloat(e.target.value) || 0 }))}
                 className="input"
-                placeholder="Masalan: 150"
+                placeholder="Masalan: 200"
               />
             </div>
             <div>
-              <label className="label">Detalchi tarifi (1 dona, so'm)</label>
+              <label className="label">Stanokchi — YARIM TAYYOR (1 dona, so'm)</label>
+              <input
+                type="number" min="0"
+                value={pricingForm.stanokchi_semi_rate}
+                onChange={e => setPricingForm(f => ({ ...f, stanokchi_semi_rate: parseFloat(e.target.value) || 0 }))}
+                className="input"
+                placeholder="Masalan: 120"
+              />
+            </div>
+            <div>
+              <label className="label">Detalchi (yarim tayyor, 1 dona, so'm)</label>
               <input
                 type="number" min="0"
                 value={pricingForm.detalchi_rate}
                 onChange={e => setPricingForm(f => ({ ...f, detalchi_rate: parseFloat(e.target.value) || 0 }))}
                 className="input"
-                placeholder="Masalan: 200"
+                placeholder="Masalan: 150"
               />
             </div>
             <div className="flex gap-3">

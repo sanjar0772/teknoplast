@@ -130,14 +130,20 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD'), [
     let calculated_amount = 0;
     let daily_tariff = emp.rows[0].daily_tariff;
 
+    // Ishlab chiqarish turi: STANOKCHI tayyor/yarim tanlaydi; DETALCHI doim yarim tayyor
+    let ptype = production_type || 'FINISHED';
+    if (employee_type === 'DETALCHI') ptype = 'SEMI_FINISHED';
+
     if (product_id) {
-      const prod = await query('SELECT stanokchi_rate, detalchi_rate FROM products WHERE id=$1', [product_id]);
+      const prod = await query('SELECT stanokchi_rate, stanokchi_semi_rate, detalchi_rate FROM products WHERE id=$1', [product_id]);
       const product = prod.rows[0] || {};
       if (employee_type === 'STANOKCHI') {
-        if (product.stanokchi_rate) daily_tariff = product.stanokchi_rate;
+        // Tayyor -> stanokchi_rate, Yarim tayyor -> stanokchi_semi_rate
+        const rate = ptype === 'SEMI_FINISHED' ? product.stanokchi_semi_rate : product.stanokchi_rate;
+        daily_tariff = rate || 0;
         calculated_amount = quantity_produced * daily_tariff;
       } else if (employee_type === 'DETALCHI') {
-        if (product.detalchi_rate) daily_tariff = product.detalchi_rate;
+        daily_tariff = product.detalchi_rate || 0;
         calculated_amount = quantity_produced * daily_tariff;
       } else {
         calculated_amount = quantity_produced * daily_tariff;
@@ -148,7 +154,6 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD'), [
     }
 
     const month = production_date.slice(0, 7);
-    const ptype = production_type || 'FINISHED';
 
     const client = await require('../db').getClient();
     try {
@@ -203,14 +208,19 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, n
         let daily_tariff = emp.rows[0].daily_tariff;
         let calculated_amount = 0;
 
+        // Ishlab chiqarish turi: STANOKCHI tayyor/yarim; DETALCHI doim yarim tayyor
+        let ptype = entry.production_type || 'FINISHED';
+        if (employee_type === 'DETALCHI') ptype = 'SEMI_FINISHED';
+
         if (entry.product_id) {
-          const prod = await query('SELECT stanokchi_rate, detalchi_rate FROM products WHERE id=$1', [entry.product_id]);
+          const prod = await query('SELECT stanokchi_rate, stanokchi_semi_rate, detalchi_rate FROM products WHERE id=$1', [entry.product_id]);
           const product = prod.rows[0] || {};
           if (employee_type === 'STANOKCHI') {
-            if (product.stanokchi_rate) daily_tariff = product.stanokchi_rate;
+            const rate = ptype === 'SEMI_FINISHED' ? product.stanokchi_semi_rate : product.stanokchi_rate;
+            daily_tariff = rate || 0;
             calculated_amount = entry.quantity_produced * daily_tariff;
           } else if (employee_type === 'DETALCHI') {
-            if (product.detalchi_rate) daily_tariff = product.detalchi_rate;
+            daily_tariff = product.detalchi_rate || 0;
             calculated_amount = entry.quantity_produced * daily_tariff;
           } else {
             calculated_amount = entry.quantity_produced * daily_tariff;
@@ -226,12 +236,10 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, n
           calculated_amount, month, notes: entry.notes,
         });
 
-        if (entry.production_type === 'SEMI_FINISHED' || entry.production_type === 'FINISHED') {
-          await client.query(
-            'UPDATE employee_production SET production_type=$1 WHERE id=$2',
-            [entry.production_type, production.id]
-          );
-        }
+        await client.query(
+          'UPDATE employee_production SET production_type=$1 WHERE id=$2',
+          [ptype, production.id]
+        );
 
         results.push(production);
       }

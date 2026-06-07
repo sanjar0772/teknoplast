@@ -191,15 +191,15 @@ router.put('/:id/stock', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), 
 // PUT /api/products/:id/pricing — Stanok, Detalchi narhi belgilash (bugalter/OWNER)
 router.put('/:id/pricing', requireRole('OWNER', 'ACCOUNTANT', 'PRODUCTION_HEAD'), async (req, res, next) => {
   try {
-    const { stanokchi_rate, detalchi_rate, cost_price } = req.body;
+    const { stanokchi_rate, stanokchi_semi_rate, detalchi_rate, cost_price } = req.body;
     const result = await query(
-      'UPDATE products SET stanokchi_rate=$1, detalchi_rate=$2, cost_price=$3, updated_at=NOW() WHERE id=$4 RETURNING *',
-      [stanokchi_rate || 0, detalchi_rate || 0, cost_price || 0, req.params.id]
+      'UPDATE products SET stanokchi_rate=$1, stanokchi_semi_rate=$2, detalchi_rate=$3, cost_price=$4, updated_at=NOW() WHERE id=$5 RETURNING *',
+      [stanokchi_rate || 0, stanokchi_semi_rate || 0, detalchi_rate || 0, cost_price || 0, req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Mahsulot topilmadi' });
     logAudit(req, {
       action: 'PRODUCT_PRICING_UPDATE', table: 'products', recordId: req.params.id,
-      newValues: { stanokchi_rate, detalchi_rate, cost_price },
+      newValues: { stanokchi_rate, stanokchi_semi_rate, detalchi_rate, cost_price },
     });
     res.json({ product: result.rows[0] });
   } catch (err) { next(err); }

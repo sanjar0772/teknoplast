@@ -46,25 +46,54 @@ export default function ProductionPage() {
 
   const [entries, setEntries] = useState([]);
 
-  const addEntry = () => {
-    setEntries(prev => [...prev, { employee_id: '', quantity_produced: 0, product_id: '' }]);
-  };
-
-  const updateEntry = (i, field, value) => {
-    setEntries(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: value } : e));
-  };
-
   const empMap = {};
   (employees?.employees || []).forEach(e => { empMap[e.id] = e; });
 
+  const prodMap = {};
+  (products?.products || []).forEach(p => { prodMap[p.id] = p; });
+
+  const addEntry = () => {
+    setEntries(prev => [...prev, { employee_id: '', quantity_produced: 0, product_id: '', production_type: 'FINISHED' }]);
+  };
+
+  const updateEntry = (i, field, value) => {
+    setEntries(prev => prev.map((e, idx) => {
+      if (idx !== i) return e;
+      const next = { ...e, [field]: value };
+      // Xodim turi o'zgarsa — ishlab chiqarish turini moslaymiz
+      if (field === 'employee_id') {
+        const emp = empMap[value];
+        if (emp?.type === 'DETALCHI') next.production_type = 'SEMI_FINISHED'; // detalchi doim yarim tayyor
+        else if (emp?.type === 'STANOKCHI' && !next.production_type) next.production_type = 'FINISHED';
+      }
+      return next;
+    }));
+  };
+
+  // Haq: stanokchi/detalchi mahsulot dona narxidan; boshqalar kunlik tarifdan
   const calcEarnings = (entry) => {
     const emp = empMap[entry.employee_id];
     if (!emp || !entry.quantity_produced) return 0;
-    return entry.quantity_produced * emp.daily_tariff;
+    const p = prodMap[entry.product_id];
+    if (emp.type === 'STANOKCHI') {
+      const rate = entry.production_type === 'SEMI_FINISHED' ? (p?.stanokchi_semi_rate || 0) : (p?.stanokchi_rate || 0);
+      return entry.quantity_produced * rate;
+    }
+    if (emp.type === 'DETALCHI') {
+      return entry.quantity_produced * (p?.detalchi_rate || 0);
+    }
+    return entry.quantity_produced * (emp.daily_tariff || 0);
   };
 
   const saveBulk = () => {
-    const valid = entries.filter(e => e.employee_id && e.quantity_produced > 0);
+    const valid = entries
+      .filter(e => e.employee_id && e.quantity_produced > 0)
+      .map(e => {
+        const emp = empMap[e.employee_id];
+        let production_type = e.production_type || 'FINISHED';
+        if (emp?.type === 'DETALCHI') production_type = 'SEMI_FINISHED';
+        return { ...e, production_type };
+      });
     if (!valid.length) return toast.error('Kamida bitta xodim kiritilsin');
     bulkMutation.mutate({ production_date: date, entries: valid });
   };
@@ -128,15 +157,16 @@ export default function ProductionPage() {
         <div className="table-container">
           <table className="table">
             <thead>
-              <tr><th>Xodim</th><th>Mahsulot</th><th>Miqdor</th><th>Tarif</th><th>Hisoblangan</th></tr>
+              <tr><th>Xodim</th><th>Mahsulot</th><th>Tur</th><th>Miqdor</th><th>Tarif</th><th>Hisoblangan</th></tr>
             </thead>
             <tbody>
               {!daily?.production?.length ? (
-                <tr><td colSpan={5} className="text-center py-6 text-gray-400">Bu kun uchun ma'lumot yo'q</td></tr>
+                <tr><td colSpan={6} className="text-center py-6 text-gray-400">Bu kun uchun ma'lumot yo'q</td></tr>
               ) : daily.production.map(row => (
                 <tr key={row.id}>
                   <td className="font-medium">{row.employee_name}</td>
                   <td>{row.product_name || '—'}</td>
+                  <td>{row.production_type === 'SEMI_FINISHED' ? 'Yarim tayyor' : row.production_type === 'FINISHED' ? 'Tayyor' : '—'}</td>
                   <td>{fmt(row.quantity_produced)} dona</td>
                   <td>{fmt(row.daily_tariff)} so'm/dona</td>
                   <td className="font-semibold text-green-700">{fmt(row.calculated_amount)} so'm</td>
@@ -162,20 +192,21 @@ export default function ProductionPage() {
             <div className="space-y-2">
               {/* Sarlavha */}
               <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 font-medium px-1">
-                <span className="col-span-4">Xodim</span>
-                <span className="col-span-3">Tayyor mahsulot</span>
+                <span className="col-span-3">Xodim</span>
+                <span className="col-span-3">Mahsulot</span>
+                <span className="col-span-2">Tur</span>
                 <span className="col-span-2">Dona</span>
-                <span className="col-span-2 text-green-600">Hisoblangan</span>
-                <span className="col-span-1"></span>
+                <span className="col-span-2 text-green-600 text-right">Hisoblangan</span>
               </div>
 
               {entries.map((entry, i) => {
                 const emp = empMap[entry.employee_id];
                 const isDetalchi = emp?.type === 'DETALCHI';
+                const isStanokchi = emp?.type === 'STANOKCHI';
                 const earned = calcEarnings(entry);
                 return (
                   <div key={i} className={`grid grid-cols-12 gap-2 items-center p-2 rounded-lg ${isDetalchi ? 'bg-orange-50 border border-orange-100' : 'bg-gray-50'}`}>
-                    <div className="col-span-4">
+                    <div className="col-span-3">
                       <select
                         value={entry.employee_id}
                         onChange={e => updateEntry(i, 'employee_id', e.target.value)}
@@ -188,9 +219,6 @@ export default function ProductionPage() {
                           </option>
                         ))}
                       </select>
-                      {isDetalchi && (
-                        <p className="text-xs text-orange-600 mt-0.5">Detalchi — mahsulot narhidan</p>
-                      )}
                     </div>
                     <div className="col-span-3">
                       <select
@@ -198,11 +226,27 @@ export default function ProductionPage() {
                         onChange={e => updateEntry(i, 'product_id', e.target.value)}
                         className="select text-sm w-full"
                       >
-                        <option value="">{isDetalchi ? 'Tayyor mahsulot' : 'Mahsulot'}</option>
+                        <option value="">Mahsulot</option>
                         {products?.products?.map(p => (
                           <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
                       </select>
+                    </div>
+                    <div className="col-span-2">
+                      {isStanokchi ? (
+                        <select
+                          value={entry.production_type || 'FINISHED'}
+                          onChange={e => updateEntry(i, 'production_type', e.target.value)}
+                          className="select text-sm w-full"
+                        >
+                          <option value="FINISHED">Tayyor</option>
+                          <option value="SEMI_FINISHED">Yarim tayyor</option>
+                        </select>
+                      ) : isDetalchi ? (
+                        <span className="text-xs text-orange-600">Yarim tayyor</span>
+                      ) : (
+                        <span className="text-xs text-gray-300">—</span>
+                      )}
                     </div>
                     <div className="col-span-2">
                       <input
@@ -213,15 +257,15 @@ export default function ProductionPage() {
                         className="input text-sm"
                       />
                     </div>
-                    <div className="col-span-2 text-right">
+                    <div className="col-span-2 flex items-center justify-end gap-1">
                       {earned > 0 && (
-                        <span className="text-sm font-semibold text-green-700">{fmt(earned)} so'm</span>
+                        <span className="text-sm font-semibold text-green-700">{fmt(earned)}</span>
                       )}
+                      <button
+                        onClick={() => setEntries(prev => prev.filter((_, idx) => idx !== i))}
+                        className="text-red-400 hover:text-red-600"
+                      ><X size={16} /></button>
                     </div>
-                    <button
-                      onClick={() => setEntries(prev => prev.filter((_, idx) => idx !== i))}
-                      className="col-span-1 text-red-400 hover:text-red-600 flex justify-center"
-                    ><X size={16} /></button>
                   </div>
                 );
               })}

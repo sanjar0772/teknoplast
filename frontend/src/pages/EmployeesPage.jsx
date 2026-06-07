@@ -222,18 +222,20 @@ export default function EmployeesPage() {
             <label className="label">Ismi *</label>
             <input {...register('name', { required: true })} className="input" placeholder="To'liq ismi" />
           </div>
-          <div className={watchedType === 'DETALCHI' ? '' : 'grid grid-cols-2 gap-3'}>
+          <div className={(watchedType === 'DETALCHI' || watchedType === 'STANOKCHI') ? '' : 'grid grid-cols-2 gap-3'}>
             <div>
               <label className="label">Turi *</label>
               <select {...register('type', { required: true })} className="select">
                 {Object.entries(TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
-            {watchedType === 'DETALCHI' ? (
+            {(watchedType === 'DETALCHI' || watchedType === 'STANOKCHI') ? (
               <>
                 <input type="hidden" {...register('daily_tariff')} value={0} />
                 <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-700">
-                  Detalchi haq to'lovi mahsulot narhidan hisoblanadi — "Mahsulotlar" sahifasida belgilanadi.
+                  {watchedType === 'STANOKCHI'
+                    ? 'Stanokchi haqi kunlik tarif emas — chiqargan mahsulotiga qarab (tayyor/yarim tayyor dona narxi). Narxlar "Mahsulotlar" sahifasida belgilanadi.'
+                    : 'Detalchi haqi mahsulot narxidan hisoblanadi (yarim tayyor dona narxi) — "Mahsulotlar" sahifasida belgilanadi.'}
                 </div>
               </>
             ) : (

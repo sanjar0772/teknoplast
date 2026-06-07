@@ -116,6 +116,8 @@ export const salariesAPI = {
   adjust: (id, data) => api.put(`/salaries/${id}/adjust`, data),
   approve: (id) => api.put(`/salaries/${id}/approve`),
   pay: (id) => api.put(`/salaries/${id}/pay`),
+  getPlan: (params) => api.get('/salaries/plan', { params }),
+  setPlan: (plan) => api.put('/salaries/plan', { plan }),
 };
 
 // Products

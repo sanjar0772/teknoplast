@@ -47,14 +47,67 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/salaries/calculate — Oylik hisoblash (TAX va SOCIAL SECURITY bilan)
+// Oylik savdo rejasini (bonus uchun) o'qish
+async function getPlanAmount() {
+  const r = await query("SELECT value FROM system_settings WHERE key='monthly_sales_plan'");
+  return r.rows.length ? (parseFloat(r.rows[0].value) || 0) : 0;
+}
+// Berilgan oy savdosi jami summasi
+async function getMonthSales(month) {
+  const r = await query(
+    "SELECT COALESCE(SUM(total_amount),0) total FROM sales WHERE TO_CHAR(sale_date,'YYYY-MM') = $1",
+    [month]
+  );
+  return parseFloat(r.rows[0]?.total || 0);
+}
+// Reja oshig'i (overage) ulushini hisoblash: savdo rejadan necha barobar oshgan
+function calcOverage(actual, plan) {
+  return (plan > 0 && actual > plan) ? (actual - plan) / plan : 0;
+}
+
+// GET /api/salaries/plan?month=YYYY-MM — joriy reja + savdo holati
+router.get('/plan', async (req, res, next) => {
+  try {
+    const month = req.query.month || new Date().toISOString().slice(0, 7);
+    const plan = await getPlanAmount();
+    const actual_sales = await getMonthSales(month);
+    const overage = calcOverage(actual_sales, plan);
+    res.json({
+      month, plan, actual_sales,
+      plan_met: plan > 0 && actual_sales >= plan,
+      overage_pct: Math.round(overage * 10000) / 100, // foizda, masalan 10.5
+    });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/salaries/plan — oylik savdo rejasini belgilash (faqat EGA)
+router.put('/plan', requireRole('OWNER'), async (req, res, next) => {
+  try {
+    const plan = Number(req.body.plan) || 0;
+    if (plan < 0) return res.status(400).json({ error: 'Reja manfiy bo\'lishi mumkin emas' });
+    await query(
+      "INSERT INTO system_settings (key, value, description) VALUES ('monthly_sales_plan', $1, 'Oylik savdo reja (bonus uchun)') " +
+      "ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=NOW()",
+      [String(plan)]
+    );
+    res.json({ success: true, plan });
+  } catch (err) { next(err); }
+});
+
+// POST /api/salaries/calculate — Oylik hisoblash (TAX, SOCIAL + REJA BONUSI bilan)
 router.post('/calculate', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, next) => {
   try {
     const { month, tax_rate = 0.05, social_rate = 0.03 } = req.body;
     if (!month) return res.status(400).json({ error: 'Oy kiritilmagan (YYYY-MM)' });
 
+    // REJA BONUSI: oy savdosi rejadan oshsa — oshgan foiz (overage) hisoblanadi.
+    // Bonus oylik/foizli xodimlarga beriladi (stanokchi/detalchi — dona haqi, kirmaydi).
+    const plan = await getPlanAmount();
+    const actualSales = await getMonthSales(month);
+    const overage = calcOverage(actualSales, plan); // 0.10 = savdo rejadan 10% oshgan
+
     const employees = await query(
-      'SELECT id, salary_type, monthly_salary FROM employees WHERE is_active = true'
+      'SELECT id, salary_type, monthly_salary, salary_percent FROM employees WHERE is_active = true'
     );
 
     const results = [];
@@ -70,38 +123,52 @@ router.post('/calculate', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, n
       `, [emp.id, month]);
 
       let total_calculated = parseFloat(prod.rows[0]?.total_earned || 0);
-      // Belgilangan oylik (FIXED) — ishlab chiqarish haqidan tashqari qo'shiladi.
-      // PERCENT (foiz) — asosi noaniq (savdo/foyda) bo'lgani uchun bu yerda
-      // qo'shilmaydi; buxgalter bonus/qo'lda kiritadi.
+      let salaryBase = 0; // reja bonusi shu asosga hisoblanadi
       if (emp.salary_type === 'FIXED' && emp.monthly_salary) {
-        total_calculated += parseFloat(emp.monthly_salary) || 0;
+        // Belgilangan oylik
+        salaryBase = parseFloat(emp.monthly_salary) || 0;
+        total_calculated += salaryBase;
+      } else if (emp.salary_type === 'PERCENT' && emp.salary_percent) {
+        // Foizli xodim: oy savdosining shu foizi (savdo oshsa puli ham oshadi)
+        salaryBase = Math.round(actualSales * (parseFloat(emp.salary_percent) || 0) / 100);
+        total_calculated += salaryBase;
       }
       const work_days = parseInt(prod.rows[0]?.work_days || 0);
       const total_produced = parseInt(prod.rows[0]?.total_produced || 0);
 
-      // Soliq va ijtimoiy sug'urta hisoblash
+      // Reja bonusi: faqat oylik/foizli xodimlarga (salaryBase>0) va savdo rejadan oshsa
+      const bonuses = salaryBase > 0 ? Math.round(salaryBase * overage) : 0;
+
+      // Soliq va ijtimoiy sug'urta (bonusgacha bo'lgan summadan)
       const tax_amount = Math.round(total_calculated * tax_rate);
       const social_security = Math.round(total_calculated * social_rate);
-      const net_amount = total_calculated - tax_amount - social_security;
+      const net_amount = total_calculated - tax_amount - social_security + bonuses;
 
       const r = await query(
-        `INSERT INTO salaries (employee_id, month, total_calculated, tax_amount, social_security, work_days, total_produced, net_amount, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'CALCULATED')
+        `INSERT INTO salaries (employee_id, month, total_calculated, tax_amount, social_security, work_days, total_produced, bonuses, net_amount, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'CALCULATED')
          ON CONFLICT (employee_id, month)
-         DO UPDATE SET total_calculated=$3, tax_amount=$4, social_security=$5, work_days=$6, total_produced=$7, net_amount=$8, status='CALCULATED', updated_at=NOW()
+         DO UPDATE SET total_calculated=$3, tax_amount=$4, social_security=$5, work_days=$6, total_produced=$7, bonuses=$8, net_amount=$9, status='CALCULATED', updated_at=NOW()
          RETURNING *`,
-        [emp.id, month, total_calculated, tax_amount, social_security, work_days, total_produced, net_amount]
+        [emp.id, month, total_calculated, tax_amount, social_security, work_days, total_produced, bonuses, net_amount]
       );
       results.push(r.rows[0]);
     }
 
+    const overagePct = Math.round(overage * 10000) / 100;
+    const planMsg = overage > 0
+      ? ` · Reja ${overagePct}% ga oshdi — bonus qo'shildi`
+      : (plan > 0 ? ' · Reja bajarilmadi (bonus yo\'q)' : '');
+
     res.json({
-      message: `${results.length} xodim oylik hisoblandi`,
+      message: `${results.length} xodim oylik hisoblandi${planMsg}`,
       salaries: results,
+      plan: { plan, actual_sales: actualSales, overage_pct: overagePct },
       summary: {
         total_employees: results.length,
         total_gross: results.reduce((s, r) => s + (r.total_calculated || 0), 0),
         total_tax: results.reduce((s, r) => s + (r.tax_amount || 0), 0),
+        total_bonus: results.reduce((s, r) => s + (r.bonuses || 0), 0),
         total_net: results.reduce((s, r) => s + (r.net_amount || 0), 0)
       }
     });

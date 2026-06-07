@@ -153,13 +153,13 @@ export default function EmployeesPage() {
       <div className="table-container">
         <table className="table">
           <thead>
-            <tr><th>Ismi</th><th>Turi</th><th>Smena</th><th>Kunlik tarif</th><th>Telefon</th><th>Yollangan sana</th><th>Holat</th>{canWrite && <th>Amal</th>}</tr>
+            <tr><th>Ismi</th><th>Turi</th><th>Smena</th><th>Telefon</th><th>Yollangan sana</th><th>Holat</th>{canWrite && <th>Amal</th>}</tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={8} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
+              <tr><td colSpan={7} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
             ) : !data?.employees?.length ? (
-              <tr><td colSpan={8} className="text-center py-8 text-gray-400">
+              <tr><td colSpan={7} className="text-center py-8 text-gray-400">
                 <Users size={32} className="mx-auto mb-2 opacity-30" /><br />Xodim topilmadi
               </td></tr>
             ) : data.employees.map(emp => (
@@ -172,12 +172,6 @@ export default function EmployeesPage() {
                         {SHIFTS[emp.shift] || emp.shift || '1-Smena'}
                       </span>
                     : <span className="text-gray-400">—</span>
-                  }
-                </td>
-                <td>
-                  {emp.type === 'DETALCHI'
-                    ? <span className="text-gray-400 text-xs">Mahsulot narhidan</span>
-                    : <>{fmt(emp.daily_tariff)} so'm <span className="text-xs text-gray-400">/kun</span></>
                   }
                 </td>
                 <td>{emp.phone || '—'}</td>
@@ -222,27 +216,16 @@ export default function EmployeesPage() {
             <label className="label">Ismi *</label>
             <input {...register('name', { required: true })} className="input" placeholder="To'liq ismi" />
           </div>
-          <div className={(watchedType === 'DETALCHI' || watchedType === 'STANOKCHI') ? '' : 'grid grid-cols-2 gap-3'}>
-            <div>
-              <label className="label">Turi *</label>
-              <select {...register('type', { required: true })} className="select">
-                {Object.entries(TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-            </div>
-            {(watchedType === 'DETALCHI' || watchedType === 'STANOKCHI') ? (
-              <>
-                <input type="hidden" {...register('daily_tariff')} value={0} />
-                <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-700">
-                  {watchedType === 'STANOKCHI'
-                    ? 'Stanokchi haqi kunlik tarif emas — chiqargan mahsulotiga qarab (tayyor/yarim tayyor dona narxi). Narxlar "Mahsulotlar" sahifasida belgilanadi.'
-                    : 'Detalchi haqi mahsulot narxidan hisoblanadi (yarim tayyor dona narxi) — "Mahsulotlar" sahifasida belgilanadi.'}
-                </div>
-              </>
-            ) : (
-              <div>
-                <label className="label">Kunlik tarif *</label>
-                <input {...register('daily_tariff', { required: true, min: 0 })} type="number" className="input"
-                  placeholder="Kunlik so'm" />
+          <div>
+            <label className="label">Turi *</label>
+            <select {...register('type', { required: true })} className="select">
+              {Object.entries(TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            {(watchedType === 'STANOKCHI' || watchedType === 'DETALCHI') && (
+              <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-700">
+                {watchedType === 'STANOKCHI'
+                  ? 'Stanokchi haqi chiqargan mahsulotiga qarab (tayyor/yarim tayyor dona narxi) — "Mahsulotlar" sahifasida belgilanadi.'
+                  : 'Detalchi haqi mahsulot dona narxidan (yarim tayyor) — "Mahsulotlar" sahifasida belgilanadi.'}
               </div>
             )}
           </div>

@@ -364,17 +364,16 @@ const WRITE_TOOLS = [
   },
   {
     name: 'add_employee',
-    description: 'Yangi xodim qo\'shish. "Sarvar Toshmatov stanokchi 1-smena kunlik 50000 so\'m".',
+    description: 'Yangi xodim qo\'shish. "Sarvar Toshmatov stanokchi 1-smena". Kunlik tarif YO\'Q — haq mahsulot/maosh orqali.',
     input_schema: {
       type: 'object',
       properties: {
         name: { type: 'string', description: 'To\'liq ismi' },
         type: { type: 'string', enum: ['STANOKCHI', 'DETALCHI', 'ISHCHI', 'OSHPAZ', 'SHOFIR', 'BOSHQA'], description: 'Xodim turi' },
         shift: { type: 'string', enum: ['1-SMENA', '2-SMENA'], description: 'Smena (STANOKCHI uchun)' },
-        daily_tariff: { type: 'number', description: 'Kunlik tarif so\'mda' },
         phone: { type: 'string', description: 'Telefon (ixtiyoriy)' },
       },
-      required: ['name', 'type', 'daily_tariff'],
+      required: ['name', 'type'],
     },
   },
   {
@@ -711,8 +710,8 @@ MUHIM: *, #, emoji, markdown ishlatmang — faqat toza matn (ovozda o\'qiladi).`
         shift: inp.shift || '1-SMENA', daily_tariff: inp.daily_tariff || 0, phone: inp.phone || null,
       }};
       desc = lang === 'ru'
-        ? `Добавить сотрудника: ${inp.name} — ${TYPE_LABEL[inp.type] || inp.type}${inp.type === 'STANOKCHI' ? ', смена ' + (inp.shift || '1-SMENA') : ''}, тариф ${fmt(inp.daily_tariff)} сум`
-        : `Xodim qo'shish: ${inp.name} — ${TYPE_LABEL[inp.type] || inp.type}${inp.type === 'STANOKCHI' ? ', smena ' + (inp.shift || '1-SMENA') : ''}, tarif ${fmt(inp.daily_tariff)} so'm`;
+        ? `Добавить сотрудника: ${inp.name} — ${TYPE_LABEL[inp.type] || inp.type}${inp.type === 'STANOKCHI' ? ', смена ' + (inp.shift || '1-SMENA') : ''}`
+        : `Xodim qo'shish: ${inp.name} — ${TYPE_LABEL[inp.type] || inp.type}${inp.type === 'STANOKCHI' ? ', smena ' + (inp.shift || '1-SMENA') : ''}`;
     } else if (toolBlock.name === 'remove_employee') {
       const empR = await query(
         "SELECT id, name FROM employees WHERE LOWER(name) LIKE LOWER($1) AND is_active=1 LIMIT 1",

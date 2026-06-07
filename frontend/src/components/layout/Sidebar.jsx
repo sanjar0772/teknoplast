@@ -1,10 +1,14 @@
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import {
   LayoutDashboard, ShoppingCart, Receipt, Users, Factory,
   Banknote, Package, Warehouse, Cog, FileBarChart, Bot,
-  LogOut, ChevronRight, UserSquare2, Zap, Sheet, Wallet, ShieldCheck, PackagePlus, Truck
+  LogOut, ChevronRight, UserSquare2, Zap, Sheet, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
+import { authAPI } from '../../services/api';
 import clsx from 'clsx';
 
 const ROLE_LABELS = {
@@ -41,6 +45,23 @@ export default function Sidebar() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
 
+  const [showPwd, setShowPwd] = useState(false);
+  const [pwd, setPwd] = useState({ old_password: '', new_password: '', confirm: '' });
+  const pwdMutation = useMutation({
+    mutationFn: (d) => authAPI.changePassword(d),
+    onSuccess: () => {
+      toast.success('Parol o\'zgartirildi');
+      setShowPwd(false);
+      setPwd({ old_password: '', new_password: '', confirm: '' });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || e.response?.data?.errors?.[0]?.msg || 'Xato'),
+  });
+  const submitPwd = () => {
+    if (pwd.new_password.length < 6) return toast.error('Yangi parol kamida 6 belgi');
+    if (pwd.new_password !== pwd.confirm) return toast.error('Parollar mos kelmadi');
+    pwdMutation.mutate({ old_password: pwd.old_password, new_password: pwd.new_password });
+  };
+
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -51,6 +72,7 @@ export default function Sidebar() {
   );
 
   return (
+    <>
     <aside className="w-64 h-screen bg-white border-r border-gray-200 flex flex-col fixed left-0 top-0 z-30">
       {/* Logo */}
       <div className="px-6 py-5 border-b border-gray-100">
@@ -97,6 +119,13 @@ export default function Sidebar() {
           </div>
         </div>
         <button
+          onClick={() => setShowPwd(true)}
+          className="sidebar-link w-full text-gray-600 hover:bg-gray-100 mb-1"
+        >
+          <KeyRound size={16} />
+          <span>Parolni o'zgartirish</span>
+        </button>
+        <button
           onClick={handleLogout}
           className="sidebar-link w-full text-red-600 hover:bg-red-50 hover:text-red-700"
         >
@@ -105,5 +134,43 @@ export default function Sidebar() {
         </button>
       </div>
     </aside>
+
+    {/* Parolni o'zgartirish oynasi */}
+    {showPwd && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/50" onClick={() => setShowPwd(false)} />
+        <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-gray-900">Parolni o'zgartirish</h3>
+            <button onClick={() => setShowPwd(false)}><X size={20} className="text-gray-400" /></button>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <label className="label">Eski parol</label>
+              <input type="password" value={pwd.old_password}
+                onChange={e => setPwd(p => ({ ...p, old_password: e.target.value }))} className="input" />
+            </div>
+            <div>
+              <label className="label">Yangi parol (kamida 6 belgi)</label>
+              <input type="password" value={pwd.new_password}
+                onChange={e => setPwd(p => ({ ...p, new_password: e.target.value }))} className="input" />
+            </div>
+            <div>
+              <label className="label">Yangi parolni takrorlang</label>
+              <input type="password" value={pwd.confirm}
+                onChange={e => setPwd(p => ({ ...p, confirm: e.target.value }))} className="input"
+                onKeyDown={e => e.key === 'Enter' && submitPwd()} />
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setShowPwd(false)} className="btn-secondary flex-1">Bekor</button>
+              <button onClick={submitPwd} disabled={pwdMutation.isPending} className="btn-primary flex-1">
+                {pwdMutation.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

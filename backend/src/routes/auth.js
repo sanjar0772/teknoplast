@@ -1,11 +1,19 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
+
+// Kuchli vaqtinchalik parol (chalkash belgilarsiz: 0/O, 1/l/I yo'q)
+function genTempPassword() {
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ', lc = 'abcdefghijkmnpqrstuvwxyz', nn = '23456789';
+  const pick = s => s[crypto.randomInt(s.length)];
+  return pick(A) + pick(A) + pick(lc) + pick(lc) + pick(nn) + pick(nn) + pick(nn) + pick(nn);
+}
 
 // POST /api/auth/login
 router.post('/login', [
@@ -156,6 +164,25 @@ router.put('/users/:id/toggle', authenticate, async (req, res, next) => {
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
     res.json({ user: result.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/auth/users/:id/reset-password (faqat OWNER) — yangi vaqtinchalik parol beradi
+router.put('/users/:id/reset-password', authenticate, async (req, res, next) => {
+  try {
+    if (req.user.role !== 'OWNER') {
+      return res.status(403).json({ error: 'Faqat ega parolni tiklay oladi' });
+    }
+    const u = await query('SELECT id, full_name, phone FROM users WHERE id = $1', [req.params.id]);
+    if (!u.rows.length) return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
+
+    const tempPass = genTempPassword();
+    const hash = await bcrypt.hash(tempPass, 10);
+    await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [hash, req.params.id]);
+
+    res.json({ success: true, full_name: u.rows[0].full_name, phone: u.rows[0].phone, temp_password: tempPass });
   } catch (err) {
     next(err);
   }

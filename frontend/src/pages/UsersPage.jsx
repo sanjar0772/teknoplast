@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, UserCheck, UserX, Shield } from 'lucide-react';
+import { Plus, X, UserCheck, UserX, Shield, KeyRound, Copy } from 'lucide-react';
 import { authAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -36,6 +36,7 @@ export default function UsersPage() {
   const { user: me } = useAuthStore();
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [resetResult, setResetResult] = useState(null); // { full_name, phone, temp_password }
   const { register, handleSubmit, reset, formState: { errors } } = useForm();
 
   const { data, isLoading } = useQuery({
@@ -60,6 +61,12 @@ export default function UsersPage() {
       toast.success('Holat o\'zgartirildi');
       qc.invalidateQueries({ queryKey: ['users'] });
     },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: (id) => authAPI.resetPassword(id).then(r => r.data),
+    onSuccess: (data) => setResetResult(data),
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
@@ -103,14 +110,26 @@ export default function UsersPage() {
                     {u.last_login ? new Date(u.last_login).toLocaleString('uz-UZ') : '—'}
                   </td>
                   <td>
-                    {!isMe && (
+                    <div className="flex gap-1">
                       <button
-                        onClick={() => toggleMutation.mutate(u.id)}
-                        className={u.is_active ? 'btn-danger btn-sm' : 'btn-success btn-sm'}
-                      >
-                        {u.is_active ? <><UserX size={12} /> Bloklash</> : <><UserCheck size={12} /> Faollashtirish</>}
+                        onClick={() => {
+                          if (window.confirm(`${u.full_name} uchun yangi vaqtinchalik parol yaratilsinmi?`))
+                            resetMutation.mutate(u.id);
+                        }}
+                        disabled={resetMutation.isPending}
+                        title="Parolni tiklash"
+                        className="btn-secondary btn-sm">
+                        <KeyRound size={12} /> Parol tiklash
                       </button>
-                    )}
+                      {!isMe && (
+                        <button
+                          onClick={() => toggleMutation.mutate(u.id)}
+                          className={u.is_active ? 'btn-danger btn-sm' : 'btn-success btn-sm'}
+                        >
+                          {u.is_active ? <><UserX size={12} /> Bloklash</> : <><UserCheck size={12} /> Faollashtirish</>}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -147,6 +166,29 @@ export default function UsersPage() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Parol tiklash natijasi */}
+      <Modal open={!!resetResult} onClose={() => setResetResult(null)} title="Yangi parol yaratildi">
+        {resetResult && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              <strong>{resetResult.full_name}</strong> uchun yangi vaqtinchalik parol:
+            </p>
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg p-3">
+              <code className="flex-1 text-lg font-bold tracking-wider text-indigo-700">{resetResult.temp_password}</code>
+              <button
+                onClick={() => { navigator.clipboard?.writeText(resetResult.temp_password); toast.success('Nusxa olindi'); }}
+                className="btn-secondary btn-sm" title="Nusxa olish">
+                <Copy size={14} />
+              </button>
+            </div>
+            <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800">
+              ⚠️ Bu parolni xodimga bering ({resetResult.phone}). U kirgach o'z parolini o'zgartirsin. Parol qayta ko'rsatilmaydi.
+            </div>
+            <button onClick={() => setResetResult(null)} className="btn-primary w-full">Tushunarli</button>
+          </div>
+        )}
       </Modal>
     </div>
   );

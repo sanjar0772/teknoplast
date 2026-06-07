@@ -95,6 +95,10 @@ export default function SmartProductsPage() {
     gridRef.current.api.exportDataAsCsv({
       fileName: `mahsulotlar-${new Date().toISOString().slice(0,10)}.csv`,
       columnKeys: ['base_name', 'razmer', 'rang', 'stock_quantity', 'price'],
+      processCellCallback: (params) => {
+        if (params.column.getColId() === 'base_name') return params.node?.data?.base_name || params.node?.data?.name || '';
+        return params.value;
+      },
     });
   };
 
@@ -110,6 +114,18 @@ export default function SmartProductsPage() {
     return p.value;
   };
 
+  // Mahsulot nomi: base_name bo'lsa uni, bo'lmasa to'liq `name`ni ko'rsatamiz.
+  // (kirill/PDF orqali qo'shilgan mahsulotlarda base_name=null — aks holda ustun bo'sh ko'rinardi)
+  const nameRenderer = (p) => {
+    const display = p.data?.base_name || p.data?.name || '';
+    // faqat haqiqiy base_name guruhlari takrorlanmaydi; base_name yo'q bo'lsa to'liq ko'rsatamiz
+    if (p.data?.base_name && p.node.rowIndex != null && p.api) {
+      const prev = p.api.getDisplayedRowAtIndex(p.node.rowIndex - 1);
+      if (prev?.data?.base_name && prev.data.base_name === p.data.base_name) return '';
+    }
+    return display;
+  };
+
   const columnDefs = useMemo(() => [
     {
       headerCheckboxSelection: true, checkboxSelection: true,
@@ -118,7 +134,9 @@ export default function SmartProductsPage() {
     {
       field: 'base_name', headerName: 'Mahsulot nomi', minWidth: 220, flex: 2,
       editable: true, filter: 'agTextColumnFilter',
-      cellRenderer: groupRenderer(['base_name']),
+      cellRenderer: nameRenderer,
+      getQuickFilterText: p => p.data.base_name || p.data.name || '',
+      filterValueGetter: p => p.data.base_name || p.data.name || '',
       cellStyle: { fontWeight: 600, color: '#111827' },
     },
     {

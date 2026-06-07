@@ -241,7 +241,7 @@ const READ_TOOLS = [
     input_schema: {
       type: 'object',
       properties: {
-        type: { type: 'string', enum: ['STANOKCHI', 'DETALCHI', 'ISHCHI', 'OSHPAZ', 'SHOFIR', 'BOSHQA'] },
+        type: { type: 'string', enum: ['STANOKCHI', 'DETALCHI', 'ISHCHI', 'OSHPAZ', 'SHOFIR', 'BUGALTER', 'SIFAT', 'CALL_CENTER', 'YORDAMCHI', 'DROBILKA', 'ELEKTRIK', 'USTA', 'OHRANA', 'SKLAD', 'TEHNOLOG', 'MARKETING', 'BOSHQA'] },
         shift: { type: 'string', enum: ['1-SMENA', '2-SMENA'] },
       },
     },
@@ -369,7 +369,7 @@ const WRITE_TOOLS = [
       type: 'object',
       properties: {
         name: { type: 'string', description: 'To\'liq ismi' },
-        type: { type: 'string', enum: ['STANOKCHI', 'DETALCHI', 'ISHCHI', 'OSHPAZ', 'SHOFIR', 'BOSHQA'], description: 'Xodim turi' },
+        type: { type: 'string', enum: ['STANOKCHI', 'DETALCHI', 'ISHCHI', 'OSHPAZ', 'SHOFIR', 'BUGALTER', 'SIFAT', 'CALL_CENTER', 'YORDAMCHI', 'DROBILKA', 'ELEKTRIK', 'USTA', 'OHRANA', 'SKLAD', 'TEHNOLOG', 'MARKETING', 'BOSHQA'], description: 'Xodim turi' },
         shift: { type: 'string', enum: ['1-SMENA', '2-SMENA'], description: 'Smena (STANOKCHI uchun)' },
         phone: { type: 'string', description: 'Telefon (ixtiyoriy)' },
       },
@@ -567,7 +567,7 @@ MUHIM: *, #, emoji, markdown ishlatmang — faqat toza matn (ovozda o\'qiladi).`
       const emps = await query(sql, params);
       if (!emps.rows.length) return res.json({ response: lang === 'ru' ? 'Сотрудники не найдены.' : 'Xodimlar topilmadi.' });
       const SHIFT_LABEL = { '1-SMENA': '1-Smena', '2-SMENA': '2-Smena' };
-      const TYPE_LABEL = { STANOKCHI: 'Stanokchi', DETALCHI: 'Detalchi', ISHCHI: 'Ishchi', OSHPAZ: 'Oshpaz', SHOFIR: 'Shofir', BOSHQA: 'Boshqa' };
+      const TYPE_LABEL = { STANOKCHI: 'Stanokchi', DETALCHI: 'Detalchi', ISHCHI: 'Ishchi', OSHPAZ: 'Oshpaz', SHOFIR: 'Shofir', BUGALTER: 'Bugalter', SIFAT: 'Sifat nazorati', CALL_CENTER: 'Call center', YORDAMCHI: 'Yordamchi', DROBILKA: 'Drobilka', ELEKTRIK: 'Elektrik', USTA: 'Usta', OHRANA: 'Ohrana', SKLAD: 'Sklad', TEHNOLOG: 'Tehnolog', MARKETING: 'Marketing', BOSHQA: 'Boshqa' };
       const list = emps.rows.map(e => {
         const shift = e.type === 'STANOKCHI' ? ` (${SHIFT_LABEL[e.shift] || e.shift})` : '';
         return `${e.name} — ${TYPE_LABEL[e.type] || e.type}${shift}`;
@@ -704,7 +704,7 @@ MUHIM: *, #, emoji, markdown ishlatmang — faqat toza matn (ovozda o\'qiladi).`
       if (exists.rows.length) {
         return res.json({ response: lang === 'ru' ? `Сотрудник "${inp.name}" уже существует.` : `"${inp.name}" xodim allaqachon mavjud.` });
       }
-      const TYPE_LABEL = { STANOKCHI: 'Stanokchi', DETALCHI: 'Detalchi', ISHCHI: 'Ishchi', OSHPAZ: 'Oshpaz', SHOFIR: 'Shofir', BOSHQA: 'Boshqa' };
+      const TYPE_LABEL = { STANOKCHI: 'Stanokchi', DETALCHI: 'Detalchi', ISHCHI: 'Ishchi', OSHPAZ: 'Oshpaz', SHOFIR: 'Shofir', BUGALTER: 'Bugalter', SIFAT: 'Sifat nazorati', CALL_CENTER: 'Call center', YORDAMCHI: 'Yordamchi', DROBILKA: 'Drobilka', ELEKTRIK: 'Elektrik', USTA: 'Usta', OHRANA: 'Ohrana', SKLAD: 'Sklad', TEHNOLOG: 'Tehnolog', MARKETING: 'Marketing', BOSHQA: 'Boshqa' };
       action = { type: 'ADD_EMPLOYEE', data: {
         name: inp.name, type: inp.type || 'ISHCHI',
         shift: inp.shift || '1-SMENA', daily_tariff: inp.daily_tariff || 0, phone: inp.phone || null,

@@ -54,12 +54,12 @@ router.post('/calculate', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, n
     if (!month) return res.status(400).json({ error: 'Oy kiritilmagan (YYYY-MM)' });
 
     const employees = await query(
-      'SELECT id FROM employees WHERE is_active = true'
+      'SELECT id, salary_type, monthly_salary FROM employees WHERE is_active = true'
     );
 
     const results = [];
     for (const emp of employees.rows) {
-      // Ishlab chiqarilgan miqdor va kun-sanab
+      // Ishlab chiqarilgan miqdor va kun-sanab (STANOKCHI/DETALCHI — dona haqi)
       const prod = await query(`
         SELECT
           COALESCE(SUM(calculated_amount), 0) as total_earned,
@@ -69,7 +69,13 @@ router.post('/calculate', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, n
         WHERE employee_id = $1 AND month = $2
       `, [emp.id, month]);
 
-      const total_calculated = parseFloat(prod.rows[0]?.total_earned || 0);
+      let total_calculated = parseFloat(prod.rows[0]?.total_earned || 0);
+      // Belgilangan oylik (FIXED) — ishlab chiqarish haqidan tashqari qo'shiladi.
+      // PERCENT (foiz) — asosi noaniq (savdo/foyda) bo'lgani uchun bu yerda
+      // qo'shilmaydi; buxgalter bonus/qo'lda kiritadi.
+      if (emp.salary_type === 'FIXED' && emp.monthly_salary) {
+        total_calculated += parseFloat(emp.monthly_salary) || 0;
+      }
       const work_days = parseInt(prod.rows[0]?.work_days || 0);
       const total_produced = parseInt(prod.rows[0]?.total_produced || 0);
 

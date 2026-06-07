@@ -7,8 +7,16 @@ import { employeesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
-const TYPES = { STANOKCHI: 'Stanokchi', DETALCHI: 'Detalchi', ISHCHI: 'Ishchi', OSHPAZ: 'Oshpaz', SHOFIR: 'Shofir', BOSHQA: 'Boshqa' };
+const TYPES = {
+  STANOKCHI: 'Stanokchi', DETALCHI: 'Detalchi', ISHCHI: 'Ishchi', OSHPAZ: 'Oshpaz', SHOFIR: 'Shofir',
+  BUGALTER: 'Bugalter', SIFAT: 'Sifat nazorati', CALL_CENTER: 'Call center', YORDAMCHI: 'Yordamchi',
+  DROBILKA: 'Drobilka', ELEKTRIK: 'Elektrik', USTA: 'Usta', OHRANA: 'Ohrana', SKLAD: 'Sklad',
+  TEHNOLOG: 'Tehnolog', MARKETING: 'Marketing', BOSHQA: 'Boshqa',
+};
 const SHIFTS = { '1-SMENA': '1-Smena', '2-SMENA': '2-Smena' };
+// STANOKCHI/DETALCHI — dona haqi (mahsulotga bog'liq). Qolganlari — oylik (belgilangan yoki foiz).
+const PIECE_RATE = ['STANOKCHI', 'DETALCHI'];
+const isPieceRate = (t) => PIECE_RATE.includes(t);
 
 function Modal({ open, onClose, title, children }) {
   if (!open) return null;
@@ -55,9 +63,10 @@ export default function EmployeesPage() {
 
   const { register, handleSubmit, reset, setValue, watch } = useForm();
   const watchedType = watch('type');
+  const watchedSalaryType = watch('salary_type');
 
   const openCreate = () => {
-    reset({ type: 'STANOKCHI', shift: '1-SMENA', hire_date: new Date().toISOString().slice(0, 10) });
+    reset({ type: 'STANOKCHI', shift: '1-SMENA', salary_type: 'FIXED', monthly_salary: '', salary_percent: '', hire_date: new Date().toISOString().slice(0, 10) });
     setEditEmployee(null);
     setShowModal(true);
   };
@@ -128,9 +137,9 @@ export default function EmployeesPage() {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        {Object.entries(TYPES).map(([key, label]) => (
+      {/* Stats — faqat xodimi bor turlar ko'rsatiladi */}
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+        {Object.entries(TYPES).filter(([key]) => (typeCount[key] || 0) > 0).map(([key, label]) => (
           <div key={key} className="card-sm text-center">
             <p className="text-2xl font-bold text-blue-600">{typeCount[key] || 0}</p>
             <p className="text-xs text-gray-500">{label}</p>
@@ -159,13 +168,13 @@ export default function EmployeesPage() {
       <div className="table-container">
         <table className="table">
           <thead>
-            <tr><th>Ismi</th><th>Turi</th><th>Smena</th><th>Telefon</th><th>Yollangan sana</th><th>Holat</th>{canWrite && <th>Amal</th>}</tr>
+            <tr><th>Ismi</th><th>Turi</th><th>Smena</th><th>Oylik / Haq</th><th>Telefon</th><th>Yollangan sana</th><th>Holat</th>{canWrite && <th>Amal</th>}</tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={7} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
+              <tr><td colSpan={8} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
             ) : !data?.employees?.length ? (
-              <tr><td colSpan={7} className="text-center py-8 text-gray-400">
+              <tr><td colSpan={8} className="text-center py-8 text-gray-400">
                 <Users size={32} className="mx-auto mb-2 opacity-30" /><br />Xodim topilmadi
               </td></tr>
             ) : data.employees.map(emp => (
@@ -178,6 +187,16 @@ export default function EmployeesPage() {
                         {SHIFTS[emp.shift] || emp.shift || '1-Smena'}
                       </span>
                     : <span className="text-gray-400">—</span>
+                  }
+                </td>
+                <td>
+                  {isPieceRate(emp.type)
+                    ? <span className="text-xs text-orange-600">Dona haqi</span>
+                    : emp.salary_type === 'PERCENT'
+                      ? <span className="badge bg-emerald-100 text-emerald-800">{emp.salary_percent || 0}%</span>
+                      : (emp.monthly_salary > 0
+                          ? <span className="font-medium">{fmt(emp.monthly_salary)} so'm</span>
+                          : <span className="text-gray-400">—</span>)
                   }
                 </td>
                 <td>{emp.phone || '—'}</td>
@@ -246,6 +265,30 @@ export default function EmployeesPage() {
           )}
           {watchedType !== 'STANOKCHI' && watchedType && (
             <input type="hidden" {...register('shift')} value="" />
+          )}
+          {/* Oylik — faqat dona haqi bo'lmagan turlar uchun (Bugalter, Sifat, Marketing, ...) */}
+          {watchedType && !isPieceRate(watchedType) && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg space-y-3">
+              <div>
+                <label className="label">Oylik turi</label>
+                <select {...register('salary_type')} className="select">
+                  <option value="FIXED">Belgilangan oylik (so'm)</option>
+                  <option value="PERCENT">Foiz (%)</option>
+                </select>
+              </div>
+              {watchedSalaryType === 'PERCENT' ? (
+                <div>
+                  <label className="label">Foiz (%)</label>
+                  <input {...register('salary_percent')} type="number" step="0.1" min="0" className="input" placeholder="Masalan: 5" />
+                  <p className="text-xs text-emerald-700 mt-1">Foiz qiymati saqlanadi; summasi buxgalter tomonidan oylik hisoblashda qo'llanadi.</p>
+                </div>
+              ) : (
+                <div>
+                  <label className="label">Oylik (so'm)</label>
+                  <input {...register('monthly_salary')} type="number" min="0" className="input" placeholder="Masalan: 3000000" />
+                </div>
+              )}
+            </div>
           )}
           <div className="grid grid-cols-2 gap-3">
             <div>

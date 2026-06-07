@@ -176,6 +176,7 @@ if (USE_PG) {
       createSchema();          // Yangi jadvallarni qo'shadi (IF NOT EXISTS)
       runMigrations();         // Mavjud jadvallarga yangi ustun qo'shadi
       fixEmployeesConstraint(); // DETALCHI constraint ni tuzatadi
+      relaxEmployeesTypeConstraint(); // type CHECK ni olib tashlaydi (yangi turlar uchun)
       saveDBSync();
     } else {
       _db = new SQL.Database();
@@ -251,7 +252,11 @@ if (USE_PG) {
       const result = _db.exec("SELECT sql FROM sqlite_master WHERE type='table' AND name='employees'");
       if (!result || !result[0]) return;
       const tableSql = result[0].values[0][0];
-      if (tableSql.includes("'DETALCHI'")) return; // already fixed
+      // MUHIM: faqat ESKI (DETALCHI'siz) type CHECK bo'lsa qayta quramiz.
+      // CHECK butunlay olib tashlangan bo'lsa (relaxEmployeesTypeConstraint), bu yerga
+      // kirmaymiz — aks holda salaries/employee_production har restartda o'chib ketardi.
+      const hasTypeCheck = /CHECK\s*\(\s*type\s+IN/i.test(tableSql);
+      if (!hasTypeCheck || tableSql.includes("'DETALCHI'")) return; // cheklov yo'q yoki allaqachon tuzatilgan
 
       console.log('🔧 Employees jadvalini DETALCHI bilan yangilash...');
 
@@ -339,6 +344,60 @@ if (USE_PG) {
       console.log(`✅ Employees jadval constraint tuzatildi. ${rows.length} ishchi saqlab qolindi.`);
     } catch (e) {
       console.error('❌ fixEmployeesConstraint xato:', e.message);
+    }
+  }
+
+  // Eski bazada employees.type ustunida CHECK (type IN (...)) cheklovi bor edi —
+  // yangi xodim turlari (BUGALTER, SIFAT, MARKETING, ...) qo'shilishi uchun uni olib tashlaymiz.
+  // Ma'lumotni yo'qotmaymiz: jadvalni qayta qurib, mavjud ustunlarni ko'chiramiz.
+  function relaxEmployeesTypeConstraint() {
+    try {
+      const result = _db.exec("SELECT sql FROM sqlite_master WHERE type='table' AND name='employees'");
+      if (!result || !result[0]) return;
+      const tableSql = result[0].values[0][0];
+      if (!/CHECK\s*\(\s*type\s+IN/i.test(tableSql)) return; // cheklov yo'q — qilish shart emas
+
+      console.log('🔧 Employees.type CHECK cheklovi olib tashlanmoqda (yangi turlar uchun)...');
+
+      // Mavjud ustunlar ro'yxati (dinamik)
+      const info = _db.exec('PRAGMA table_info(employees)');
+      const existingCols = (info && info[0]) ? info[0].values.map(r => r[1]) : [];
+
+      _db.run('PRAGMA foreign_keys = OFF');
+      _db.run('BEGIN');
+
+      _db.run(`CREATE TABLE employees_new (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        daily_tariff REAL NOT NULL DEFAULT 0,
+        hourly_tariff REAL,
+        hire_date TEXT DEFAULT (date('now')),
+        is_active INTEGER DEFAULT 1,
+        phone TEXT,
+        address TEXT,
+        shift TEXT DEFAULT '1-SMENA',
+        salary_type TEXT DEFAULT 'FIXED',
+        monthly_salary REAL DEFAULT 0,
+        salary_percent REAL DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )`);
+
+      const targetCols = ['id','name','type','daily_tariff','hourly_tariff','hire_date','is_active','phone','address','shift','salary_type','monthly_salary','salary_percent','created_at','updated_at'];
+      const common = targetCols.filter(c => existingCols.includes(c));
+      const colList = common.join(',');
+      _db.run(`INSERT INTO employees_new (${colList}) SELECT ${colList} FROM employees`);
+      _db.run('DROP TABLE employees');
+      _db.run('ALTER TABLE employees_new RENAME TO employees');
+
+      _db.run('COMMIT');
+      _db.run('PRAGMA foreign_keys = ON');
+      console.log('✅ Employees.type cheklovi olib tashlandi — yangi turlar qo\'shsa bo\'ladi');
+    } catch (e) {
+      try { _db.run('ROLLBACK'); } catch {}
+      try { _db.run('PRAGMA foreign_keys = ON'); } catch {}
+      console.error('❌ relaxEmployeesTypeConstraint xato:', e.message);
     }
   }
 
@@ -475,10 +534,12 @@ if (USE_PG) {
       updated_at TEXT DEFAULT (datetime('now'))
     )`);
 
+    // type — CHECK qo'yilmaydi (kelajakda yangi turlar erkin qo'shilsin).
+    // salary_type: FIXED=belgilangan oylik, PERCENT=foiz. monthly_salary=oylik summa, salary_percent=foiz.
     _db.run(`CREATE TABLE IF NOT EXISTS employees (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       name TEXT NOT NULL,
-      type TEXT NOT NULL CHECK (type IN ('STANOKCHI','DETALCHI','ISHCHI','OSHPAZ','SHOFIR','BOSHQA')),
+      type TEXT NOT NULL,
       daily_tariff REAL NOT NULL DEFAULT 0,
       hourly_tariff REAL,
       hire_date TEXT DEFAULT (date('now')),
@@ -486,6 +547,9 @@ if (USE_PG) {
       phone TEXT,
       address TEXT,
       shift TEXT DEFAULT '1-SMENA',
+      salary_type TEXT DEFAULT 'FIXED',
+      monthly_salary REAL DEFAULT 0,
+      salary_percent REAL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     )`);
@@ -613,6 +677,9 @@ if (USE_PG) {
       `ALTER TABLE employee_production ADD COLUMN recorded_at TEXT`,
       `ALTER TABLE employee_production ADD COLUMN kirimchi_notes TEXT`,
       `ALTER TABLE employees ADD COLUMN shift TEXT DEFAULT 'ERTALAB'`,
+      `ALTER TABLE employees ADD COLUMN salary_type TEXT DEFAULT 'FIXED'`,
+      `ALTER TABLE employees ADD COLUMN monthly_salary REAL DEFAULT 0`,
+      `ALTER TABLE employees ADD COLUMN salary_percent REAL DEFAULT 0`,
       `ALTER TABLE machines ADD COLUMN code TEXT UNIQUE`,
       `ALTER TABLE expenses ADD COLUMN raw_material_id TEXT REFERENCES raw_materials(id)`,
       `ALTER TABLE expenses ADD COLUMN reference_type TEXT`,

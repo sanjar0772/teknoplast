@@ -1,9 +1,9 @@
 const { app, BrowserWindow, session, shell, Menu } = require('electron');
 const path = require('path');
 
-// HTTP keshni BUTUNLAY o'chiramiz — har doim serverdan eng yangi frontend keladi.
-// Bu "eski versiya ko'rinyapti / yangi tugmalar chiqmayapti" muammosini ildizidan yo'q qiladi.
-app.commandLine.appendSwitch('disable-http-cache');
+// Eslatma: HTTP kesh YOQILGAN (tez ishlashi uchun). index.html server tomonidan
+// 'no-cache' bilan beriladi -> har doim eng yangi tekshiriladi, hash'li JS/CSS esa
+// keshda qoladi -> start tez. Kerak bo'lsa menyudan "To'liq yangilash (Ctrl+Shift+R)".
 
 // TEKNOPLAST sayt manzili (Railway). Kerak bo'lsa o'zgartiring yoki
 // TEKNOPLAST_URL muhit o'zgaruvchisi orqali boshqaring.
@@ -57,9 +57,6 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  // Eski keshni tozalaymiz — har doim eng yangi frontend yuklanadi
-  try { await session.defaultSession.clearCache(); } catch {}
-
   // Mikrofon / kamera ruxsatini avtomatik berish (Ahmad ovozli buyruq uchun)
   session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => {
     const allowed = ['media', 'microphone', 'audioCapture', 'camera', 'videoCapture', 'clipboard-read', 'notifications'];

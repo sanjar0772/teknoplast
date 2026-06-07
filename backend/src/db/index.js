@@ -176,13 +176,13 @@ if (USE_PG) {
       createSchema();          // Yangi jadvallarni qo'shadi (IF NOT EXISTS)
       runMigrations();         // Mavjud jadvallarga yangi ustun qo'shadi
       fixEmployeesConstraint(); // DETALCHI constraint ni tuzatadi
-      saveDB();
+      saveDBSync();
     } else {
       _db = new SQL.Database();
       console.log('🆕 Yangi SQLite bazasi yaratilmoqda...');
       createSchema();
       createSampleData();
-      saveDB();
+      saveDBSync();
       console.log('✅ SQLite bazasi yaratildi');
     }
 
@@ -190,24 +190,61 @@ if (USE_PG) {
     _db.run('PRAGMA journal_mode = WAL');
     _ready = true;
 
-    // Har 30 sekundda disk ga saqlash
-    setInterval(saveDB, 30000);
+    // Har 30 sekundda — agar o'zgarish bo'lsa — disk ga saqlash (zaxira sifatida)
+    setInterval(() => { if (_dirty) saveDB(); }, 30000);
     return _db;
   }
 
-  function saveDB() {
+  let _saveTimer = null;
+  let _dirty = false;
+
+  // Diskka yozishni kechiktiramiz (debounce). Tez-tez yozuvlar bitta saqlashga
+  // birlashadi va asinxron yoziladi -> event-loop bloklanmaydi, server "to'xtab qolmaydi".
+  function scheduleSave() {
+    if (_inTransaction) return;
+    _dirty = true;
+    if (_saveTimer) return;
+    _saveTimer = setTimeout(() => { _saveTimer = null; saveDB(); }, 1200);
+  }
+
+  // Asinxron saqlash — disk yozish event-loop'ni bloklamaydi
+  async function saveDB() {
     if (!_db || _inTransaction) return;
+    _dirty = false;
     try {
-      const data = _db.export();
-      // ATOMIK YOZISH: avval .tmp ga yozib, keyin rename qilamiz.
-      // Shunday qilib yozish o'rtasida uzilsa ham asosiy fayl buzilmaydi.
+      const data = _db.export();                            // WASM serializatsiya (tez)
       const tmp = DB_PATH + '.tmp';
-      fs.writeFileSync(tmp, Buffer.from(data));
-      fs.renameSync(tmp, DB_PATH);
+      await fs.promises.writeFile(tmp, Buffer.from(data));  // ATOMIK: avval .tmp
+      await fs.promises.rename(tmp, DB_PATH);               // keyin rename
     } catch (e) {
       console.warn('SQLite saqlashda xato:', e.message);
     }
   }
+
+  // Sinxron saqlash — faqat init va shutdown uchun (ma'lumot yo'qolmasligi kafolati)
+  function saveDBSync() {
+    if (!_db) return;
+    _dirty = false;
+    try {
+      const data = _db.export();
+      const tmp = DB_PATH + '.tmp';
+      fs.writeFileSync(tmp, Buffer.from(data));
+      fs.renameSync(tmp, DB_PATH);
+    } catch (e) {
+      console.warn('SQLite sync saqlashda xato:', e.message);
+    }
+  }
+
+  // Deploy/restart'da (SIGTERM) oxirgi o'zgarishlarni sinxron saqlaymiz
+  let _shuttingDown = false;
+  function flushAndExit() {
+    if (_shuttingDown) return;
+    _shuttingDown = true;
+    if (_dirty) saveDBSync();
+    process.exit(0);
+  }
+  process.on('SIGTERM', flushAndExit);
+  process.on('SIGINT', flushAndExit);
 
   function fixEmployeesConstraint() {
     try {
@@ -676,11 +713,11 @@ if (USE_PG) {
           }
         }
 
-        saveDB();
+        scheduleSave();
         return { rows };
       }
 
-      saveDB();
+      scheduleSave();
       return { rows: [], rowCount: 1 };
     } catch (err) {
       console.error('SQLite xato:', err.message);
@@ -705,8 +742,8 @@ if (USE_PG) {
           if (_inTransaction) {
             _db.run('COMMIT');
             _inTransaction = false;
-            saveDB();
-            console.log('💾 Transaction COMMIT + diskka saqlandi');
+            scheduleSave();
+            console.log('💾 Transaction COMMIT + diskka saqlanadi');
           }
           return { rows: [] };
         }
@@ -726,5 +763,5 @@ if (USE_PG) {
   // Init at module load
   initDB().catch(console.error);
 
-  module.exports = { query, getClient, saveDB };
+  module.exports = { query, getClient, saveDB, saveDBSync };
 }

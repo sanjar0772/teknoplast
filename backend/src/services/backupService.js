@@ -7,15 +7,16 @@ const fs = require('fs');
 const path = require('path');
 
 const KEEP = 14; // oxirgi 14 ta nusxa (2 hafta kunlik)
-const DB_PATH = path.join(process.cwd(), 'teknoplast.sqlite');
-const BACKUP_DIR = path.join(process.cwd(), 'backups');
+const DB_PATH = process.env.DATABASE_PATH || path.join(process.cwd(), 'teknoplast.sqlite');
+const BACKUP_DIR = path.join(path.dirname(DB_PATH), 'backups'); // baza bilan bir volumeda (/data)
 
 function runBackup() {
   try {
     // Avval xotiradagi bazani diskka tushiramiz (eng yangi holat)
     try {
       const db = require('../db');
-      if (db.saveDB) db.saveDB();
+      if (db.saveDBSync) db.saveDBSync();
+      else if (db.saveDB) db.saveDB();
     } catch {}
 
     if (!fs.existsSync(DB_PATH)) {

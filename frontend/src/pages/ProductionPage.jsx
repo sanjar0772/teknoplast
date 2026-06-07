@@ -9,7 +9,7 @@ import useAuthStore from '../store/authStore';
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
 export default function ProductionPage() {
-  const { isOwner, isProductionHead } = useAuthStore();
+  const { isOwner, isProductionHead, isKirimchi } = useAuthStore();
   const qc = useQueryClient();
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -98,7 +98,7 @@ export default function ProductionPage() {
     bulkMutation.mutate({ production_date: date, entries: valid });
   };
 
-  const canWrite = isOwner() || isProductionHead();
+  const canWrite = isOwner() || isProductionHead() || isKirimchi();
 
   return (
     <div className="space-y-6">

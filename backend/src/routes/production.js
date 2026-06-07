@@ -112,7 +112,7 @@ router.get('/summary', async (req, res, next) => {
 });
 
 // POST /api/production — kunlik ishlab chiqarish kiritish
-router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD'), [
+router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
   body('employee_id').notEmpty(),
   body('production_date').isDate(),
   body('quantity_produced').isInt({ min: 0 }),
@@ -186,7 +186,7 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD'), [
 });
 
 // POST /api/production/bulk — bir kunda ko'p xodim
-router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, next) => {
+router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async (req, res, next) => {
   try {
     const { production_date, entries } = req.body;
     if (!Array.isArray(entries) || !entries.length) {

@@ -163,13 +163,12 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD'), [
         quantity_produced, daily_tariff, calculated_amount, month, notes,
       });
 
-      // Production type ni qo'shish (SEMI_FINISHED yoki FINISHED)
-      if (ptype === 'SEMI_FINISHED' || ptype === 'FINISHED') {
-        await client.query(
-          'UPDATE employee_production SET production_type=$1 WHERE id=$2',
-          [ptype, production.id]
-        );
-      }
+      // Ishlab chiqarish turini saqlaymiz va javobda ham yangilaymiz
+      await client.query(
+        'UPDATE employee_production SET production_type=$1 WHERE id=$2',
+        [ptype, production.id]
+      );
+      production.production_type = ptype;
 
       await client.query('COMMIT');
       logAudit(req, {
@@ -240,6 +239,7 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, n
           'UPDATE employee_production SET production_type=$1 WHERE id=$2',
           [ptype, production.id]
         );
+        production.production_type = ptype;
 
         results.push(production);
       }

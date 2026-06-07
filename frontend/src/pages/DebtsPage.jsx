@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Wallet, X, Phone, AlertTriangle, Clock, CheckCircle, Coins } from 'lucide-react';
-import { reportsAPI, salesAPI } from '../services/api';
+import { Wallet, X, Phone, AlertTriangle, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot } from 'lucide-react';
+import { reportsAPI, salesAPI, ahmadAPI } from '../services/api';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
@@ -33,7 +33,29 @@ function Modal({ open, onClose, title, children }) {
 export default function DebtsPage() {
   const qc = useQueryClient();
   const [payFor, setPayFor] = useState(null); // {sale_id, customer, debt}
+  const [remindFor, setRemindFor] = useState(null); // qaysi mijoz uchun eslatma
+  const [reminderText, setReminderText] = useState('');
+  const [tone, setTone] = useState('soft');
   const { register, handleSubmit, reset, watch } = useForm();
+
+  const reminderMutation = useMutation({
+    mutationFn: ({ item, tone }) => ahmadAPI.debtReminder({
+      customer: item.customer, debt: Math.round(item.debt), days_old: item.days_old, tone, language: 'uz',
+    }).then(r => r.data),
+    onSuccess: (data) => setReminderText(data.message || ''),
+    onError: (e) => toast.error(e.response?.data?.error || 'AI eslatma yoza olmadi'),
+  });
+
+  const openReminder = (item) => {
+    setRemindFor(item);
+    setReminderText('');
+    setTone('soft');
+    reminderMutation.mutate({ item, tone: 'soft' });
+  };
+  const changeTone = (t) => {
+    setTone(t);
+    if (remindFor) reminderMutation.mutate({ item: remindFor, tone: t });
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['debts'],
@@ -124,9 +146,15 @@ export default function DebtsPage() {
                   <td className="font-bold text-red-600">{fmt(item.debt)}</td>
                   <td><span className={`badge ${info.bg} ${info.cls}`}>{info.label}</span></td>
                   <td>
-                    <button onClick={() => openPay(item)} className="btn-success btn-sm">
-                      <Coins size={12} /> To'lov
-                    </button>
+                    <div className="flex gap-1">
+                      <button onClick={() => openPay(item)} className="btn-success btn-sm">
+                        <Coins size={12} /> To'lov
+                      </button>
+                      <button onClick={() => openReminder(item)} title="AI eslatma matni"
+                        className="btn-secondary btn-sm">
+                        <MessageSquare size={12} /> AI eslatma
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -173,6 +201,53 @@ export default function DebtsPage() {
               </button>
             </div>
           </form>
+        )}
+      </Modal>
+
+      {/* AI eslatma modal (call-center) */}
+      <Modal open={!!remindFor} onClose={() => setRemindFor(null)} title="AI qarz eslatmasi">
+        {remindFor && (
+          <div className="space-y-4">
+            <div className="bg-gray-50 rounded-lg p-3 text-sm flex justify-between">
+              <span className="text-gray-500">{remindFor.customer}</span>
+              <span className="font-bold text-red-600">{fmt(remindFor.debt)} so'm</span>
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => changeTone('soft')}
+                className={`btn-sm flex-1 ${tone === 'soft' ? 'btn-primary' : 'btn-secondary'}`}>Yumshoq</button>
+              <button onClick={() => changeTone('firm')}
+                className={`btn-sm flex-1 ${tone === 'firm' ? 'btn-primary' : 'btn-secondary'}`}>Qat'iy</button>
+            </div>
+
+            <div className="relative">
+              <textarea
+                value={reminderMutation.isPending ? '' : reminderText}
+                onChange={e => setReminderText(e.target.value)}
+                rows={6}
+                placeholder={reminderMutation.isPending ? '' : 'Xabar matni...'}
+                className="input w-full resize-none" />
+              {reminderMutation.isPending && (
+                <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-400 gap-2">
+                  <Bot size={16} className="animate-pulse" /> AI yozmoqda...
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => { navigator.clipboard?.writeText(reminderText); toast.success('Nusxa olindi'); }}
+                disabled={!reminderText}
+                className="btn-secondary flex-1"><Copy size={14} /> Nusxa olish</button>
+              {remindFor.phone && (
+                <a href={`sms:${remindFor.phone}?body=${encodeURIComponent(reminderText)}`}
+                  className="btn-primary flex-1 flex items-center justify-center gap-1">
+                  <MessageSquare size={14} /> SMS yuborish
+                </a>
+              )}
+            </div>
+            <p className="text-xs text-gray-400 text-center">AI faqat matn yozadi — siz tekshirib, o'zingiz yuborasiz.</p>
+          </div>
         )}
       </Modal>
     </div>

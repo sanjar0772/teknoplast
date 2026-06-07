@@ -860,6 +860,32 @@ alerts=shoshilinch muammolar; priorities=bugun bajarilsin; insights=tahlil va pr
   }
 });
 
+// ---------- POST /api/ahmad/debt-reminder — qarzdorga eslatma matni (call-center) ----------
+// XAVFSIZ: faqat matn yozadi, hech narsa yubormaydi/o'zgartirmaydi. Ega nusxa olib jo'natadi.
+router.post('/debt-reminder', async (req, res) => {
+  try {
+    const lang = req.body.language === 'ru' ? 'ru' : 'uz';
+    if (!claude) return res.status(503).json({ error: lang === 'ru' ? 'AI не настроен' : 'AI sozlanmagan' });
+    const { customer, debt, days_old, tone } = req.body;
+    const firm = tone === 'firm';
+    const system = lang === 'ru'
+      ? `Вы — вежливый сотрудник call-центра завода Технопласт. Напишите КОРОТКОЕ сообщение клиенту-должнику (для SMS/Telegram) с напоминанием об оплате задолженности. ${firm ? 'Тон: настойчивый, но уважительный.' : 'Тон: мягкий, дружелюбный.'} Без markdown и эмодзи. Только текст сообщения, на русском. Сумму пишите как 1 000 000 сум. В конце — Технопласт.`
+      : `Siz — Teknoplast zavodining xushmuomala call-markaz xodimisiz. Qarzdor mijozga to'lov haqida ESLATMA xabarini yozing (SMS/Telegram uchun), QISQA va aniq. ${firm ? 'Ohang: qat\'iy, lekin hurmatli.' : 'Ohang: yumshoq, do\'stona.'} Markdown va emoji ishlatmang. Faqat xabar matni, o'zbekcha. Summani 1 000 000 so'm ko'rinishida yozing. Oxirida — Teknoplast.`;
+    const userMsg = lang === 'ru'
+      ? `Клиент: ${customer || 'клиент'}; сумма долга: ${debt || 0} сум; просрочка: ${days_old || 0} дней.`
+      : `Mijoz: ${customer || 'mijoz'}; qarz summasi: ${debt || 0} so'm; muddat: ${days_old || 0} kun.`;
+    const msg = await claude.messages.create({
+      model: MODEL, max_tokens: 400, system,
+      messages: [{ role: 'user', content: userMsg }],
+    });
+    const message = (msg.content.find(b => b.type === 'text')?.text || '').trim();
+    res.json({ message });
+  } catch (err) {
+    console.error('debt-reminder error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ---------- POST /api/ahmad/read-image ----------
 router.post('/read-image', upload.single('image'), async (req, res) => {
   try {

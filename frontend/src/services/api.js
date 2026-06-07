@@ -171,6 +171,7 @@ export const ahmadAPI = {
   dailyReport: (language) => api.get('/ahmad/daily-report', { params: { language } }),
   confirmAction: (action) => api.post('/ahmad/confirm-action', { action }),
   workerBriefing: (language) => api.post('/ahmad/worker-briefing', { language }),
+  debtReminder: (data) => api.post('/ahmad/debt-reminder', data),
 };
 
 export default api;

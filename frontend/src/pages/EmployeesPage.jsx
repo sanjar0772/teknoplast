@@ -46,6 +46,11 @@ export default function EmployeesPage() {
       setShowModal(false);
       setEditEmployee(null);
     },
+    onError: (err) => {
+      const e = err?.response?.data;
+      const msg = e?.error || e?.errors?.[0]?.msg || err?.message || 'Saqlashda xato';
+      toast.error(`Xato: ${msg}`);
+    },
   });
 
   const { register, handleSubmit, reset, setValue, watch } = useForm();
@@ -64,6 +69,7 @@ export default function EmployeesPage() {
 
   const deactivateMutation = useMutation({
     mutationFn: (emp) => employeesAPI.update(emp.id, { ...emp, is_active: !emp.is_active }),
+    onError: (err) => toast.error(`Xato: ${err?.response?.data?.error || err?.message || 'amal bajarilmadi'}`),
     onSuccess: (_, emp) => {
       toast.success(emp.is_active ? 'Xodim nofaol qilindi' : 'Xodim faollashtirildi');
       qc.invalidateQueries({ queryKey: ['employees'] });

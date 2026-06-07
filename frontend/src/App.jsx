@@ -20,6 +20,7 @@ import InventoryPage from './pages/InventoryPage';
 import MachinesPage from './pages/MachinesPage';
 import ReportsPage from './pages/ReportsPage';
 import AIPage from './pages/AIPage';
+import WorkerPage from './pages/WorkerPage';
 
 function PrivateRoute({ children }) {
   const { isAuthenticated } = useAuthStore();
@@ -59,6 +60,7 @@ export default function App() {
           <Route path="machines" element={<MachinesPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="ai" element={<AIPage />} />
+          <Route path="worker" element={<WorkerPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

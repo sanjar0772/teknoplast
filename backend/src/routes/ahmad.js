@@ -788,6 +788,78 @@ router.get('/daily-report', async (req, res) => {
   }
 });
 
+// ---------- POST /api/ahmad/worker-briefing — proaktiv "AI Ishchi" brifingi ----------
+// Claude menejer-ishchi kabi: ma'lumotni o'zi yig'ib, ogohlantirish + bugungi vazifa +
+// tahlil/prognoz + tavsiya beradi. XAVFSIZ: faqat maslahat, hech narsani o'zgartirmaydi.
+router.post('/worker-briefing', async (req, res) => {
+  try {
+    const lang = req.body.language === 'ru' ? 'ru' : 'uz';
+    if (!claude) return res.status(503).json({ error: lang === 'ru' ? 'AI не настроен' : 'AI sozlanmagan' });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const month = new Date().toISOString().slice(0, 7);
+
+    const [todayR, monthR] = await Promise.all([gatherReport('today'), gatherReport('month')]);
+    const [planRow, debtors, broken, prodToday, topProd] = await Promise.all([
+      query("SELECT value FROM system_settings WHERE key='monthly_sales_plan'"),
+      query(`SELECT COALESCE(c.name, s.customer_name, 'Noma''lum') name, SUM(s.total_amount - s.payment_amount) debt
+             FROM sales s LEFT JOIN customers c ON s.customer_id=c.id
+             WHERE s.status!='PAID' AND (s.total_amount - s.payment_amount)>0.01
+             GROUP BY COALESCE(c.name, s.customer_name) ORDER BY debt DESC LIMIT 5`),
+      query("SELECT COUNT(*) c FROM machines WHERE status='BROKEN'"),
+      query(`SELECT COALESCE(SUM(quantity_produced),0) q FROM employee_production WHERE production_date=$1`, [today]),
+      query(`SELECT p.name, SUM(s.quantity) qty, SUM(s.total_amount) rev FROM sales s JOIN products p ON s.product_id=p.id
+             WHERE TO_CHAR(s.sale_date,'YYYY-MM')=$1 GROUP BY p.name ORDER BY rev DESC LIMIT 5`, [month]),
+    ]);
+    const plan = planRow.rows.length ? Number(planRow.rows[0].value) || 0 : 0;
+    const salesMonth = Number(monthR.salesTotal) || 0;
+    const overagePct = plan > 0 && salesMonth > plan ? Math.round((salesMonth - plan) / plan * 1000) / 10 : 0;
+
+    const data = {
+      sana: today,
+      bugun: { sotuv: todayR.salesTotal, sotuv_soni: todayR.salesCount, kirim: todayR.intakesCount, ishlab_chiqarish_dona: prodToday.rows[0].q },
+      oy: { sotuv: monthR.salesTotal, xarajat: monthR.expensesTotal, foyda: monthR.profit },
+      reja: { summa: plan, bajarilish_foiz: plan > 0 ? Math.round(salesMonth / plan * 100) : null, rejadan_oshgan_foiz: overagePct },
+      ombor_kam_qolgan: { soni: todayR.lowStock, royxat: todayR.lowStockTop },
+      qarz: { jami: todayR.debtTotal, mijoz_soni: todayR.debtCount, eng_kattalari: debtors.rows },
+      mashina_buzilgan_soni: broken.rows[0].c,
+      oylik_top_mahsulot: topProd.rows,
+    };
+
+    const system = lang === 'ru'
+      ? `Вы — проактивный AI-сотрудник завода Технопласт (пластиковые изделия). Действуйте как опытный менеджер: сами изучите данные, найдите проблемы, определите приоритеты дня, дайте прогноз и практические рекомендации.
+БЕЗОПАСНЫЙ режим: только предупреждения и советы — НИЧЕГО не меняйте.
+Верните ТОЛЬКО JSON-объект (без markdown): {"alerts":[".."],"priorities":[".."],"insights":[".."],"recommendations":[".."]}.
+alerts=срочные проблемы; priorities=что сделать сегодня; insights=анализ и прогноз; recommendations=советы. Каждый пункт — короткая строка. На русском. Числа: 1 000 000.`
+      : `Siz — Teknoplast plastik zavodining proaktiv AI-ishchisisiz. Tajribali menejer kabi ish tuting: ma'lumotni o'zingiz o'rganing, muammolarni toping, bugungi ustuvor vazifalarni aniqlang, prognoz va amaliy tavsiyalar bering.
+XAVFSIZ rejim: faqat ogohlantirish va maslahat — HECH NARSANI o'zgartirmang.
+FAQAT JSON obyekt qaytaring (markdownsiz): {"alerts":[".."],"priorities":[".."],"insights":[".."],"recommendations":[".."]}.
+alerts=shoshilinch muammolar; priorities=bugun bajarilsin; insights=tahlil va prognoz; recommendations=maslahatlar. Har band — qisqa satr. O'zbekcha. Raqamlar: 1 000 000.`;
+
+    const msg = await claude.messages.create({
+      model: MODEL,
+      max_tokens: 1500,
+      system,
+      messages: [{ role: 'user', content: (lang === 'ru' ? 'Данные (JSON):\n' : 'Ma\'lumotlar (JSON):\n') + JSON.stringify(data) }],
+    });
+
+    const txt = msg.content.find(b => b.type === 'text')?.text || '';
+    let briefing = null;
+    try { const m = txt.match(/\{[\s\S]*\}/); if (m) briefing = JSON.parse(m[0]); } catch {}
+    if (!briefing || typeof briefing !== 'object') {
+      briefing = { alerts: [], priorities: [], insights: [txt].filter(Boolean), recommendations: [] };
+    }
+    for (const k of ['alerts', 'priorities', 'insights', 'recommendations']) {
+      if (!Array.isArray(briefing[k])) briefing[k] = briefing[k] ? [String(briefing[k])] : [];
+    }
+
+    res.json({ briefing, data, generated_at: new Date().toISOString() });
+  } catch (err) {
+    console.error('worker-briefing error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ---------- POST /api/ahmad/read-image ----------
 router.post('/read-image', upload.single('image'), async (req, res) => {
   try {

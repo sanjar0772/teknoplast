@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   LayoutDashboard, ShoppingCart, Receipt, Users, Factory,
   Banknote, Package, Warehouse, Cog, FileBarChart, Bot,
-  LogOut, ChevronRight, UserSquare2, Zap, Sheet, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X
+  LogOut, ChevronRight, UserSquare2, Zap, Sheet, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X, Sparkles
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { authAPI } from '../../services/api';
@@ -39,6 +39,7 @@ const NAV_ITEMS = [
   { to: '/reports',    icon: FileBarChart,    label: 'Hisobotlar',       roles: ['OWNER','ACCOUNTANT'] },
   { to: '/users',      icon: ShieldCheck,     label: 'Foydalanuvchilar', roles: ['OWNER'] },
   { to: '/ai',         icon: Bot,             label: 'Ahmad',            roles: null },
+  { to: '/worker',     icon: Sparkles,        label: 'AI Ishchi',        roles: ['OWNER','ACCOUNTANT'] },
 ];
 
 export default function Sidebar() {

@@ -170,6 +170,7 @@ export const ahmadAPI = {
   command: (text, language, history) => api.post('/ahmad/command', { text, language, history }),
   dailyReport: (language) => api.get('/ahmad/daily-report', { params: { language } }),
   confirmAction: (action) => api.post('/ahmad/confirm-action', { action }),
+  workerBriefing: (language) => api.post('/ahmad/worker-briefing', { language }),
 };
 
 export default api;

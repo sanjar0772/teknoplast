@@ -150,7 +150,8 @@ if (USE_PG) {
   // Oxirgi jadval nomini olish (INSERT INTO tableName ...)
   function getTableName(sql) {
     const m = sql.match(/INSERT\s+(?:OR\s+\w+\s+)?INTO\s+(\w+)/i) ||
-              sql.match(/UPDATE\s+(\w+)/i);
+              sql.match(/UPDATE\s+(\w+)/i) ||
+              sql.match(/DELETE\s+FROM\s+(\w+)/i);
     return m ? m[1] : null;
   }
 
@@ -759,6 +760,17 @@ if (USE_PG) {
         return { rows };
       }
 
+      // DELETE ... RETURNING — qatorlarni O'CHIRISHDAN OLDIN o'qib olamiz
+      // (aks holda DELETE'dan keyin topib bo'lmaydi -> rows bo'sh qaytib, 404 berardi)
+      let deletedRows = null;
+      if (isDelete && hasReturning && tableName) {
+        const m = text.match(/WHERE\s+id\s*=\s*\$(\d+)/i);
+        if (m) {
+          const idVal = normalizedParams[parseInt(m[1]) - 1];
+          deletedRows = sqliteQuery(db, `SELECT * FROM ${tableName} WHERE id = ?`, [idVal]);
+        }
+      }
+
       // Write operation
       db.run(converted, normalizedParams);
 
@@ -778,6 +790,9 @@ if (USE_PG) {
             const idVal = normalizedParams[parseInt(m[1]) - 1];
             rows = sqliteQuery(db, `SELECT * FROM ${tableName} WHERE id = ?`, [idVal]);
           }
+        } else if (isDelete) {
+          // DELETE — o'chirishdan oldin o'qilgan qatorlarni qaytaramiz
+          rows = deletedRows || [];
         }
 
         scheduleSave();

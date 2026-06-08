@@ -1,15 +1,28 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import { QRCodeSVG } from 'qrcode.react';
 import { ArrowLeft, Download, Printer } from 'lucide-react';
 import { salesAPI } from '../services/api';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
-const STATUS_MAP = {
-  PAID: { label: "To'langan", cls: 'badge-green' },
-  PENDING: { label: 'Kutilmoqda', cls: 'badge-yellow' },
-  PARTIALLY_PAID: { label: "Qisman to'langan", cls: 'badge-blue' },
+// To'lov turini sotuv yozuvidan aniqlaymiz:
+//  - status === PAID  va notes ichida "Karta"/"Naqd" bo'lsa — shu nom ko'rsatiladi
+//  - status === PAID  lekin notes'da to'lov turi yo'q bo'lsa — "To'langan"
+//  - status === PARTIALLY_PAID — "Qisman to'langan"
+//  - aks holda (PENDING va h.k.) — "Qarz"
+const getPaymentInfo = (sale) => {
+  const notes = sale?.notes || '';
+  if (sale?.status === 'PAID') {
+    if (notes.includes('Karta')) return { label: '💳 Karta', cls: 'badge-blue' };
+    if (notes.includes('Naqd')) return { label: '💵 Naqd', cls: 'badge-green' };
+    return { label: "✅ To'langan", cls: 'badge-green' };
+  }
+  if (sale?.status === 'PARTIALLY_PAID') {
+    return { label: "Qisman to'langan", cls: 'badge-blue' };
+  }
+  return { label: '📝 Qarz', cls: 'badge-yellow' };
 };
 
 // Alohida "Schyot-faktura" ko'rish sahifasi — /invoice/:id
@@ -57,6 +70,9 @@ export default function InvoicePage() {
   const { sale, items } = data;
   const rows = (items && items.length) ? items : [sale];
   const total = rows.reduce((s, it) => s + parseFloat(it.total_amount || 0), 0);
+  const paymentInfo = getPaymentInfo(sale);
+  const customerPhone = sale.customer_full_phone || sale.customer_phone;
+  const invoiceUrl = `${window.location.origin}/invoice/${sale.order_ref || sale.id}`;
 
   return (
     <div className="space-y-6">
@@ -86,9 +102,13 @@ export default function InvoicePage() {
               Sana: {new Date(sale.sale_date).toLocaleDateString('uz-UZ')}
             </p>
           </div>
-          <span className={STATUS_MAP[sale.status]?.cls || 'badge-gray'}>
-            {STATUS_MAP[sale.status]?.label || sale.status}
-          </span>
+          <div className="flex flex-col items-end gap-2">
+            <span className={paymentInfo.cls}>{paymentInfo.label}</span>
+            <div className="flex flex-col items-center">
+              <QRCodeSVG value={invoiceUrl} size={88} />
+              <p className="text-[10px] text-gray-400 mt-1">Tizimda ko'rish</p>
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-6 mb-6 text-sm">
@@ -101,8 +121,8 @@ export default function InvoicePage() {
             <p className="font-medium text-gray-900">
               {sale.customer_full_name || sale.customer_name || "Noma'lum"}
             </p>
-            {(sale.customer_full_phone || sale.customer_phone) && (
-              <p className="text-gray-500">{sale.customer_full_phone || sale.customer_phone}</p>
+            {customerPhone && (
+              <p className="text-gray-500">Tel: {customerPhone}</p>
             )}
             {sale.customer_address && <p className="text-gray-500">{sale.customer_address}</p>}
           </div>

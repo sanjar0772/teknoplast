@@ -27,10 +27,12 @@ function Modal({ open, onClose, title, children }) {
 }
 
 export default function InventoryPage() {
-  const { isOwner, isTaminotchi, isKirimchi } = useAuthStore();
+  const { user, isOwner, isTaminotchi, isKirimchi } = useAuthStore();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [tab, setTab] = useState('products'); // 'products' | 'raw'
+  // Ta'minotchi (Owner emas) — faqat Xom ashyo bo'limini ko'radi, Tayyor mahsulot ombori unga ko'rinmaydi
+  const taminotchiOnly = user?.role === 'TAMINOTCHI';
+  const [tab, setTab] = useState(taminotchiOnly ? 'raw' : 'products'); // 'products' | 'raw'
   const [showRmModal, setShowRmModal] = useState(false);
   const [rmStockModal, setRmStockModal] = useState(null);
   const [rmStockForm, setRmStockForm] = useState({ quantity: 0, operation: 'add' });
@@ -77,7 +79,7 @@ export default function InventoryPage() {
   const TABS = [
     { key: 'products', label: 'Tayyor mahsulotlar', icon: Package },
     { key: 'raw',      label: 'Xom ashyo',          icon: Boxes },
-  ];
+  ].filter(t => !(taminotchiOnly && t.key === 'products'));
 
   return (
     <div className="space-y-6">
@@ -96,6 +98,7 @@ export default function InventoryPage() {
       </div>
 
       {/* Tabs */}
+      {TABS.length > 1 && (
       <div className="flex gap-1 border-b border-gray-200">
         {TABS.map(t => {
           const Icon = t.icon;
@@ -116,8 +119,9 @@ export default function InventoryPage() {
           );
         })}
       </div>
+      )}
 
-      {tab === 'products' && (
+      {tab === 'products' && !taminotchiOnly && (
         <>
           {/* Products alert */}
           {lowProducts.length > 0 && (

@@ -383,11 +383,12 @@ if (USE_PG) {
         salary_type TEXT DEFAULT 'FIXED',
         monthly_salary REAL DEFAULT 0,
         salary_percent REAL DEFAULT 0,
+        bonus_percent REAL DEFAULT 0,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
       )`);
 
-      const targetCols = ['id','name','type','daily_tariff','hourly_tariff','hire_date','is_active','phone','address','shift','salary_type','monthly_salary','salary_percent','created_at','updated_at'];
+      const targetCols = ['id','name','type','daily_tariff','hourly_tariff','hire_date','is_active','phone','address','shift','salary_type','monthly_salary','salary_percent','bonus_percent','created_at','updated_at'];
       const common = targetCols.filter(c => existingCols.includes(c));
       const colList = common.join(',');
       _db.run(`INSERT INTO employees_new (${colList}) SELECT ${colList} FROM employees`);
@@ -583,6 +584,7 @@ if (USE_PG) {
       salary_type TEXT DEFAULT 'FIXED',
       monthly_salary REAL DEFAULT 0,
       salary_percent REAL DEFAULT 0,
+      bonus_percent REAL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     )`);
@@ -713,6 +715,7 @@ if (USE_PG) {
       `ALTER TABLE employees ADD COLUMN salary_type TEXT DEFAULT 'FIXED'`,
       `ALTER TABLE employees ADD COLUMN monthly_salary REAL DEFAULT 0`,
       `ALTER TABLE employees ADD COLUMN salary_percent REAL DEFAULT 0`,
+      `ALTER TABLE employees ADD COLUMN bonus_percent REAL DEFAULT 0`,
       `ALTER TABLE machines ADD COLUMN code TEXT UNIQUE`,
       `ALTER TABLE expenses ADD COLUMN raw_material_id TEXT REFERENCES raw_materials(id)`,
       `ALTER TABLE expenses ADD COLUMN reference_type TEXT`,

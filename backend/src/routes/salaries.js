@@ -107,7 +107,7 @@ router.post('/calculate', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, n
     const overage = calcOverage(actualSales, plan); // 0.10 = savdo rejadan 10% oshgan
 
     const employees = await query(
-      'SELECT id, salary_type, monthly_salary, salary_percent FROM employees WHERE is_active = true'
+      'SELECT id, salary_type, monthly_salary, salary_percent, bonus_percent FROM employees WHERE is_active = true'
     );
 
     const results = [];
@@ -136,8 +136,13 @@ router.post('/calculate', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, n
       const work_days = parseInt(prod.rows[0]?.work_days || 0);
       const total_produced = parseInt(prod.rows[0]?.total_produced || 0);
 
-      // Reja bonusi: faqat oylik/foizli xodimlarga (salaryBase>0) va savdo rejadan oshsa
-      const bonuses = salaryBase > 0 ? Math.round(salaryBase * overage) : 0;
+      // Bonuslar: (1) reja bonusi (savdo rejadan oshsa) + (2) xodimning doimiy qo'shimcha foizi
+      let bonuses = 0;
+      if (salaryBase > 0) {
+        bonuses += Math.round(salaryBase * overage); // reja bonusi
+        const bp = parseFloat(emp.bonus_percent) || 0; // qo'shimcha foiz (har oy)
+        if (bp) bonuses += Math.round(salaryBase * bp / 100);
+      }
 
       // Soliq va ijtimoiy sug'urta (bonusgacha bo'lgan summadan)
       const tax_amount = Math.round(total_calculated * tax_rate);

@@ -66,7 +66,7 @@ export default function EmployeesPage() {
   const watchedSalaryType = watch('salary_type');
 
   const openCreate = () => {
-    reset({ type: 'STANOKCHI', shift: '1-SMENA', salary_type: 'FIXED', monthly_salary: '', salary_percent: '', hire_date: new Date().toISOString().slice(0, 10) });
+    reset({ type: 'STANOKCHI', shift: '1-SMENA', salary_type: 'FIXED', monthly_salary: '', salary_percent: '', bonus_percent: '', hire_date: new Date().toISOString().slice(0, 10) });
     setEditEmployee(null);
     setShowModal(true);
   };
@@ -195,7 +195,7 @@ export default function EmployeesPage() {
                     : emp.salary_type === 'PERCENT'
                       ? <span className="badge bg-emerald-100 text-emerald-800">{emp.salary_percent || 0}%</span>
                       : (emp.monthly_salary > 0
-                          ? <span className="font-medium">{fmt(emp.monthly_salary)} so'm</span>
+                          ? <span className="font-medium">{fmt(emp.monthly_salary)} so'm{emp.bonus_percent > 0 && <span className="text-emerald-600"> +{emp.bonus_percent}%</span>}</span>
                           : <span className="text-gray-400">—</span>)
                   }
                 </td>
@@ -286,6 +286,13 @@ export default function EmployeesPage() {
                 <div>
                   <label className="label">Oylik (so'm)</label>
                   <input {...register('monthly_salary')} type="number" min="0" className="input" placeholder="Masalan: 3000000" />
+                </div>
+              )}
+              {watchedSalaryType !== 'PERCENT' && (
+                <div>
+                  <label className="label">Qo'shimcha foiz (%) — ixtiyoriy</label>
+                  <input {...register('bonus_percent')} type="number" step="0.1" min="0" className="input" placeholder="Masalan: 10" />
+                  <p className="text-xs text-emerald-700 mt-1">Har oy oyligiga shu foiz qo'shiladi. Masalan oylik 1.000.000, +10% → 1.100.000.</p>
                 </div>
               )}
             </div>

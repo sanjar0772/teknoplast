@@ -69,9 +69,10 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD'), [
     const salary_type = req.body.salary_type === 'PERCENT' ? 'PERCENT' : 'FIXED';
     const monthly_salary = Number(req.body.monthly_salary) || 0;
     const salary_percent = Number(req.body.salary_percent) || 0;
+    const bonus_percent = Number(req.body.bonus_percent) || 0; // qo'shimcha foiz (oyligchilarga)
     const result = await query(
-      'INSERT INTO employees (name, type, daily_tariff, hourly_tariff, hire_date, phone, address, shift, salary_type, monthly_salary, salary_percent) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
-      [name, type, daily_tariff, hourly_tariff || null, hire_date || new Date(), phone, address, shift || '1-SMENA', salary_type, monthly_salary, salary_percent]
+      'INSERT INTO employees (name, type, daily_tariff, hourly_tariff, hire_date, phone, address, shift, salary_type, monthly_salary, salary_percent, bonus_percent) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
+      [name, type, daily_tariff, hourly_tariff || null, hire_date || new Date(), phone, address, shift || '1-SMENA', salary_type, monthly_salary, salary_percent, bonus_percent]
     );
     res.status(201).json({ employee: result.rows[0] });
   } catch (err) { next(err); }
@@ -85,9 +86,10 @@ router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, nex
     const salary_type = req.body.salary_type === 'PERCENT' ? 'PERCENT' : 'FIXED';
     const monthly_salary = Number(req.body.monthly_salary) || 0;
     const salary_percent = Number(req.body.salary_percent) || 0;
+    const bonus_percent = Number(req.body.bonus_percent) || 0;
     const result = await query(
-      'UPDATE employees SET name=$1,type=$2,daily_tariff=$3,hourly_tariff=$4,phone=$5,address=$6,is_active=$7,shift=$8,salary_type=$9,monthly_salary=$10,salary_percent=$11,updated_at=NOW() WHERE id=$12 RETURNING *',
-      [name, type, daily_tariff, hourly_tariff, phone, address, is_active, shift || '1-SMENA', salary_type, monthly_salary, salary_percent, req.params.id]
+      'UPDATE employees SET name=$1,type=$2,daily_tariff=$3,hourly_tariff=$4,phone=$5,address=$6,is_active=$7,shift=$8,salary_type=$9,monthly_salary=$10,salary_percent=$11,bonus_percent=$12,updated_at=NOW() WHERE id=$13 RETURNING *',
+      [name, type, daily_tariff, hourly_tariff, phone, address, is_active, shift || '1-SMENA', salary_type, monthly_salary, salary_percent, bonus_percent, req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Xodim topilmadi' });
     res.json({ employee: result.rows[0] });

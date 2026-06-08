@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Send, User, AlertTriangle, TrendingUp, DollarSign, Factory, X, Mic, MicOff, Camera, Image, Volume2 } from 'lucide-react';
+import { Send, User, AlertTriangle, TrendingUp, DollarSign, Factory, X, Mic, MicOff, Camera, Image, Volume2, Paperclip } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { aiAPI, ahmadAPI, reportsAPI } from '../services/api';
 
@@ -109,13 +109,16 @@ export default function AIPage() {
       const formData = new FormData();
       formData.append('image', file);
       formData.append('language', language);
-      const token = localStorage.getItem('token');
+      // Token localStorage YOKI sessionStorage'da bo'lishi mumkin (remember on/off)
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
       const res = await fetch('/api/ahmad/read-image', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData,
       });
-      return res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || data.message || ('HTTP ' + res.status));
+      return data;
     },
     onSuccess: (data) => {
       const answer = data.response || data.text || (language === 'uz' ? 'Rasmni o\'qib bo\'ldim.' : 'Изображение прочитано.');
@@ -132,8 +135,8 @@ export default function AIPage() {
         setPendingAction(data.action);
       }
     },
-    onError: () => {
-      const errMsg = language === 'uz' ? 'Rasmni o\'qishda xato' : 'Ошибка чтения изображения';
+    onError: (err) => {
+      const errMsg = (language === 'uz' ? 'Faylni o\'qishda xato: ' : 'Ошибка чтения файла: ') + (err?.message || '');
       setChatMessages(prev => [...prev, {
         role: 'assistant', text: errMsg, time: new Date()
       }]);
@@ -637,11 +640,11 @@ export default function AIPage() {
                 {wakeEnabled ? <Volume2 size={18} /> : <span className="text-xs font-bold">A</span>}
               </button>
 
-              {/* Image button */}
+              {/* Fayl biriktirish */}
               <button onClick={() => fileInputRef.current?.click()}
-                className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100 text-gray-600 hover:bg-emerald-100 hover:text-emerald-700 transition-all"
+                className="w-10 h-10 flex items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all"
                 title={language === 'uz' ? 'Fayl yuborish (rasm, PDF, Excel, Word, CSV)' : 'Отправить файл (фото, PDF, Excel, Word, CSV)'}>
-                <Camera size={18} />
+                <Paperclip size={18} />
               </button>
               <input ref={fileInputRef} type="file"
                 accept="image/*,application/pdf,.xlsx,.xls,.csv,.txt,.tsv,.docx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document"

@@ -1,13 +1,29 @@
 const PDFDocument = require('pdfkit');
 const ExcelJS = require('exceljs');
+const path = require('path');
 
 function formatMoney(amount) {
   return new Intl.NumberFormat('uz-UZ').format(parseFloat(amount || 0)) + ' so\'m';
 }
 
+// PDFKit'ning standart "Helvetica" shrifti kirill harflarini (rus/o'zbek matni)
+// qo'llab-quvvatlamaydi — natijada PDF'da matn buzuq belgilar bilan chiqadi.
+// Shu sababli kirill-yo'naltirilgan TTF shrift ("Arial") ro'yxatdan o'tkazib,
+// "Helvetica"/"Helvetica-Bold" o'rniga ishlatamiz.
+const FONT_REGULAR = path.join(__dirname, '..', 'assets', 'fonts', 'Arial.ttf');
+const FONT_BOLD = path.join(__dirname, '..', 'assets', 'fonts', 'Arial-Bold.ttf');
+
+function registerCyrillicFonts(doc) {
+  doc.registerFont('Arial', FONT_REGULAR);
+  doc.registerFont('Arial-Bold', FONT_BOLD);
+  doc.font('Arial');
+  return doc;
+}
+
 async function generateMonthlyPDF(data) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    registerCyrillicFonts(doc);
     const chunks = [];
 
     doc.on('data', chunk => chunks.push(chunk));
@@ -15,16 +31,16 @@ async function generateMonthlyPDF(data) {
     doc.on('error', reject);
 
     // Header
-    doc.fontSize(20).font('Helvetica-Bold').text('TEKNOPLAST', { align: 'center' });
-    doc.fontSize(14).font('Helvetica').text(`${data.period} - Oylik Hisobot`, { align: 'center' });
+    doc.fontSize(20).font('Arial-Bold').text('TEKNOPLAST', { align: 'center' });
+    doc.fontSize(14).font('Arial').text(`${data.period} - Oylik Hisobot`, { align: 'center' });
     doc.moveDown();
     doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
     doc.moveDown();
 
     // Moliyaviy ko'rsatkichlar
-    doc.fontSize(12).font('Helvetica-Bold').text('MOLIYAVIY KO\'RSATKICHLAR');
+    doc.fontSize(12).font('Arial-Bold').text('MOLIYAVIY KO\'RSATKICHLAR');
     doc.moveDown(0.5);
-    doc.font('Helvetica');
+    doc.font('Arial');
 
     const pl = data.profit_loss || {};
     const rows = [
@@ -42,16 +58,16 @@ async function generateMonthlyPDF(data) {
     doc.moveDown();
 
     // Sotuv
-    doc.fontSize(12).font('Helvetica-Bold').text('SOTUV');
-    doc.font('Helvetica');
+    doc.fontSize(12).font('Arial-Bold').text('SOTUV');
+    doc.font('Arial');
     const s = data.sales || {};
     doc.text(`Jami: ${s.count || 0} ta, ${formatMoney(s.total)}`);
     doc.text(`To'langan: ${formatMoney(s.paid)}`);
     doc.moveDown();
 
     // Xarajatlar
-    doc.fontSize(12).font('Helvetica-Bold').text('XARAJATLAR');
-    doc.font('Helvetica');
+    doc.fontSize(12).font('Arial-Bold').text('XARAJATLAR');
+    doc.font('Arial');
     if (data.expenses?.by_category) {
       data.expenses.by_category.forEach(c => {
         doc.text(`${c.category}: ${formatMoney(c.total)}`);
@@ -60,16 +76,16 @@ async function generateMonthlyPDF(data) {
     doc.moveDown();
 
     // Ishlab chiqarish
-    doc.fontSize(12).font('Helvetica-Bold').text('ISHLAB CHIQARISH');
-    doc.font('Helvetica');
+    doc.fontSize(12).font('Arial-Bold').text('ISHLAB CHIQARISH');
+    doc.font('Arial');
     const prod = data.production || {};
     doc.text(`Jami ishlab chiqarildi: ${prod.total_qty || 0} dona`);
     doc.text(`Ishchilar soni: ${prod.workers || 0} nafar`);
     doc.moveDown();
 
     // Oylik
-    doc.fontSize(12).font('Helvetica-Bold').text('OYLIKLAR');
-    doc.font('Helvetica');
+    doc.fontSize(12).font('Arial-Bold').text('OYLIKLAR');
+    doc.font('Arial');
     const sal = data.salaries || {};
     doc.text(`Jami oylik xarajat: ${formatMoney(sal.total)}`);
     doc.text(`Xodimlar soni: ${sal.count || 0}`);
@@ -190,24 +206,25 @@ async function generateWaybillPDF(order) {
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    registerCyrillicFonts(doc);
     const chunks = [];
     doc.on('data', c => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
     // Sarlavha
-    doc.fontSize(20).font('Helvetica-Bold').text('TEKNOPLAST', 50, 50);
-    doc.fontSize(13).font('Helvetica').text('NAKLADNOY (Yuk xati)', 50, 75);
+    doc.fontSize(20).font('Arial-Bold').text('TEKNOPLAST', 50, 50);
+    doc.fontSize(13).font('Arial').text('NAKLADNOY (Yuk xati)', 50, 75);
 
     // QR kod o'ng yuqorida
     doc.image(qrBuffer, 420, 45, { width: 110 });
-    doc.fontSize(9).font('Helvetica').text(order.order_ref, 420, 158, { width: 110, align: 'center' });
+    doc.fontSize(9).font('Arial').text(order.order_ref, 420, 158, { width: 110, align: 'center' });
 
     doc.moveTo(50, 175).lineTo(545, 175).stroke();
 
     // Buyurtma ma'lumotlari
     let y = 190;
-    doc.fontSize(10).font('Helvetica');
+    doc.fontSize(10).font('Arial');
     doc.text(`Buyurtma kodi: ${order.order_ref}`, 50, y); y += 16;
     doc.text(`Sana: ${new Date(order.sale_date || Date.now()).toLocaleDateString('uz-UZ')}`, 50, y); y += 16;
     doc.text(`Mijoz: ${order.customer_name || 'Noma\'lum'}`, 50, y); y += 16;
@@ -215,11 +232,11 @@ async function generateWaybillPDF(order) {
     y += 10;
 
     // Jadval sarlavhasi
-    doc.font('Helvetica-Bold').fontSize(10);
+    doc.font('Arial-Bold').fontSize(10);
     doc.text('№', 50, y); doc.text('Mahsulot', 80, y); doc.text('Miqdor', 360, y); doc.text('Summa', 450, y);
     y += 4; doc.moveTo(50, y + 12).lineTo(545, y + 12).stroke(); y += 18;
 
-    doc.font('Helvetica').fontSize(10);
+    doc.font('Arial').fontSize(10);
     let total = 0;
     (order.items || []).forEach((it, i) => {
       const name = `${it.product_name || ''}${it.razmer ? ' ' + it.razmer : ''}${it.rang ? ' ' + it.rang : ''}`;
@@ -233,10 +250,10 @@ async function generateWaybillPDF(order) {
     });
 
     doc.moveTo(50, y + 4).lineTo(545, y + 4).stroke(); y += 14;
-    doc.font('Helvetica-Bold').text(`JAMI: ${formatMoney(total)}`, 360, y);
+    doc.font('Arial-Bold').text(`JAMI: ${formatMoney(total)}`, 360, y);
 
     y += 50;
-    doc.font('Helvetica').fontSize(9);
+    doc.font('Arial').fontSize(9);
     doc.text('Topshirdi (Omborchi): ____________________', 50, y);
     doc.text('Qabul qildi (Mijoz): ____________________', 320, y);
 
@@ -244,12 +261,21 @@ async function generateWaybillPDF(order) {
   });
 }
 
-// Status nomlari (schyot-faktura uchun)
-const INVOICE_STATUS_LABELS = {
-  PAID: "To'langan",
-  PENDING: 'Kutilmoqda',
-  PARTIALLY_PAID: "Qisman to'langan",
-};
+// To'lov turini sotuv yozuvidan aniqlaymiz (frontend InvoicePage bilan bir xil mantiq):
+//  - status === PAID va notes ichida "Karta"/"Naqd" bo'lsa — shu nom ko'rsatiladi
+//  - status === PAID lekin notes'da to'lov turi yo'q bo'lsa — "To'langan"
+//  - status === PARTIALLY_PAID — "Qisman to'langan"
+//  - aks holda (PENDING va h.k.) — "Qarz"
+function getInvoicePaymentLabel(sale) {
+  const notes = sale?.notes || '';
+  if (sale?.status === 'PAID') {
+    if (notes.includes('Karta')) return 'Karta';
+    if (notes.includes('Naqd')) return 'Naqd';
+    return "To'langan";
+  }
+  if (sale?.status === 'PARTIALLY_PAID') return "Qisman to'langan";
+  return 'Qarz';
+}
 
 // Schyot-faktura (счет-фактура) — bitta sotuv/buyurtma uchun, QR kod bilan
 // QR kod tizimdagi haqiqiy "/invoice/:id" sahifasiga yo'naltiradi (viewUrl orqali beriladi)
@@ -260,6 +286,7 @@ async function generateInvoicePDF(sale, items, viewUrl) {
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    registerCyrillicFonts(doc);
     const chunks = [];
     doc.on('data', c => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -270,34 +297,34 @@ async function generateInvoicePDF(sale, items, viewUrl) {
     const rows = (items && items.length) ? items : [sale];
 
     // Sarlavha
-    doc.fontSize(18).font('Helvetica-Bold').text('TEKNOPLAST', 50, 50);
-    doc.fontSize(13).font('Helvetica-Bold').text(`SCHYOT-FAKTURA №  ${orderRef}`, 50, 75);
-    doc.fontSize(9).font('Helvetica').text(`Sana: ${saleDate}`, 50, 95);
+    doc.fontSize(18).font('Arial-Bold').text('TEKNOPLAST', 50, 50);
+    doc.fontSize(13).font('Arial-Bold').text(`SCHYOT-FAKTURA №  ${orderRef}`, 50, 75);
+    doc.fontSize(9).font('Arial').text(`Sana: ${saleDate}`, 50, 95);
 
     // QR kod — o'ng yuqori burchakda — ushbu hujjatni tizimda ko'rish havolasi
     doc.image(qrBuffer, 420, 45, { width: 110 });
-    doc.fontSize(7.5).font('Helvetica')
+    doc.fontSize(7.5).font('Arial')
       .text("Hujjatni tizimda ko'rish uchun skanerlang", 420, 158, { width: 110, align: 'center' });
 
     doc.moveTo(50, 178).lineTo(545, 178).stroke();
 
     // Sotuvchi / Xaridor
     let y = 193;
-    doc.font('Helvetica-Bold').fontSize(10).text('Sotuvchi:', 50, y);
-    doc.font('Helvetica').text('TEKNOPLAST MCHJ', 150, y);
+    doc.font('Arial-Bold').fontSize(10).text('Sotuvchi:', 50, y);
+    doc.font('Arial').text('TEKNOPLAST MCHJ', 150, y);
     y += 16;
-    doc.font('Helvetica-Bold').text('Xaridor:', 50, y);
-    doc.font('Helvetica').text(sale.customer_full_name || sale.customer_name || "Noma'lum", 150, y);
+    doc.font('Arial-Bold').text('Xaridor:', 50, y);
+    doc.font('Arial').text(sale.customer_full_name || sale.customer_name || "Noma'lum", 150, y);
     y += 16;
     const phone = sale.customer_full_phone || sale.customer_phone;
     if (phone) {
-      doc.font('Helvetica-Bold').text('Telefon:', 50, y);
-      doc.font('Helvetica').text(phone, 150, y);
+      doc.font('Arial-Bold').text('Telefon:', 50, y);
+      doc.font('Arial').text(phone, 150, y);
       y += 16;
     }
     if (sale.customer_address) {
-      doc.font('Helvetica-Bold').text('Manzil:', 50, y);
-      doc.font('Helvetica').text(sale.customer_address, 150, y, { width: 380 });
+      doc.font('Arial-Bold').text('Manzil:', 50, y);
+      doc.font('Arial').text(sale.customer_address, 150, y, { width: 380 });
       y += 16;
     }
     y += 6;
@@ -305,7 +332,7 @@ async function generateInvoicePDF(sale, items, viewUrl) {
     y += 16;
 
     // Jadval sarlavhasi
-    doc.font('Helvetica-Bold').fontSize(10);
+    doc.font('Arial-Bold').fontSize(10);
     doc.text('№', 50, y);
     doc.text('Mahsulot nomi', 80, y);
     doc.text('Birlik', 300, y);
@@ -314,7 +341,7 @@ async function generateInvoicePDF(sale, items, viewUrl) {
     doc.text('Summa', 475, y);
     y += 4; doc.moveTo(50, y + 12).lineTo(545, y + 12).stroke(); y += 18;
 
-    doc.font('Helvetica').fontSize(9);
+    doc.font('Arial').fontSize(9);
     let total = 0;
     rows.forEach((it, i) => {
       doc.text(String(i + 1), 50, y);
@@ -329,14 +356,14 @@ async function generateInvoicePDF(sale, items, viewUrl) {
     });
 
     doc.moveTo(50, y + 4).lineTo(545, y + 4).stroke(); y += 16;
-    doc.font('Helvetica-Bold').fontSize(11).text(`JAMI: ${formatMoney(total)}`, 380, y, { width: 165, align: 'right' });
+    doc.font('Arial-Bold').fontSize(11).text(`JAMI: ${formatMoney(total)}`, 380, y, { width: 165, align: 'right' });
 
     y += 26;
-    doc.font('Helvetica').fontSize(9);
-    doc.text(`To'lov holati: ${INVOICE_STATUS_LABELS[sale.status] || sale.status || ''}`, 50, y);
+    doc.font('Arial').fontSize(9);
+    doc.text(`To'lov holati: ${getInvoicePaymentLabel(sale)}`, 50, y);
 
     y += 50;
-    doc.font('Helvetica').fontSize(9);
+    doc.font('Arial').fontSize(9);
     doc.text('Sotuvchi: ____________________', 50, y);
     doc.text('Xaridor: ____________________', 320, y);
 

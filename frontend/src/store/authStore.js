@@ -70,6 +70,7 @@ const useAuthStore = create((set, get) => ({
   isProductionHead: () => ['OWNER', 'PRODUCTION_HEAD'].includes(get().user?.role),
   isKirimchi: () => ['OWNER', 'KIRIMCHI'].includes(get().user?.role),
   isOmborchi: () => ['OWNER', 'OMBORCHI'].includes(get().user?.role),
+  isTaminotchi: () => ['OWNER', 'TAMINOTCHI'].includes(get().user?.role),
 }));
 
 export default useAuthStore;

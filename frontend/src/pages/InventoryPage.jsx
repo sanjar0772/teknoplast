@@ -25,7 +25,7 @@ function Modal({ open, onClose, title, children }) {
 }
 
 export default function InventoryPage() {
-  const { isOwner, isProductionHead } = useAuthStore();
+  const { isOwner, isTaminotchi } = useAuthStore();
   const qc = useQueryClient();
   const [showRmModal, setShowRmModal] = useState(false);
   const [rmStockModal, setRmStockModal] = useState(null);
@@ -64,7 +64,8 @@ export default function InventoryPage() {
 
   const lowProducts = (products?.products || []).filter(p => p.stock_quantity < 10);
   const lowRm = (rawMats?.raw_materials || []).filter(rm => rm.stock_balance <= rm.min_stock_level);
-  const canWrite = isOwner() || isProductionHead();
+  // Xom ashyo qo'shish/tahrirlash — faqat Ta'minotchi (va nazorat uchun Ega) qila oladi
+  const canWrite = isOwner() || isTaminotchi();
 
   return (
     <div className="space-y-6">
@@ -209,6 +210,10 @@ export default function InventoryPage() {
             <label className="label">Ta'minotchi</label>
             <input {...registerRm('supplier_name')} className="input" />
           </div>
+          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+            <input type="checkbox" {...registerRm('create_expense')} className="w-4 h-4" defaultChecked />
+            Xom ashyo qiymatini xarajat sifatida ham yozib qo'yish (Narxi va Miqdor bo'yicha)
+          </label>
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={() => setShowRmModal(false)} className="btn-secondary flex-1">Bekor</button>
             <button type="submit" disabled={createRmMutation.isPending} className="btn-primary flex-1">Saqlash</button>

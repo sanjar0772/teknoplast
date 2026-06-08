@@ -244,8 +244,9 @@ router.get('/raw-materials/intake-history', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/products/raw-materials (TAMINOTCHI xom ashyo qo'shadi)
-router.post('/raw-materials', requireRole('OWNER', 'PRODUCTION_HEAD', 'TAMINOTCHI'), async (req, res, next) => {
+// POST /api/products/raw-materials — xom ashyo qo'shish faqat Ta'minotchi vazifasi
+// (PRODUCTION_HEAD bu yerdan olib tashlandi — xom ashyo bilan faqat TAMINOTCHI shug'ullanadi)
+router.post('/raw-materials', requireRole('OWNER', 'TAMINOTCHI'), async (req, res, next) => {
   try {
     const { name, quantity, unit, price_per_unit, received_date, supplier_name, min_stock_level, create_expense } = req.body;
 
@@ -290,8 +291,8 @@ router.post('/raw-materials', requireRole('OWNER', 'PRODUCTION_HEAD', 'TAMINOTCH
   } catch (err) { next(err); }
 });
 
-// PUT /api/products/raw-materials/:id/stock (TAMINOTCHI stock update qiladi)
-router.put('/raw-materials/:id/stock', requireRole('OWNER', 'PRODUCTION_HEAD', 'TAMINOTCHI'), async (req, res, next) => {
+// PUT /api/products/raw-materials/:id/stock — ombor balansini yangilash, faqat Ta'minotchi vazifasi
+router.put('/raw-materials/:id/stock', requireRole('OWNER', 'TAMINOTCHI'), async (req, res, next) => {
   try {
     const { quantity, operation } = req.body;
     let sql;

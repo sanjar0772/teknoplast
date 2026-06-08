@@ -1,10 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, AlertTriangle, Warehouse } from 'lucide-react';
+import { Plus, X, AlertTriangle, Warehouse, Package, Boxes, PackagePlus } from 'lucide-react';
 import { productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
+import clsx from 'clsx';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
@@ -25,8 +27,10 @@ function Modal({ open, onClose, title, children }) {
 }
 
 export default function InventoryPage() {
-  const { isOwner, isTaminotchi } = useAuthStore();
+  const { isOwner, isTaminotchi, isKirimchi } = useAuthStore();
+  const navigate = useNavigate();
   const qc = useQueryClient();
+  const [tab, setTab] = useState('products'); // 'products' | 'raw'
   const [showRmModal, setShowRmModal] = useState(false);
   const [rmStockModal, setRmStockModal] = useState(null);
   const [rmStockForm, setRmStockForm] = useState({ quantity: 0, operation: 'add' });
@@ -64,115 +68,180 @@ export default function InventoryPage() {
 
   const lowProducts = (products?.products || []).filter(p => p.stock_quantity < 10);
   const lowRm = (rawMats?.raw_materials || []).filter(rm => rm.stock_balance <= rm.min_stock_level);
+
   // Xom ashyo qo'shish/tahrirlash — faqat Ta'minotchi (va nazorat uchun Ega) qila oladi
-  const canWrite = isOwner() || isTaminotchi();
+  const canWriteRaw = isOwner() || isTaminotchi();
+  // Tayyor mahsulot kirimini boshqarish — Kirimchi (va Ega) ning vazifasi, "Kirim" sahifasi orqali
+  const canManageProducts = isOwner() || isKirimchi();
+
+  const TABS = [
+    { key: 'products', label: 'Tayyor mahsulotlar', icon: Package },
+    { key: 'raw',      label: 'Xom ashyo',          icon: Boxes },
+  ];
 
   return (
     <div className="space-y-6">
       <div className="page-header">
         <h1 className="page-title">Ombor</h1>
-        {canWrite && (
+        {tab === 'products' && canManageProducts && (
+          <button onClick={() => navigate('/intake')} className="btn-primary btn-sm">
+            <PackagePlus size={14} /> Mahsulot kirimi (Kirim sahifasi)
+          </button>
+        )}
+        {tab === 'raw' && canWriteRaw && (
           <button onClick={() => { resetRm(); setShowRmModal(true); }} className="btn-primary btn-sm">
             <Plus size={14} /> Xom ashyo qo'shish
           </button>
         )}
       </div>
 
-      {/* Alerts */}
-      {(lowProducts.length > 0 || lowRm.length > 0) && (
-        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle size={18} className="text-orange-500" />
-            <h3 className="font-semibold text-orange-800">Kam ombor ogohlantirishlari</h3>
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {TABS.map(t => {
+          const Icon = t.icon;
+          const active = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={clsx(
+                'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
+                active
+                  ? 'border-blue-600 text-blue-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              )}
+            >
+              <Icon size={15} /> {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === 'products' && (
+        <>
+          {/* Products alert */}
+          {lowProducts.length > 0 && (
+            <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle size={18} className="text-orange-500" />
+                <h3 className="font-semibold text-orange-800">Kam ombor ogohlantirishlari — Mahsulotlar</h3>
+              </div>
+              <ul className="text-sm text-orange-700 space-y-1">
+                {lowProducts.map(p => (
+                  <li key={p.id}>• {p.name}: {p.stock_quantity} {p.unit} qoldi</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Products inventory */}
+          <div className="card">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">Tayyor Mahsulotlar Ombori</h2>
+            <div className="table-container">
+              <table className="table">
+                <thead>
+                  <tr><th>Mahsulot</th><th>Turi</th><th>Omborda</th><th>Narxi</th><th>Qiymati</th><th>Holat</th></tr>
+                </thead>
+                <tbody>
+                  {!(products?.products || []).length ? (
+                    <tr><td colSpan={6} className="text-center py-8 text-gray-400">
+                      <Warehouse size={32} className="mx-auto mb-2 opacity-30" /><br />Mahsulot yo'q
+                    </td></tr>
+                  ) : (products?.products || []).map(p => (
+                    <tr key={p.id}>
+                      <td className="font-medium">{p.name}</td>
+                      <td>{p.type}</td>
+                      <td className={`font-bold ${p.stock_quantity < 10 ? 'text-red-600' : 'text-green-700'}`}>
+                        {p.stock_quantity} {p.unit}
+                      </td>
+                      <td>{fmt(p.price)} so'm</td>
+                      <td className="font-semibold">{fmt(p.stock_quantity * p.price)} so'm</td>
+                      <td>
+                        {p.stock_quantity === 0
+                          ? <span className="badge-red">Tugagan</span>
+                          : p.stock_quantity < 10
+                            ? <span className="badge-yellow">Kam</span>
+                            : <span className="badge-green">Yetarli</span>
+                        }
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {canManageProducts && (
+              <p className="text-xs text-gray-400 mt-3">
+                Mahsulot ombori "Kirim" sahifasi orqali to'ldiriladi — bu yerda faqat ko'rish mumkin.
+              </p>
+            )}
           </div>
-          <ul className="text-sm text-orange-700 space-y-1">
-            {lowProducts.map(p => (
-              <li key={p.id}>• {p.name}: {p.stock_quantity} {p.unit} qoldi</li>
-            ))}
-            {lowRm.map(rm => (
-              <li key={rm.id}>• {rm.name} (xom ashyo): {rm.stock_balance} {rm.unit} qoldi</li>
-            ))}
-          </ul>
-        </div>
+        </>
       )}
 
-      {/* Products inventory */}
-      <div className="card">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Tayyor Mahsulotlar Ombori</h2>
-        <div className="table-container">
-          <table className="table">
-            <thead>
-              <tr><th>Mahsulot</th><th>Turi</th><th>Omborda</th><th>Narxi</th><th>Qiymati</th><th>Holat</th></tr>
-            </thead>
-            <tbody>
-              {!(products?.products || []).length ? (
-                <tr><td colSpan={6} className="text-center py-8 text-gray-400">
-                  <Warehouse size={32} className="mx-auto mb-2 opacity-30" /><br />Mahsulot yo'q
-                </td></tr>
-              ) : (products?.products || []).map(p => (
-                <tr key={p.id}>
-                  <td className="font-medium">{p.name}</td>
-                  <td>{p.type}</td>
-                  <td className={`font-bold ${p.stock_quantity < 10 ? 'text-red-600' : 'text-green-700'}`}>
-                    {p.stock_quantity} {p.unit}
-                  </td>
-                  <td>{fmt(p.price)} so'm</td>
-                  <td className="font-semibold">{fmt(p.stock_quantity * p.price)} so'm</td>
-                  <td>
-                    {p.stock_quantity === 0
-                      ? <span className="badge-red">Tugagan</span>
-                      : p.stock_quantity < 10
-                        ? <span className="badge-yellow">Kam</span>
-                        : <span className="badge-green">Yetarli</span>
-                    }
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {tab === 'raw' && (
+        <>
+          {/* Raw materials alert */}
+          {lowRm.length > 0 && (
+            <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle size={18} className="text-orange-500" />
+                <h3 className="font-semibold text-orange-800">Kam ombor ogohlantirishlari — Xom ashyo</h3>
+              </div>
+              <ul className="text-sm text-orange-700 space-y-1">
+                {lowRm.map(rm => (
+                  <li key={rm.id}>• {rm.name}: {rm.stock_balance} {rm.unit} qoldi</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-      {/* Raw materials */}
-      <div className="card">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Xom Ashyolar</h2>
-        <div className="table-container">
-          <table className="table">
-            <thead>
-              <tr><th>Nomi</th><th>Birlik</th><th>Omborda</th><th>Narxi</th><th>Ta'minotchi</th><th>Holat</th>{canWrite && <th>Amal</th>}</tr>
-            </thead>
-            <tbody>
-              {!(rawMats?.raw_materials || []).length ? (
-                <tr><td colSpan={7} className="text-center py-6 text-gray-400">Xom ashyo yo'q</td></tr>
-              ) : (rawMats?.raw_materials || []).map(rm => (
-                <tr key={rm.id}>
-                  <td className="font-medium">{rm.name}</td>
-                  <td>{rm.unit}</td>
-                  <td className={`font-bold ${rm.stock_balance <= rm.min_stock_level ? 'text-red-600' : 'text-green-700'}`}>
-                    {rm.stock_balance}
-                  </td>
-                  <td>{fmt(rm.price_per_unit)} so'm/{rm.unit}</td>
-                  <td>{rm.supplier_name || '—'}</td>
-                  <td>
-                    {rm.stock_balance <= 0
-                      ? <span className="badge-red">Tugagan</span>
-                      : rm.stock_balance <= rm.min_stock_level
-                        ? <span className="badge-yellow">Kam</span>
-                        : <span className="badge-green">Yetarli</span>
-                    }
-                  </td>
-                  {canWrite && (
-                    <td>
-                      <button onClick={() => { setRmStockModal(rm); setRmStockForm({ quantity: 0, operation: 'add' }); }}
-                        className="btn-secondary btn-sm">Ombor</button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+          {/* Raw materials */}
+          <div className="card">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">Xom Ashyolar</h2>
+            <div className="table-container">
+              <table className="table">
+                <thead>
+                  <tr><th>Nomi</th><th>Birlik</th><th>Omborda</th><th>Narxi</th><th>Ta'minotchi</th><th>Holat</th>{canWriteRaw && <th>Amal</th>}</tr>
+                </thead>
+                <tbody>
+                  {!(rawMats?.raw_materials || []).length ? (
+                    <tr><td colSpan={7} className="text-center py-6 text-gray-400">Xom ashyo yo'q</td></tr>
+                  ) : (rawMats?.raw_materials || []).map(rm => (
+                    <tr key={rm.id}>
+                      <td className="font-medium">{rm.name}</td>
+                      <td>{rm.unit}</td>
+                      <td className={`font-bold ${rm.stock_balance <= rm.min_stock_level ? 'text-red-600' : 'text-green-700'}`}>
+                        {rm.stock_balance}
+                      </td>
+                      <td>{fmt(rm.price_per_unit)} so'm/{rm.unit}</td>
+                      <td>{rm.supplier_name || '—'}</td>
+                      <td>
+                        {rm.stock_balance <= 0
+                          ? <span className="badge-red">Tugagan</span>
+                          : rm.stock_balance <= rm.min_stock_level
+                            ? <span className="badge-yellow">Kam</span>
+                            : <span className="badge-green">Yetarli</span>
+                        }
+                      </td>
+                      {canWriteRaw && (
+                        <td>
+                          <button onClick={() => { setRmStockModal(rm); setRmStockForm({ quantity: 0, operation: 'add' }); }}
+                            className="btn-secondary btn-sm">Ombor</button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {!canWriteRaw && (
+              <p className="text-xs text-gray-400 mt-3">
+                Xom ashyo qo'shish va ombor balansini o'zgartirish faqat Ta'minotchi vazifasi.
+              </p>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Add raw material */}
       <Modal open={showRmModal} onClose={() => setShowRmModal(false)} title="Yangi Xom Ashyo">

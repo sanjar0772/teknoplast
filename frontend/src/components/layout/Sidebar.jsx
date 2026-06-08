@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   LayoutDashboard, ShoppingCart, Receipt, Users, Factory,
   Banknote, Package, Warehouse, Cog, FileBarChart, Bot,
-  LogOut, ChevronRight, UserSquare2, Zap, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X, Sparkles, ShoppingBag
+  LogOut, ChevronRight, UserSquare2, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X, Sparkles, ShoppingBag
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { authAPI } from '../../services/api';
@@ -22,7 +22,6 @@ const ROLE_LABELS = {
 
 const NAV_ITEMS = [
   { to: '/',           icon: LayoutDashboard, label: 'Bosh Sahifa',      roles: null },
-  { to: '/quick-sale', icon: Zap,             label: 'Tezkor Savdo',     roles: ['OWNER','ACCOUNTANT','SALES_HEAD'] },
   { to: '/sales',      icon: ShoppingCart,    label: 'Sotuv tarixi',     roles: ['OWNER','ACCOUNTANT','SALES_HEAD'] },
   { to: '/customers',  icon: UserSquare2,     label: 'Mijozlar',         roles: ['OWNER','ACCOUNTANT','SALES_HEAD'] },
   { to: '/debts',      icon: Wallet,          label: 'Qarzlar',          roles: ['OWNER','ACCOUNTANT','SALES_HEAD'] },

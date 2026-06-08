@@ -18,7 +18,9 @@ export default function QuickSalePage() {
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState([]);          // [{id,name,unit,price,qty,stock}]
   const [customerId, setCustomerId] = useState('');
-  const [status, setStatus] = useState('PENDING');
+  // To'lov turi: 'CASH' (Naqd), 'CARD' (Karta), 'DEBT' (Qarz)
+  // Backend status'ga shunday o'tadi: CASH/CARD → PAID, DEBT → PENDING
+  const [paymentType, setPaymentType] = useState('CASH');
   const [saleDate, setSaleDate] = useState(new Date().toISOString().slice(0, 10));
   const [lastOrder, setLastOrder] = useState(null); // {order_ref, count, grand_total, items}
   const lastCartRef = useRef([]);
@@ -129,10 +131,15 @@ export default function QuickSalePage() {
     }
     // Chek uchun savat nusxasi (nomlar bilan)
     lastCartRef.current = cart.map(x => ({ name: x.name, qty: parseInt(x.qty), price: parseFloat(x.price), unit: x.unit }));
+    // To'lov turini backend statusiga moslash
+    const status = paymentType === 'DEBT' ? 'PENDING' : 'PAID';
+    const paymentLabel = paymentType === 'CASH' ? 'Naqd'
+                       : paymentType === 'CARD' ? 'Karta' : 'Qarz';
     saveMutation.mutate({
       customer_id: customerId || null,
       sale_date: saleDate,
       status,
+      notes: `To'lov turi: ${paymentLabel}`,
       items: cart.map(x => ({
         product_id: x.id,
         quantity: parseInt(x.qty),
@@ -154,7 +161,7 @@ export default function QuickSalePage() {
   return (
     <div className="space-y-4">
       <div className="page-header">
-        <h1 className="page-title">Tezkor Savdo</h1>
+        <h1 className="page-title">Savdo qilish</h1>
         <span className="text-sm text-gray-400">{products.length} ta mahsulot bazada</span>
       </div>
 
@@ -297,10 +304,10 @@ export default function QuickSalePage() {
             </div>
             <div>
               <label className="label">To'lov holati</label>
-              <select value={status} onChange={e => setStatus(e.target.value)} className="select text-sm">
-                <option value="PENDING">Kutilmoqda (qarz)</option>
-                <option value="PAID">To'langan</option>
-                <option value="PARTIALLY_PAID">Qisman</option>
+              <select value={paymentType} onChange={e => setPaymentType(e.target.value)} className="select text-sm">
+                <option value="CASH">💵 Naqd</option>
+                <option value="CARD">💳 Karta</option>
+                <option value="DEBT">📝 Qarz</option>
               </select>
             </div>
           </div>

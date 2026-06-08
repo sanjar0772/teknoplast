@@ -27,6 +27,10 @@ const ROLE_PERMISSIONS = {
     'products:read', 'inventory:read',
     'sales:read', 'fulfillment:read', 'fulfillment:write'
   ],
+  TAMINOTCHI: [
+    'raw_materials:read', 'raw_materials:write',
+    'inventory:read', 'expenses:read', 'expenses:write'
+  ],
 };
 
 const requireRole = (...roles) => (req, res, next) => {

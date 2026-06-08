@@ -13,6 +13,7 @@ const ROLES = [
   { value: 'PRODUCTION_HEAD', label: 'Ishlab Chiqarish Boshlig\'i', cls: 'badge-blue' },
   { value: 'KIRIMCHI',        label: 'Mahsulot Kirimchi',           cls: 'badge-gray' },
   { value: 'OMBORCHI',        label: 'Omborchi',                    cls: 'badge-gray' },
+  { value: 'TAMINOTCHI',      label: "Ta'minotchi",                 cls: 'badge-green' },
 ];
 const roleInfo = (r) => ROLES.find(x => x.value === r) || { label: r, cls: 'badge-gray' };
 

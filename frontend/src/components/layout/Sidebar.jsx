@@ -18,6 +18,7 @@ const ROLE_LABELS = {
   PRODUCTION_HEAD: 'Ishlab Chiqarish Boshlig\'i',
   KIRIMCHI: 'Mahsulot Kirimchi',
   OMBORCHI: 'Omborchi',
+  TAMINOTCHI: "Ta'minotchi",
 };
 
 const NAV_ITEMS = [

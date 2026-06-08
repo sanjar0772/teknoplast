@@ -31,19 +31,27 @@ function Modal({ open, onClose, title, children }) {
 }
 
 export default function ExpensesPage() {
-  const { isOwner, isAccountant } = useAuthStore();
+  const { user, isOwner, isAccountant } = useAuthStore();
+  // Ta'minotchi — faqat "Xom ashyo" toifasidagi kunlik xarajatlarni yoza oladi
+  const taminotchiOnly = user?.role === 'TAMINOTCHI';
   const qc = useQueryClient();
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [showModal, setShowModal] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['expenses', month],
-    queryFn: () => expensesAPI.getAll({ start_date: `${month}-01`, end_date: `${month}-31`, limit: 100 }).then(r => r.data),
+    queryKey: ['expenses', month, taminotchiOnly],
+    queryFn: () => expensesAPI.getAll({
+      start_date: `${month}-01`, end_date: `${month}-31`, limit: 100,
+      ...(taminotchiOnly ? { category: 'RAW_MATERIAL' } : {}),
+    }).then(r => r.data),
   });
 
+  // Ta'minotchiga butun korxona xarajatlari (oylik, boshqa toifalar) ko'rsatilmaydi —
+  // u faqat o'zi yozgan "Xom ashyo" kunlik xarajatlari ro'yxatini ko'radi
   const { data: summary } = useQuery({
     queryKey: ['expenses-summary', month],
     queryFn: () => expensesAPI.getSummary({ month }).then(r => r.data),
+    enabled: !taminotchiOnly,
   });
 
   const createMutation = useMutation({
@@ -71,22 +79,32 @@ export default function ExpensesPage() {
     value: parseFloat(c.total),
   }));
 
-  const canWrite = isOwner() || isAccountant();
+  const canWrite = isOwner() || isAccountant() || taminotchiOnly;
 
   return (
     <div className="space-y-6">
       <div className="page-header">
-        <h1 className="page-title">Xarajatlar</h1>
+        <h1 className="page-title">{taminotchiOnly ? "Xom ashyo xarajatlari" : "Xarajatlar"}</h1>
         <div className="flex gap-2">
           <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="input w-40" />
           {canWrite && (
-            <button onClick={() => { reset(); setShowModal(true); }} className="btn-primary btn-sm">
-              <Plus size={14} /> Xarajat qo'shish
+            <button onClick={() => { reset({ category: taminotchiOnly ? 'RAW_MATERIAL' : undefined }); setShowModal(true); }} className="btn-primary btn-sm">
+              <Plus size={14} /> {taminotchiOnly ? "Kunlik xom ashyo xarajati" : "Xarajat qo'shish"}
             </button>
           )}
         </div>
       </div>
 
+      {taminotchiOnly ? (
+        /* Ta'minotchi uchun soddalashtirilgan ko'rinish — faqat Xom ashyo xarajatlari */
+        <div className="card max-w-sm">
+          <h2 className="text-sm font-semibold text-gray-700 mb-1">Shu oydagi xom ashyo xarajati</h2>
+          <p className="text-2xl font-bold text-red-600 mb-1">
+            {fmt((data?.expenses || []).reduce((sum, e) => sum + parseFloat(e.amount || 0), 0))} so'm
+          </p>
+          <p className="text-xs text-gray-400">{(data?.expenses || []).length} ta yozuv</p>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Xarajatlar bo'linishi */}
         <div className="card">
@@ -137,6 +155,7 @@ export default function ExpensesPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Table */}
       <div className="table-container">
@@ -174,14 +193,18 @@ export default function ExpensesPage() {
         </table>
       </div>
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} title="Yangi Xarajat">
-        <form onSubmit={handleSubmit(d => createMutation.mutate(d))} className="space-y-4">
-          <div>
-            <label className="label">Kategoriya *</label>
-            <select {...register('category', { required: true })} className="select">
-              {Object.entries(CATS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-          </div>
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={taminotchiOnly ? "Kunlik Xom Ashyo Xarajati" : "Yangi Xarajat"}>
+        <form onSubmit={handleSubmit(d => createMutation.mutate(taminotchiOnly ? { ...d, category: 'RAW_MATERIAL' } : d))} className="space-y-4">
+          {taminotchiOnly ? (
+            <input type="hidden" value="RAW_MATERIAL" {...register('category')} />
+          ) : (
+            <div>
+              <label className="label">Kategoriya *</label>
+              <select {...register('category', { required: true })} className="select">
+                {Object.entries(CATS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+          )}
           <div>
             <label className="label">Miqdor (so'm) *</label>
             <input {...register('amount', { required: true, min: 1 })} type="number" min="0" className="input" />

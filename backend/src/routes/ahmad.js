@@ -805,8 +805,18 @@ router.post('/auto', async (req, res) => {
 
     // 1) Vazifani oddiy qadam-buyruqlarga bo'lamiz
     const planSys = lang === 'ru'
-      ? `Разбейте задачу на простые шаги-команды (каждый — ОДНА операция, как короткая команда помощнику Ахмаду). Верните ТОЛЬКО JSON-массив строк: ["шаг1","шаг2"]. Максимум 6 шагов. НЕ удаляйте сотрудников/пользователей.`
-      : `Vazifani oddiy qadam-buyruqlarga bo'ling (har biri BITTA amal, Ahmad yordamchiga qisqa buyruq kabi). FAQAT JSON massiv qaytaring: ["qadam1","qadam2"]. Ko'pi 6 qadam. Xodim/foydalanuvchi O'CHIRMANG.`;
+      ? `Разбейте задачу на ВЫПОЛНИМЫЕ шаги-команды для помощника Ахмада. ВАЖНО:
+- Каждый шаг — ПОЛНАЯ, самостоятельная команда со ВСЕМИ деталями (название товара, число, сумма внутри шага).
+- НЕ разбивайте одну операцию на "найти" + "изменить" — делайте одной командой. Пример: "измени цену гул тувак на 9000" (один шаг).
+- Если задача — одна операция, верните ОДИН шаг.
+- НЕ удаляйте сотрудников/пользователей.
+Верните ТОЛЬКО JSON-массив строк: ["команда1","команда2"]. Максимум 6.`
+      : `Vazifani BAJARILADIGAN qadam-buyruqlarga bo'ling (Ahmad yordamchi uchun). MUHIM:
+- Har qadam TO'LIQ, mustaqil buyruq bo'lsin — barcha tafsilot (mahsulot nomi, son, summa) qadam ICHIDA bo'lsin.
+- Bitta amalni "izlash" + "o'zgartirish"ga BO'LMANG — bitta to'liq buyruq qiling. Masalan: "gul tuvak narxini 9000 qil" (bitta qadam).
+- Agar vazifa bitta amaldan iborat bo'lsa — BITTA qadam qaytaring.
+- Xodim/foydalanuvchi O'CHIRMANG.
+FAQAT JSON massiv qaytaring: ["buyruq1","buyruq2"]. Ko'pi 6.`;
     const planMsg = await claude.messages.create({
       model: MODEL, max_tokens: 600, system: planSys,
       messages: [{ role: 'user', content: task }],

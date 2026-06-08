@@ -47,6 +47,8 @@ export const authAPI = {
 // Sales
 export const salesAPI = {
   getAll: (params) => api.get('/sales', { params }),
+  getById: (id) => api.get(`/sales/${id}`),
+  downloadInvoicePdf: (id) => api.get(`/sales/${id}/invoice-pdf`, { responseType: 'blob' }),
   getSummary: (params) => api.get('/sales/summary', { params }),
   create: (data) => api.post('/sales', data),
   createBulk: (data) => api.post('/sales/bulk', data),

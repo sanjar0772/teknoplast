@@ -4,6 +4,7 @@ import Layout from './components/layout/Layout';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import SalesPage from './pages/SalesPage';
+import InvoicePage from './pages/InvoicePage';
 import QuickSalePage from './pages/QuickSalePage';
 import CustomersPage from './pages/CustomersPage';
 import DebtsPage from './pages/DebtsPage';
@@ -45,6 +46,7 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="quick-sale" element={<QuickSalePage />} />
           <Route path="sales" element={<SalesPage />} />
+          <Route path="invoice/:id" element={<InvoicePage />} />
           <Route path="customers" element={<CustomersPage />} />
           <Route path="debts" element={<DebtsPage />} />
           <Route path="users" element={<UsersPage />} />

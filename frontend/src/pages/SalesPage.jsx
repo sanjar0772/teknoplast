@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, Download, Search, X, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { Plus, Download, Search, X, CheckCircle, Clock, AlertCircle, FileText } from 'lucide-react';
 import { salesAPI, productsAPI, reportsAPI, customersAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -32,6 +33,7 @@ function Modal({ open, onClose, title, children }) {
 
 export default function SalesPage() {
   const { isSalesHead, isAccountant, isOwner } = useAuthStore();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [filter, setFilter] = useState({ status: '', search: '' });
   const [showModal, setShowModal] = useState(false);
@@ -181,14 +183,23 @@ export default function SalesPage() {
                   {STATUS_MAP[sale.status]?.label}
                 </span></td>
                 <td>
-                  {sale.status !== 'PAID' && canCreate && (
+                  <div className="flex gap-2">
                     <button
-                      onClick={() => statusMutation.mutate({ id: sale.id, status: 'PAID' })}
-                      className="btn-success btn-sm"
+                      onClick={() => navigate(`/invoice/${sale.id}`)}
+                      className="btn-secondary btn-sm"
+                      title="Schyot-faktura ko'rish"
                     >
-                      <CheckCircle size={12} /> To'landi
+                      <FileText size={12} /> Chek
                     </button>
-                  )}
+                    {sale.status !== 'PAID' && canCreate && (
+                      <button
+                        onClick={() => statusMutation.mutate({ id: sale.id, status: 'PAID' })}
+                        className="btn-success btn-sm"
+                      >
+                        <CheckCircle size={12} /> To'landi
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

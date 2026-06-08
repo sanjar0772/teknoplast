@@ -244,4 +244,107 @@ async function generateWaybillPDF(order) {
   });
 }
 
-module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateWaybillPDF };
+// Status nomlari (schyot-faktura uchun)
+const INVOICE_STATUS_LABELS = {
+  PAID: "To'langan",
+  PENDING: 'Kutilmoqda',
+  PARTIALLY_PAID: "Qisman to'langan",
+};
+
+// Schyot-faktura (счет-фактура) — bitta sotuv/buyurtma uchun, QR kod bilan
+// QR kod tizimdagi haqiqiy "/invoice/:id" sahifasiga yo'naltiradi (viewUrl orqali beriladi)
+async function generateInvoicePDF(sale, items, viewUrl) {
+  const QRCode = require('qrcode');
+  const qrDataUrl = await QRCode.toDataURL(viewUrl, { margin: 1, width: 160 });
+  const qrBuffer = Buffer.from(qrDataUrl.split(',')[1], 'base64');
+
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const orderRef = sale.order_ref || sale.id;
+    const saleDate = new Date(sale.sale_date || Date.now()).toLocaleDateString('uz-UZ');
+    const rows = (items && items.length) ? items : [sale];
+
+    // Sarlavha
+    doc.fontSize(18).font('Helvetica-Bold').text('TEKNOPLAST', 50, 50);
+    doc.fontSize(13).font('Helvetica-Bold').text(`SCHYOT-FAKTURA №  ${orderRef}`, 50, 75);
+    doc.fontSize(9).font('Helvetica').text(`Sana: ${saleDate}`, 50, 95);
+
+    // QR kod — o'ng yuqori burchakda — ushbu hujjatni tizimda ko'rish havolasi
+    doc.image(qrBuffer, 420, 45, { width: 110 });
+    doc.fontSize(7.5).font('Helvetica')
+      .text("Hujjatni tizimda ko'rish uchun skanerlang", 420, 158, { width: 110, align: 'center' });
+
+    doc.moveTo(50, 178).lineTo(545, 178).stroke();
+
+    // Sotuvchi / Xaridor
+    let y = 193;
+    doc.font('Helvetica-Bold').fontSize(10).text('Sotuvchi:', 50, y);
+    doc.font('Helvetica').text('TEKNOPLAST MCHJ', 150, y);
+    y += 16;
+    doc.font('Helvetica-Bold').text('Xaridor:', 50, y);
+    doc.font('Helvetica').text(sale.customer_full_name || sale.customer_name || "Noma'lum", 150, y);
+    y += 16;
+    const phone = sale.customer_full_phone || sale.customer_phone;
+    if (phone) {
+      doc.font('Helvetica-Bold').text('Telefon:', 50, y);
+      doc.font('Helvetica').text(phone, 150, y);
+      y += 16;
+    }
+    if (sale.customer_address) {
+      doc.font('Helvetica-Bold').text('Manzil:', 50, y);
+      doc.font('Helvetica').text(sale.customer_address, 150, y, { width: 380 });
+      y += 16;
+    }
+    y += 6;
+    doc.moveTo(50, y).lineTo(545, y).stroke();
+    y += 16;
+
+    // Jadval sarlavhasi
+    doc.font('Helvetica-Bold').fontSize(10);
+    doc.text('№', 50, y);
+    doc.text('Mahsulot nomi', 80, y);
+    doc.text('Birlik', 300, y);
+    doc.text('Miqdor', 350, y);
+    doc.text('Narx', 405, y);
+    doc.text('Summa', 475, y);
+    y += 4; doc.moveTo(50, y + 12).lineTo(545, y + 12).stroke(); y += 18;
+
+    doc.font('Helvetica').fontSize(9);
+    let total = 0;
+    rows.forEach((it, i) => {
+      doc.text(String(i + 1), 50, y);
+      doc.text((it.product_name || '').slice(0, 40), 80, y, { width: 215 });
+      doc.text(it.unit || 'dona', 300, y);
+      doc.text(String(it.quantity), 350, y);
+      doc.text(new Intl.NumberFormat('uz-UZ').format(parseFloat(it.unit_price || 0)), 405, y, { width: 65 });
+      doc.text(new Intl.NumberFormat('uz-UZ').format(parseFloat(it.total_amount || 0)), 470, y, { width: 75 });
+      total += parseFloat(it.total_amount || 0);
+      y += 18;
+      if (y > 700) { doc.addPage(); y = 50; }
+    });
+
+    doc.moveTo(50, y + 4).lineTo(545, y + 4).stroke(); y += 16;
+    doc.font('Helvetica-Bold').fontSize(11).text(`JAMI: ${formatMoney(total)}`, 380, y, { width: 165, align: 'right' });
+
+    y += 26;
+    doc.font('Helvetica').fontSize(9);
+    doc.text(`To'lov holati: ${INVOICE_STATUS_LABELS[sale.status] || sale.status || ''}`, 50, y);
+
+    y += 50;
+    doc.font('Helvetica').fontSize(9);
+    doc.text('Sotuvchi: ____________________', 50, y);
+    doc.text('Xaridor: ____________________', 320, y);
+
+    doc.fontSize(7).fillColor('gray')
+      .text('Hujjat Texno Plast tizimi orqali avtomatik generatsiya qilindi. Haqiqiyligini QR kod orqali tekshiring.', 50, 770, { width: 495, align: 'center' });
+
+    doc.end();
+  });
+}
+
+module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateWaybillPDF, generateInvoicePDF };

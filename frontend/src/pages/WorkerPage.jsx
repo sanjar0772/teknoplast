@@ -3,9 +3,10 @@ import { useMutation } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   Bot, RefreshCw, AlertTriangle, Target, TrendingUp, Lightbulb,
-  ShoppingCart, Wallet, Package, Cog, Banknote,
+  ShoppingCart, Wallet, Package, Cog, Banknote, Play, Check, X, SkipForward, Info,
 } from 'lucide-react';
 import { ahmadAPI } from '../services/api';
+import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
@@ -45,13 +46,29 @@ function MiniStat({ icon: Icon, label, value, bg }) {
   );
 }
 
+const STEP_ICON = {
+  done: { icon: Check, cls: 'text-green-600' },
+  failed: { icon: X, cls: 'text-red-600' },
+  skipped: { icon: SkipForward, cls: 'text-amber-600' },
+  info: { icon: Info, cls: 'text-gray-400' },
+};
+
 export default function WorkerPage() {
+  const { isOwner } = useAuthStore();
   const [result, setResult] = useState(null);
+  const [task, setTask] = useState('');
+  const [autoResult, setAutoResult] = useState(null);
 
   const briefMutation = useMutation({
     mutationFn: () => ahmadAPI.workerBriefing('uz').then(r => r.data),
     onSuccess: (data) => setResult(data),
     onError: (e) => toast.error(e.response?.data?.error || 'AI ishchi javob bermadi'),
+  });
+
+  const autoMutation = useMutation({
+    mutationFn: (t) => ahmadAPI.auto(t, 'uz').then(r => r.data),
+    onSuccess: (data) => setAutoResult(data),
+    onError: (e) => toast.error(e.response?.data?.error || 'AI ishchi vazifani bajara olmadi'),
   });
 
   const b = result?.briefing;
@@ -71,6 +88,55 @@ export default function WorkerPage() {
           {briefMutation.isPending ? 'Tahlil qilmoqda...' : (result ? 'Yangilash' : 'Ishni boshlash')}
         </button>
       </div>
+
+      {/* AVTONOM vazifa bajaruvchi — faqat EGA */}
+      {isOwner() && (
+        <div className="card p-5 border-2 border-indigo-200 bg-gradient-to-r from-indigo-50 to-white">
+          <div className="flex items-center gap-2 mb-2">
+            <Play size={16} className="text-indigo-600" />
+            <p className="text-sm font-bold text-gray-900">Avtonom vazifa</p>
+          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            Vazifa yozing — AI uni qadamlarga bo'lib, o'zi bajaradi. Masalan: "gul tuvak narxini 9000 qil va ombor sonini 200 ta qil".
+            ⚠️ Xodim/foydalanuvchi o'chirish kabi xavfli amallar avtonom bajarilmaydi.
+          </p>
+          <div className="flex gap-2">
+            <input
+              value={task}
+              onChange={e => setTask(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && task.trim() && autoMutation.mutate(task)}
+              placeholder="Vazifani yozing..."
+              className="input flex-1" />
+            <button
+              onClick={() => task.trim() && autoMutation.mutate(task)}
+              disabled={autoMutation.isPending || !task.trim()}
+              className="btn-primary btn-sm whitespace-nowrap">
+              {autoMutation.isPending ? <><RefreshCw size={14} className="animate-spin" /> Bajarmoqda...</> : <><Play size={14} /> Bajar</>}
+            </button>
+          </div>
+
+          {autoResult && (
+            <div className="mt-4 space-y-2">
+              <p className="text-sm font-semibold text-gray-700">{autoResult.summary}</p>
+              <div className="space-y-1.5">
+                {(autoResult.log || []).map((l, i) => {
+                  const si = STEP_ICON[l.status] || STEP_ICON.info;
+                  const Icon = si.icon;
+                  return (
+                    <div key={i} className="flex gap-2 text-sm bg-white rounded-lg border border-gray-100 p-2">
+                      <Icon size={15} className={`${si.cls} flex-shrink-0 mt-0.5`} />
+                      <div className="min-w-0">
+                        <p className="text-gray-700">{l.step}</p>
+                        {l.message && <p className="text-xs text-gray-400">{l.message}</p>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {!result && !briefMutation.isPending && (
         <div className="card text-center py-16">

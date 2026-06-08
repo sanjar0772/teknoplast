@@ -172,6 +172,7 @@ export const ahmadAPI = {
   confirmAction: (action) => api.post('/ahmad/confirm-action', { action }),
   workerBriefing: (language) => api.post('/ahmad/worker-briefing', { language }),
   debtReminder: (data) => api.post('/ahmad/debt-reminder', data),
+  auto: (task, language) => api.post('/ahmad/auto', { task, language }),
 };
 
 export default api;

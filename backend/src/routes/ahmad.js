@@ -479,7 +479,7 @@ function reportToText(r, lang) {
 
 // ---------- POST /api/ahmad/command ----------
 // Tabiiy tildagi buyruq -> javob yoki amal (tasdiqlash uchun)
-router.post('/command', async (req, res) => {
+async function commandHandler(req, res) {
   try {
     const { text, language, history } = req.body;
     const lang = language === 'ru' ? 'ru' : 'uz';
@@ -773,6 +773,76 @@ MUHIM: *, #, emoji, markdown ishlatmang — faqat toza matn (ovozda o\'qiladi).`
     });
   } catch (err) {
     console.error('Ahmad command error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+router.post('/command', commandHandler);
+
+// Buyruqni dasturiy bajarish (avtonom /auto uchun) — { response, action } qaytaradi
+function runCommand(user, text, language) {
+  return new Promise((resolve) => {
+    const fakeRes = {
+      _status: 200,
+      status() { return this; },
+      json(body) { resolve(body || {}); },
+    };
+    Promise.resolve(commandHandler({ user, body: { text, language, history: [] } }, fakeRes))
+      .catch(e => resolve({ response: 'Xato: ' + e.message }));
+  });
+}
+
+// ---------- POST /api/ahmad/auto — AVTONOM ko'p bosqichli bajaruvchi (faqat EGA) ----------
+// Vazifani qadamlarga bo'lib, har birini o'zi bajaradi. Xavfli amallar (xodim/foydalanuvchi
+// o'chirish/yaratish) avtonom bajarilMAYDI — ular o'tkazib yuboriladi (qo'lda tasdiqlash kerak).
+const AUTO_BLOCKED_ACTIONS = new Set(['REMOVE_EMPLOYEE', 'ADD_USER']);
+router.post('/auto', async (req, res) => {
+  try {
+    const lang = req.body.language === 'ru' ? 'ru' : 'uz';
+    if (!claude) return res.status(503).json({ error: lang === 'ru' ? 'AI не настроен' : 'AI sozlanmagan' });
+    if (req.user?.role !== 'OWNER') return res.status(403).json({ error: lang === 'ru' ? 'Только админ' : 'Faqat ega' });
+    const task = String(req.body.task || '').trim();
+    if (!task) return res.status(400).json({ error: lang === 'ru' ? 'Задача не указана' : 'Vazifa kiritilmagan' });
+
+    // 1) Vazifani oddiy qadam-buyruqlarga bo'lamiz
+    const planSys = lang === 'ru'
+      ? `Разбейте задачу на простые шаги-команды (каждый — ОДНА операция, как короткая команда помощнику Ахмаду). Верните ТОЛЬКО JSON-массив строк: ["шаг1","шаг2"]. Максимум 6 шагов. НЕ удаляйте сотрудников/пользователей.`
+      : `Vazifani oddiy qadam-buyruqlarga bo'ling (har biri BITTA amal, Ahmad yordamchiga qisqa buyruq kabi). FAQAT JSON massiv qaytaring: ["qadam1","qadam2"]. Ko'pi 6 qadam. Xodim/foydalanuvchi O'CHIRMANG.`;
+    const planMsg = await claude.messages.create({
+      model: MODEL, max_tokens: 600, system: planSys,
+      messages: [{ role: 'user', content: task }],
+    });
+    const planText = planMsg.content.find(b => b.type === 'text')?.text || '';
+    let steps = [];
+    try { const m = planText.match(/\[[\s\S]*\]/); if (m) steps = JSON.parse(m[0]); } catch {}
+    steps = (Array.isArray(steps) ? steps : []).filter(s => typeof s === 'string' && s.trim()).slice(0, 6);
+    if (!steps.length) steps = [task];
+
+    // 2) Har qadamni bajaramiz
+    const log = [];
+    for (const step of steps) {
+      const out = await runCommand(req.user, step, lang);
+      if (out.action) {
+        if (AUTO_BLOCKED_ACTIONS.has(out.action.type)) {
+          log.push({ step, status: 'skipped', message: (lang === 'ru' ? 'Опасное действие — подтвердите вручную: ' : 'Xavfli amal — qo\'lda tasdiqlang: ') + (out.action.description || out.action.type) });
+        } else {
+          const ex = await executeAction(out.action, req.user);
+          const ok = ex.body && ex.body.success !== false && !ex.body.error;
+          log.push({ step, status: ok ? 'done' : 'failed', message: ex.body?.message || ex.body?.error || (ok ? 'bajarildi' : 'xato') });
+        }
+      } else {
+        log.push({ step, status: 'info', message: out.response || '' });
+      }
+    }
+
+    // 3) Yakuniy hisobot (qisqa)
+    const doneN = log.filter(l => l.status === 'done').length;
+    const summary = lang === 'ru'
+      ? `Готово. Выполнено шагов: ${doneN}/${steps.length}.`
+      : `Tayyor. Bajarilgan qadamlar: ${doneN}/${steps.length}.`;
+
+    res.json({ task, steps, log, summary });
+  } catch (err) {
+    console.error('auto error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1069,7 +1139,7 @@ O'zbek tilida qisqa javob bering.`;
 });
 
 // ---------- POST /api/ahmad/confirm-action ----------
-router.post('/confirm-action', async (req, res) => {
+async function confirmActionHandler(req, res) {
   try {
     const { action } = req.body;
     if (!action?.type) return res.status(400).json({ error: 'Action kerak' });
@@ -1399,6 +1469,20 @@ router.post('/confirm-action', async (req, res) => {
     console.error('Ahmad confirm-action error:', err.message);
     res.status(500).json({ error: err.message });
   }
-});
+}
+router.post('/confirm-action', confirmActionHandler);
+
+// Amalni dasturiy bajarish (avtonom /auto uchun) — confirm-action mantig'ini qayta ishlatadi (fake res orqali)
+function executeAction(action, user) {
+  return new Promise((resolve) => {
+    const fakeRes = {
+      _status: 200,
+      status(c) { this._status = c; return this; },
+      json(body) { resolve({ status: this._status, body }); },
+    };
+    Promise.resolve(confirmActionHandler({ user, body: { action } }, fakeRes))
+      .catch(e => resolve({ status: 500, body: { error: e.message } }));
+  });
+}
 
 module.exports = router;

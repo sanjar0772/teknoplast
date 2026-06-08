@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   LayoutDashboard, ShoppingCart, Receipt, Users, Factory,
   Banknote, Package, Warehouse, Cog, FileBarChart, Bot,
-  LogOut, ChevronRight, UserSquare2, Zap, Sheet, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X, Sparkles
+  LogOut, ChevronRight, UserSquare2, Zap, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X, Sparkles, ShoppingBag
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { authAPI } from '../../services/api';
@@ -33,7 +33,7 @@ const NAV_ITEMS = [
   { to: '/fulfillment',icon: Truck,           label: 'Ombor berish',     roles: ['OWNER','OMBORCHI','SALES_HEAD'] },
   { to: '/salaries',   icon: Banknote,        label: 'Maoshlar',         roles: ['OWNER','ACCOUNTANT'] },
   { to: '/products',   icon: Package,         label: 'Mahsulotlar',      roles: ['OWNER','PRODUCTION_HEAD','SALES_HEAD','KIRIMCHI'] },
-  { to: '/products-grid', icon: Sheet,        label: 'Mahsulot jadvali', roles: ['OWNER','PRODUCTION_HEAD','SALES_HEAD','ACCOUNTANT'] },
+  { to: '/quick-sale', icon: ShoppingBag,     label: 'Savdo qilish',     roles: ['OWNER','ACCOUNTANT','SALES_HEAD'] },
   { to: '/inventory',  icon: Warehouse,       label: 'Ombor',            roles: ['OWNER','ACCOUNTANT','PRODUCTION_HEAD','KIRIMCHI','OMBORCHI'] },
   { to: '/machines',   icon: Cog,             label: 'Mashinalar',       roles: ['OWNER','PRODUCTION_HEAD'] },
   { to: '/reports',    icon: FileBarChart,    label: 'Hisobotlar',       roles: ['OWNER','ACCOUNTANT'] },
@@ -90,9 +90,9 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-0.5">
-        {visibleItems.map(({ to, icon: Icon, label }) => (
+        {visibleItems.map(({ to, icon: Icon, label }, idx) => (
           <NavLink
-            key={to}
+            key={`${to}-${idx}`}
             to={to}
             end={to === '/'}
             className={({ isActive }) =>

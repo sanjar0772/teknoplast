@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Search, Plus, Trash2, ShoppingCart, X, Package, CheckCircle, Eraser, FileDown, QrCode
+  Search, Plus, Trash2, ShoppingCart, X, Package, CheckCircle, Eraser, FileDown, QrCode, FileText
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { productsAPI, customersAPI, salesAPI, fulfillmentAPI } from '../services/api';
@@ -206,10 +206,18 @@ export default function QuickSalePage() {
             </div>
 
             {/* Tugmalar */}
-            <div className="flex gap-2 mt-3 print:hidden">
-              <button onClick={() => window.print()} className="btn-secondary flex-1 text-sm"><QrCode size={14} /> Chop etish</button>
-              <button onClick={() => downloadNakladnoy(lastOrder.order_ref)} className="btn-secondary flex-1 text-sm"><FileDown size={14} /> Nakladnoy</button>
-              <button onClick={() => { setLastOrder(null); searchRef.current?.focus(); }} className="btn-primary flex-1 text-sm">Yangi</button>
+            <div className="flex flex-col gap-2 mt-3 print:hidden">
+              <button
+                onClick={() => navigate(`/invoice/${lastOrder.order_ref}`)}
+                className="btn-primary w-full text-sm"
+              >
+                <FileText size={14} /> Schyot-fakturani ko'rish
+              </button>
+              <div className="flex gap-2">
+                <button onClick={() => window.print()} className="btn-secondary flex-1 text-sm"><QrCode size={14} /> Chop etish</button>
+                <button onClick={() => downloadNakladnoy(lastOrder.order_ref)} className="btn-secondary flex-1 text-sm"><FileDown size={14} /> Nakladnoy</button>
+                <button onClick={() => { setLastOrder(null); searchRef.current?.focus(); }} className="btn-secondary flex-1 text-sm">Yangi</button>
+              </div>
             </div>
           </div>
         </div>

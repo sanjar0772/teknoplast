@@ -400,9 +400,12 @@ export default function AIPage() {
         }
       } catch (err) {
         const status = err.response?.status;
+        const serverMsg = err.response?.data?.error || err.response?.data?.message;
         const errMsg = status === 403
           ? (language === 'uz' ? 'Bu amalni faqat admin bajarishi mumkin.' : 'Только администратор может выполнить это действие.')
-          : (language === 'uz' ? 'Xato yuz berdi' : 'Произошла ошибка');
+          : serverMsg
+            ? (language === 'uz' ? 'Xato: ' : 'Ошибка: ') + serverMsg
+            : (language === 'uz' ? 'Xato yuz berdi' : 'Произошла ошибка');
         const idx = chatMessages.length;
         setChatMessages(prev => [...prev, { role: 'assistant', text: errMsg, time: new Date() }]);
         speak(errMsg, idx);

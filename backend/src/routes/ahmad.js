@@ -1334,16 +1334,17 @@ async function confirmActionHandler(req, res) {
       return res.json({ success: true, message: `Kirim yaratildi (${items.length} ta), tasdiqlash kutilmoqda` });
     }
 
-    // --- Ko'plab sotuv (rasmdan) ---
+    // --- Ko'plab sotuv (rasm/PDF/hisobotdan) ---
     if (action.type === 'BULK_SALES') {
-      let added = 0;
-      for (const it of action.data.items) {
+      const list = action.data.items || action.data || [];
+      let added = 0, notFound = 0, failed = 0;
+      const missing = [];
+      for (const it of list) {
         try {
           const p = await findProduct(it.name || it.product_name);
-          if (!p) continue;
+          if (!p) { notFound++; if (missing.length < 6) missing.push(it.name || it.product_name); continue; }
           const price = cleanNum(it.price) || cleanNum(p.price);
           const qty = cleanNum(it.quantity) || 1;
-          if (p.stock_quantity < qty) continue;
           const total = price * qty;
           const client = await getClient();
           try {
@@ -1353,13 +1354,17 @@ async function confirmActionHandler(req, res) {
                VALUES ($1,$2,$3,$4,$5,$6,'PENDING',0,$7,$8)`,
               [p.id, qty, price, total, 'Ahmad', new Date().toISOString().slice(0, 10), req.user.id, genOrderRef()]
             );
-            await client.query('UPDATE products SET stock_quantity = stock_quantity - $1 WHERE id=$2', [qty, p.id]);
+            // Ombor yetmasa ham yozamiz (tarixiy hisobot), lekin manfiyga tushirmaymiz
+            await client.query('UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at=NOW() WHERE id=$2', [qty, p.id]);
             await client.query('COMMIT');
             added++;
-          } catch (e) { await client.query('ROLLBACK'); } finally { client.release(); }
-        } catch {}
+          } catch (e) { await client.query('ROLLBACK'); failed++; } finally { client.release(); }
+        } catch { failed++; }
       }
-      return res.json({ success: true, message: `${added} ta sotuv yozildi` });
+      let msg = `${added} ta sotuv yozildi`;
+      if (notFound) msg += `; ${notFound} ta mahsulot bazadan topilmadi${missing.length ? ' (' + missing.join(', ') + ')' : ''}`;
+      if (failed) msg += `; ${failed} ta xato`;
+      return res.json({ success: added > 0, message: msg });
     }
 
     // --- Ishlab chiqarish yozuvi ---

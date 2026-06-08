@@ -5,6 +5,7 @@ const { authenticate } = require('../middleware/auth');
 const { query, getClient } = require('../db');
 const Anthropic = require('@anthropic-ai/sdk');
 const fs = require('fs');
+const { parseProductName } = require('../utils/parseProductName');
 
 const router = express.Router();
 router.use(authenticate);
@@ -500,6 +501,7 @@ ${isOwner
   : 'Вы можете только просматривать: отчёты, остатки, сотрудников, должников. Изменения — только для администратора.'}
 Инструменты: get_report (отчёт), lookup (цена/склад), list_debtors (должники), get_employees (сотрудники), generate_document (PDF/Excel)${isOwner ? ', create_sale, add_expense, add_customer, create_intake, update_price, update_stock, record_payment, add_production, add_employee, remove_employee, update_employee, add_user (создать логин-аккаунт)' : ''}.
 Помните историю разговора (до 6 сообщений). Краткие ответы. Числа: 1 000 000 сум. Представляйтесь как Ахмад.
+Вы УМЕЕТЕ читать файлы (PDF, фото, Excel, Word) — если пользователь хочет прислать файл, пусть нажмёт кнопку прикрепления (скрепка). НИКОГДА не говорите "не могу читать PDF/файлы".
 ВАЖНО: без *, #, эмодзи, маркдауна — только чистый текст (ответ озвучивается).`
       : `Siz Ahmad — Teknoplast plastik zavod aqlli yordamchisisiz.
 Joriy foydalanuvchi roli: ${isOwner ? 'ADMIN (to\'liq huquq)' : 'XODIM (faqat ko\'rish)'}.
@@ -508,6 +510,7 @@ ${isOwner
   : 'Siz faqat ko\'ra olasiz: hisobot, ombor, xodimlar, qarzdorlar. O\'zgartirish faqat admin uchun.'}
 Toollar: get_report, lookup, list_debtors, get_employees, generate_document${isOwner ? ', create_sale, add_expense, add_customer, create_intake, update_price, update_stock, record_payment, add_production, add_employee, remove_employee, update_employee, add_user (login akkaunt yaratish)' : ''}.
 Suhbat tarixini esda tuting (6 xabar). Qisqa javoblar. Raqamlar: 1 000 000 so\'m. O\'zingizni Ahmad deb tanishtiring.
+Siz fayl ham O\'QIY OLASIZ (PDF, rasm, Excel, Word) — foydalanuvchi fayl yubormoqchi bo\'lsa, biriktirish (qisqich) tugmasidan foydalansin. HECH QACHON "PDF/fayl o\'qiy olmayman" demang.
 MUHIM: *, #, emoji, markdown ishlatmang — faqat toza matn (ovozda o\'qiladi).`;
 
     // Suhbat xotirasi — oxirgi 6 ta xabar
@@ -1039,7 +1042,8 @@ router.post('/read-image', upload.single('image'), async (req, res) => {
 - "intake":   {"name":"название","quantity":10,"price":5000,"kind":"intake"}
 - "employee": {"name":"ФИО","type":"ISHCHI","shift":"1-SMENA","daily_tariff":50000,"phone":"","kind":"employee"}
 - "customer": {"name":"имя клиента или фирма","phone":"+998...","company_name":"","address":"","kind":"customer"}
-- "product":  {"name":"название","quantity":100,"price":5000,"kind":"product"}
+- "product":  {"name":"название","quantity":100,"price":5000,"rang":"qizil","kind":"product"}
+ВАЖНО: определите ЦВЕТ ("rang": qizil/ko'k/oq/yashil/sariq/qora/pushti/kulrang...) и КОЛИЧЕСТВО ("quantity"). Если цвет в названии ("... кизил") — выведите его в "rang" латиницей.
 
 Отвечайте кратко на русском языке.`
       : `Siz Ahmad — Teknoplast plastik zavod yordamchisisiz. ${roleNote}
@@ -1067,7 +1071,8 @@ MUHIM QOIDALAR:
 - "intake":   {"name":"mahsulot nomi","quantity":10,"price":5000,"kind":"intake"}
 - "employee": {"name":"ism familiya","type":"ISHCHI","shift":"1-SMENA","daily_tariff":50000,"phone":"","kind":"employee"}
 - "customer": {"name":"mijoz ismi yoki firma","phone":"+998...","company_name":"","address":"","kind":"customer"}
-- "product":  {"name":"mahsulot nomi","quantity":100,"price":5000,"kind":"product"}
+- "product":  {"name":"mahsulot nomi","quantity":100,"price":5000,"rang":"qizil","kind":"product"}
+MUHIM: mahsulotning RANGINI ("rang": qizil/ko'k/oq/yashil/sariq/qora/pushti/kulrang...) va SONINI ("quantity") aniqlab yozing. Rang nom ichida bo'lsa ham ("... кизил") uni "rang"ga lotincha chiqaring.
 
 O'zbek tilida qisqa javob bering.`;
 
@@ -1405,10 +1410,15 @@ async function confirmActionHandler(req, res) {
           const name = (p.name || p.nomi || '').trim();
           if (!name) { skipped++; continue; }
           const price    = cleanNum(p.price ?? p.narx ?? p.unit_price ?? 0);
-          const quantity = cleanNum(p.quantity ?? p.miqdor ?? p.stock_quantity ?? 0);
-          // Allaqachon mavjud bo'lsa — narx va miqdorni yangilash
+          const quantity = cleanNum(p.quantity ?? p.miqdor ?? p.soni ?? p.stock_quantity ?? 0);
+          // RANG va RAZMER: berilgan bo'lsa o'sha, bo'lmasa nomdan ajratamiz
+          const parsed = parseProductName(name) || {};
+          const rang = (p.rang || p.color || p.rangi || parsed.rang || '').toString().trim() || null;
+          const base_name = parsed.base_name || name;
+          const razmer = (p.razmer || p.size || parsed.razmer || '').toString().trim() || null;
+          // Allaqachon mavjud bo'lsa — narx/miqdor/rang yangilash
           const exists = await query(
-            'SELECT id, price, stock_quantity FROM products WHERE LOWER(name)=LOWER($1) LIMIT 1',
+            'SELECT id FROM products WHERE LOWER(name)=LOWER($1) LIMIT 1',
             [name]
           );
           if (exists.rows.length) {
@@ -1418,13 +1428,14 @@ async function confirmActionHandler(req, res) {
             let idx = 1;
             if (price > 0) { updates.push(`price=$${idx++}`); vals.push(price); }
             if (quantity > 0) { updates.push(`stock_quantity=$${idx++}`); vals.push(quantity); }
+            if (rang) { updates.push(`rang=$${idx++}`); vals.push(rang); }
             vals.push(row.id);
             await query(`UPDATE products SET ${updates.join(',')} WHERE id=$${idx}`, vals);
             updated++;
           } else {
             await query(
-              'INSERT INTO products (name, type, price, unit, stock_quantity, is_active) VALUES ($1,$2,$3,$4,$5,1)',
-              [name, 'PLASTIK', price, 'dona', quantity]
+              'INSERT INTO products (name, type, price, unit, stock_quantity, rang, base_name, razmer, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1)',
+              [name, 'PLASTIK', price, 'dona', quantity, rang, base_name, razmer]
             );
             added++;
           }

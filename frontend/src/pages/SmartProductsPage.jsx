@@ -1,9 +1,10 @@
 import { useState, useMemo, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
 import toast from 'react-hot-toast';
-import { Save, RotateCcw, Download, Trash2, Filter } from 'lucide-react';
+import { Save, RotateCcw, Download, Trash2, Filter, ShoppingCart } from 'lucide-react';
 import { productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -18,6 +19,7 @@ const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n
 
 export default function SmartProductsPage() {
   const { isOwner } = useAuthStore();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const gridRef = useRef(null);
   const [dirty, setDirty] = useState(new Map());
@@ -85,6 +87,20 @@ export default function SmartProductsPage() {
     setDirty(new Map());
     qc.invalidateQueries({ queryKey: ['products'] });
     toast('O\'zgarishlar bekor qilindi');
+  };
+  // Belgilangan mahsulotlarni "Tezkor Savdo" sahifasiga olib o'tib, savatga
+  // avtomatik qo'shadi — shu yerdan to'g'ridan-to'g'ri sotish uchun.
+  const sellSelected = () => {
+    const selectedRows = gridRef.current?.api.getSelectedRows() || [];
+    if (!selectedRows.length) return toast.error('Avval mahsulot(lar)ni belgilang (katakcha orqali)');
+    const presetProducts = selectedRows.map(r => ({
+      id: r.id,
+      name: r.base_name || r.name,
+      unit: r.unit,
+      price: r.price,
+      stock_quantity: r.stock_quantity,
+    }));
+    navigate('/quick-sale', { state: { presetProducts } });
   };
   const onBulkDelete = () => {
     if (!selectedIds.length) return toast.error('Hech narsa belgilanmagan');
@@ -208,6 +224,8 @@ export default function SmartProductsPage() {
           <h1 className="page-title">Mahsulotlar — Smart Grid</h1>
           <p className="text-xs text-gray-400 mt-0.5">
             Bir xil nom + razmer takrorlanmaydi (faqat rang farqi) · Katakni 2-marta bosing yoki <kbd>Enter</kbd>
+            {' · '}
+            <span className="text-blue-600 font-medium">Sotish uchun: chap tarafdagi katakchalardan mahsulot(lar)ni belgilang, so'ng "Sotish" tugmasini bosing — Tezkor Savdo sahifasiga savatga tayyor holda o'tkazadi.</span>
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -219,6 +237,11 @@ export default function SmartProductsPage() {
                 <Save size={13} /> {saveMutation.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
               </button>
             </>
+          )}
+          {selectedIds.length > 0 && (
+            <button onClick={sellSelected} className="btn-primary btn-sm">
+              <ShoppingCart size={13} /> Sotish ({selectedIds.length})
+            </button>
           )}
           {selectedIds.length > 0 && isOwner() && (
             <button onClick={onBulkDelete} className="btn-danger btn-sm">

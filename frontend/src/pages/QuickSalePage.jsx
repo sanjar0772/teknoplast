@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
@@ -11,6 +12,8 @@ const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n
 
 export default function QuickSalePage() {
   const qc = useQueryClient();
+  const location = useLocation();
+  const navigate = useNavigate();
   const searchRef = useRef(null);
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState([]);          // [{id,name,unit,price,qty,stock}]
@@ -42,6 +45,28 @@ export default function QuickSalePage() {
   const cartIds = useMemo(() => new Set(cart.map(c => c.id)), [cart]);
 
   useEffect(() => { searchRef.current?.focus(); }, []);
+
+  // Smart Grid'dan "Sotish" tugmasi orqali tanlangan mahsulotlar shu yerga
+  // savatga avtomatik qo'shiladi (location.state.presetProducts orqali keladi).
+  useEffect(() => {
+    const preset = location.state?.presetProducts;
+    if (preset && preset.length) {
+      setCart(c => {
+        const ids = new Set(c.map(x => x.id));
+        const toAdd = preset
+          .filter(p => !ids.has(p.id))
+          .map(p => ({
+            id: p.id, name: p.name, unit: p.unit || 'dona',
+            price: parseFloat(p.price) || 0, qty: 1, stock: p.stock_quantity,
+          }));
+        return [...c, ...toAdd];
+      });
+      toast.success(`🛒 ${preset.length} ta mahsulot savatga qo'shildi`);
+      // state'ni tozalaymiz — sahifani yangilasa qayta qo'shilmasin
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
 
   const addToCart = (p) => {
     if (cartIds.has(p.id)) {

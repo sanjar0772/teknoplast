@@ -221,14 +221,16 @@ export default function SmartProductsPage() {
     <div className="space-y-4 h-full flex flex-col">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Mahsulotlar — Smart Grid</h1>
+          <h1 className="page-title">Mahsulotlar — Smart Grid (tahrirlash jadvali)</h1>
           <p className="text-xs text-gray-400 mt-0.5">
-            Bir xil nom + razmer takrorlanmaydi (faqat rang farqi) · Katakni 2-marta bosing yoki <kbd>Enter</kbd>
-            {' · '}
-            <span className="text-blue-600 font-medium">Sotish uchun: chap tarafdagi katakchalardan mahsulot(lar)ni belgilang, so'ng "Sotish" tugmasini bosing — Tezkor Savdo sahifasiga savatga tayyor holda o'tkazadi.</span>
+            Bu yerda mahsulot narxi, miqdori, rangi tahrirlanadi (Excel kabi). Bir xil nom + razmer
+            takrorlanmaydi · Katakni 2-marta bosing yoki <kbd>Enter</kbd>
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <button onClick={() => navigate('/quick-sale')} className="btn-primary btn-sm">
+            <ShoppingCart size={13} /> Sotuv qilish (oddiy)
+          </button>
           {dirty.size > 0 && (
             <>
               <span className="badge-yellow self-center">{dirty.size} ta o'zgarish</span>
@@ -250,6 +252,20 @@ export default function SmartProductsPage() {
           )}
           <button onClick={exportCsv} className="btn-secondary btn-sm"><Download size={13} /> CSV</button>
         </div>
+      </div>
+
+      <div className="card p-4 bg-blue-50 border border-blue-200 flex items-center justify-between gap-4 flex-wrap">
+        <div className="text-sm text-blue-900">
+          <p className="font-semibold mb-1">🛒 Mahsulot sotmoqchimisiz?</p>
+          <p className="text-blue-700">
+            Bu sahifa — mahsulot ma'lumotlarini (narx, miqdor, rang) <strong>tahrirlash</strong> uchun, sotish uchun emas.
+            Sotish uchun: <strong>"Sotuv qilish"</strong> tugmasini bosing — u yerda mahsulotni tanlaysiz,
+            kerakli <strong>miqdorni kiritasiz</strong>, <strong>mijozni qo'shasiz</strong> va bitta tugma bilan sotasiz — chek va QR kod bilan.
+          </p>
+        </div>
+        <button onClick={() => navigate('/quick-sale')} className="btn-primary whitespace-nowrap">
+          <ShoppingCart size={15} /> Sotuv qilish sahifasiga o'tish
+        </button>
       </div>
 
       <div className="card p-3 flex items-center justify-between gap-3">

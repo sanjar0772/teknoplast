@@ -33,7 +33,7 @@ const NAV_ITEMS = [
   { to: '/fulfillment',icon: Truck,           label: 'Ombor berish',     roles: ['OWNER','OMBORCHI','SALES_HEAD'] },
   { to: '/salaries',   icon: Banknote,        label: 'Maoshlar',         roles: ['OWNER','ACCOUNTANT'] },
   { to: '/products',   icon: Package,         label: 'Mahsulotlar',      roles: ['OWNER','PRODUCTION_HEAD','SALES_HEAD','KIRIMCHI'] },
-  { to: '/products-grid', icon: Sheet,        label: 'Smart Grid',       roles: ['OWNER','PRODUCTION_HEAD','SALES_HEAD','ACCOUNTANT'] },
+  { to: '/products-grid', icon: Sheet,        label: 'Mahsulot jadvali', roles: ['OWNER','PRODUCTION_HEAD','SALES_HEAD','ACCOUNTANT'] },
   { to: '/inventory',  icon: Warehouse,       label: 'Ombor',            roles: ['OWNER','ACCOUNTANT','PRODUCTION_HEAD','KIRIMCHI','OMBORCHI'] },
   { to: '/machines',   icon: Cog,             label: 'Mashinalar',       roles: ['OWNER','PRODUCTION_HEAD'] },
   { to: '/reports',    icon: FileBarChart,    label: 'Hisobotlar',       roles: ['OWNER','ACCOUNTANT'] },

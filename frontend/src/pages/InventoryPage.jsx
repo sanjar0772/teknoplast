@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, AlertTriangle, Warehouse, Package, Boxes, PackagePlus, Pencil } from 'lucide-react';
+import { Plus, X, AlertTriangle, Warehouse, Package, Boxes, PackagePlus, Pencil, Trash2 } from 'lucide-react';
 import { productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import clsx from 'clsx';
@@ -76,6 +76,15 @@ export default function InventoryPage() {
       toast.success('Xom ashyo yangilandi');
       qc.invalidateQueries({ queryKey: ['raw-materials'] });
       setEditRmModal(null);
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+
+  const deleteRmMutation = useMutation({
+    mutationFn: (id) => productsAPI.deleteRawMaterial(id),
+    onSuccess: () => {
+      toast.success('O\'chirildi');
+      qc.invalidateQueries({ queryKey: ['raw-materials'] });
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
@@ -261,6 +270,13 @@ export default function InventoryPage() {
                             </button>
                             <button onClick={() => { setRmStockModal(rm); setRmStockForm({ quantity: 0, operation: 'add' }); }}
                               className="btn-secondary btn-sm">Ombor</button>
+                            <button
+                              onClick={() => { if (confirm(`"${rm.name}" o'chirilsinmi?`)) deleteRmMutation.mutate(rm.id); }}
+                              disabled={deleteRmMutation.isPending}
+                              className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              title="O'chirish">
+                              <Trash2 size={13} />
+                            </button>
                           </div>
                         </td>
                       )}

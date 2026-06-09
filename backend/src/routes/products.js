@@ -314,6 +314,19 @@ router.put('/raw-materials/:id', requireRole('OWNER', 'TAMINOTCHI'), async (req,
   } catch (err) { next(err); }
 });
 
+// DELETE /api/products/raw-materials/:id — xom ashyoni o'chirish
+router.delete('/raw-materials/:id', requireRole('OWNER', 'TAMINOTCHI'), async (req, res, next) => {
+  try {
+    const result = await query(
+      'DELETE FROM raw_materials WHERE id=$1 RETURNING *',
+      [req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Xom ashyo topilmadi' });
+    logAudit(req, { action: 'RAW_MATERIAL_DELETE', table: 'raw_materials', recordId: req.params.id });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 // PUT /api/products/raw-materials/:id/stock — ombor balansini yangilash, faqat Ta'minotchi vazifasi
 router.put('/raw-materials/:id/stock', requireRole('OWNER', 'TAMINOTCHI'), async (req, res, next) => {
   try {

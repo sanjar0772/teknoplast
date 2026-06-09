@@ -191,14 +191,12 @@ export default function ExpensesPage() {
                 <td className="text-sm text-gray-500">{e.created_by_name}</td>
                 {canWrite && (
                   <td>
-                    {isOwner() && (
-                      <button
-                        onClick={() => { if (confirm('O\'chirilsinmi?')) deleteMutation.mutate(e.id); }}
-                        className="text-red-500 hover:text-red-700 p-1"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => { if (confirm('O\'chirilsinmi?')) deleteMutation.mutate(e.id); }}
+                      className="text-red-400 hover:text-red-600 p-1"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </td>
                 )}
               </tr>

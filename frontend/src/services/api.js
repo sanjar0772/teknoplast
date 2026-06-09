@@ -138,6 +138,7 @@ export const productsAPI = {
   createRawMaterial: (data) => api.post('/products/raw-materials', data),
   updateRawMaterial: (id, data) => api.put(`/products/raw-materials/${id}`, data),
   updateRawMaterialStock: (id, data) => api.put(`/products/raw-materials/${id}/stock`, data),
+  deleteRawMaterial: (id) => api.delete(`/products/raw-materials/${id}`),
 };
 
 // Machines

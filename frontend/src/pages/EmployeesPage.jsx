@@ -35,7 +35,8 @@ function Modal({ open, onClose, title, children }) {
 }
 
 export default function EmployeesPage() {
-  const { isOwner, isProductionHead, isKirimchi } = useAuthStore();
+  const { isOwner, isProductionHead, isKirimchi, user } = useAuthStore();
+  const kirimchiOnly = user?.role === 'KIRIMCHI';
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editEmployee, setEditEmployee] = useState(null);
@@ -156,7 +157,7 @@ export default function EmployeesPage() {
           className="input w-48" />
         <select value={filter.type} onChange={e => setFilter(f => ({ ...f, type: e.target.value }))} className="select w-40">
           <option value="">Barcha turlar</option>
-          {Object.entries(TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          {Object.entries(kirimchiOnly ? { STANOKCHI: TYPES.STANOKCHI, DETALCHI: TYPES.DETALCHI } : TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         {filter.type === 'STANOKCHI' && (
           <select value={filter.shift || ''} onChange={e => setFilter(f => ({ ...f, shift: e.target.value }))} className="select w-36">
@@ -246,7 +247,7 @@ export default function EmployeesPage() {
           <div>
             <label className="label">Turi *</label>
             <select {...register('type', { required: true })} className="select">
-              {Object.entries(TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              {Object.entries(kirimchiOnly ? { STANOKCHI: TYPES.STANOKCHI, DETALCHI: TYPES.DETALCHI } : TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
             {(watchedType === 'STANOKCHI' || watchedType === 'DETALCHI') && (
               <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-700">

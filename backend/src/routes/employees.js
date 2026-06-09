@@ -23,7 +23,11 @@ router.get('/', async (req, res, next) => {
     const params = [];
     let idx = 1;
     if (is_active !== 'all') { sql += ` AND is_active = $${idx++}`; params.push(is_active === 'true'); }
-    if (type)   { sql += ` AND type = $${idx++}`; params.push(type); }
+    // KIRIMCHI faqat Stanokchi va Detalchi xodimlarni ko'ra oladi
+    if (req.user.role === 'KIRIMCHI') {
+      sql += ` AND type IN ($${idx++}, $${idx++})`;
+      params.push('STANOKCHI', 'DETALCHI');
+    } else if (type) { sql += ` AND type = $${idx++}`; params.push(type); }
     if (shift)  { sql += ` AND shift = $${idx++}`; params.push(shift); }
     if (search) { sql += ` AND name ILIKE $${idx++}`; params.push(`%${search}%`); }
     sql += ' ORDER BY name';
@@ -62,6 +66,11 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    // KIRIMCHI faqat Stanokchi yoki Detalchi xodim qo'sha oladi
+    if (req.user.role === 'KIRIMCHI' && !['STANOKCHI', 'DETALCHI'].includes(req.body.type)) {
+      return res.status(403).json({ error: 'Kirimchi faqat Stanokchi yoki Detalchi xodim qo\'sha oladi' });
+    }
 
     const { name, type, hourly_tariff, hire_date, phone, address, shift } = req.body;
     const daily_tariff = Number(req.body.daily_tariff) || 0; // kunlik tarif olib tashlandi — har doim 0

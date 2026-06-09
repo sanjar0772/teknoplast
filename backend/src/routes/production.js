@@ -121,7 +121,7 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { employee_id, product_id, machine_id, production_date, quantity_produced, notes, production_type } = req.body;
+    const { employee_id, product_id, machine_id, production_date, quantity_produced, notes, production_type, daily_tariff: custom_tariff } = req.body;
 
     const emp = await query('SELECT type, daily_tariff FROM employees WHERE id=$1 AND is_active=true', [employee_id]);
     if (!emp.rows.length) return res.status(404).json({ error: 'Xodim topilmadi' });
@@ -134,11 +134,14 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
     let ptype = production_type || 'FINISHED';
     if (employee_type === 'DETALCHI') ptype = 'SEMI_FINISHED';
 
-    if (product_id) {
+    // Agar Kirimchi tomonidan maxsus tarif berilgan bo'lsa — uni ishlatamiz
+    if (custom_tariff && parseFloat(custom_tariff) > 0) {
+      daily_tariff = parseFloat(custom_tariff);
+      calculated_amount = quantity_produced * daily_tariff;
+    } else if (product_id) {
       const prod = await query('SELECT stanokchi_rate, stanokchi_semi_rate, detalchi_rate FROM products WHERE id=$1', [product_id]);
       const product = prod.rows[0] || {};
       if (employee_type === 'STANOKCHI') {
-        // Tayyor -> stanokchi_rate, Yarim tayyor -> stanokchi_semi_rate
         const rate = ptype === 'SEMI_FINISHED' ? product.stanokchi_semi_rate : product.stanokchi_rate;
         daily_tariff = rate || 0;
         calculated_amount = quantity_produced * daily_tariff;
@@ -149,7 +152,6 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
         calculated_amount = quantity_produced * daily_tariff;
       }
     } else {
-      // Mahsulot tanlanmagan — employee daily_tariff = dona tarifi (fallback)
       calculated_amount = quantity_produced * daily_tariff;
     }
 
@@ -211,7 +213,11 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async 
         let ptype = entry.production_type || 'FINISHED';
         if (employee_type === 'DETALCHI') ptype = 'SEMI_FINISHED';
 
-        if (entry.product_id) {
+        // Agar Kirimchi maxsus tarif bergan bo'lsa — uni ishlatamiz
+        if (entry.daily_tariff && parseFloat(entry.daily_tariff) > 0) {
+          daily_tariff = parseFloat(entry.daily_tariff);
+          calculated_amount = entry.quantity_produced * daily_tariff;
+        } else if (entry.product_id) {
           const prod = await query('SELECT stanokchi_rate, stanokchi_semi_rate, detalchi_rate FROM products WHERE id=$1', [entry.product_id]);
           const product = prod.rows[0] || {};
           if (employee_type === 'STANOKCHI') {

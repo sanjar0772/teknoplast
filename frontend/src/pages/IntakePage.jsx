@@ -232,7 +232,7 @@ function WorkerOutputTab() {
   const [entries, setEntries] = useState([newEntry()]);
 
   function newEntry() {
-    return { employee_id: '', product_id: '', quantity_produced: '', production_type: 'FINISHED' };
+    return { employee_id: '', product_id: '', quantity_produced: '', production_type: 'FINISHED', tarif: '' };
   }
 
   // Faqat STANOKCHI va DETALCHI ishchilarni yuklaymiz
@@ -257,21 +257,31 @@ function WorkerOutputTab() {
   const prodMap = {};
   products.forEach(p => { prodMap[p.id] = p; });
 
+  // Mahsulot/xodim/tur asosida tarifni avtomatik hisoblash
+  const autoTarif = (empId, prodId, ptype) => {
+    const emp = empMap[empId];
+    const p = prodMap[prodId];
+    if (!emp) return '';
+    if (emp.type === 'STANOKCHI' && p) {
+      return ptype === 'SEMI_FINISHED' ? (p.stanokchi_semi_rate || '') : (p.stanokchi_rate || '');
+    }
+    if (emp.type === 'DETALCHI' && p) return p.detalchi_rate || '';
+    return emp.daily_tariff || '';
+  };
+
   // Bir qator uchun hisoblangan haq
   const calcPay = (entry) => {
     const emp = empMap[entry.employee_id];
-    const p = prodMap[entry.product_id];
     const qty = parseFloat(entry.quantity_produced) || 0;
     if (!emp || !qty) return 0;
+    // entry.tarif kiritilgan bo'lsa — uni ishlatamiz
+    if (entry.tarif !== '' && parseFloat(entry.tarif) >= 0) return qty * parseFloat(entry.tarif);
+    const p = prodMap[entry.product_id];
     if (emp.type === 'STANOKCHI') {
-      const rate = entry.production_type === 'SEMI_FINISHED'
-        ? (p?.stanokchi_semi_rate || 0)
-        : (p?.stanokchi_rate || 0);
+      const rate = entry.production_type === 'SEMI_FINISHED' ? (p?.stanokchi_semi_rate || 0) : (p?.stanokchi_rate || 0);
       return qty * rate;
     }
-    if (emp.type === 'DETALCHI') {
-      return qty * (p?.detalchi_rate || 0);
-    }
+    if (emp.type === 'DETALCHI') return qty * (p?.detalchi_rate || 0);
     return qty * (emp.daily_tariff || 0);
   };
 
@@ -281,11 +291,14 @@ function WorkerOutputTab() {
     setEntries(prev => prev.map((e, idx) => {
       if (idx !== i) return e;
       const next = { ...e, [field]: value };
-      // Xodim o'zgarsa — tur moslaymiz
       if (field === 'employee_id') {
         const emp = empMap[value];
         if (emp?.type === 'DETALCHI') next.production_type = 'SEMI_FINISHED';
         else next.production_type = 'FINISHED';
+        next.tarif = autoTarif(value, next.product_id, next.production_type);
+      }
+      if (field === 'product_id' || field === 'production_type') {
+        next.tarif = autoTarif(next.employee_id, field === 'product_id' ? value : next.product_id, field === 'production_type' ? value : next.production_type);
       }
       return next;
     }));
@@ -313,6 +326,7 @@ function WorkerOutputTab() {
         product_id: e.product_id || null,
         quantity_produced: parseFloat(e.quantity_produced),
         production_type: empMap[e.employee_id]?.type === 'DETALCHI' ? 'SEMI_FINISHED' : (e.production_type || 'FINISHED'),
+        daily_tariff: e.tarif !== '' ? parseFloat(e.tarif) : undefined,
       })),
     });
   };
@@ -344,8 +358,9 @@ function WorkerOutputTab() {
             <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-400 px-1 mb-2 hidden sm:grid">
               <span className="col-span-3">Xodim</span>
               <span className="col-span-3">Mahsulot</span>
-              <span className="col-span-2">Turi</span>
-              <span className="col-span-2">Miqdor (dona)</span>
+              <span className="col-span-1">Turi</span>
+              <span className="col-span-2 text-blue-500">Tarif (so'm/dona)</span>
+              <span className="col-span-1">Dona</span>
               <span className="col-span-2 text-right text-green-600">Hisoblangan haq</span>
             </div>
 
@@ -391,7 +406,7 @@ function WorkerOutputTab() {
                     </div>
 
                     {/* Tur */}
-                    <div className="col-span-6 sm:col-span-2">
+                    <div className="col-span-6 sm:col-span-1">
                       {emp?.type === 'STANOKCHI' ? (
                         <select
                           value={entry.production_type}
@@ -399,17 +414,28 @@ function WorkerOutputTab() {
                           className="select text-sm w-full"
                         >
                           <option value="FINISHED">Tayyor</option>
-                          <option value="SEMI_FINISHED">Yarim tayyor</option>
+                          <option value="SEMI_FINISHED">Yarim</option>
                         </select>
                       ) : isDetalchi ? (
-                        <span className="text-xs text-orange-600 font-medium px-1">Yarim tayyor</span>
+                        <span className="text-xs text-orange-600 font-medium px-1">Yarim</span>
                       ) : (
                         <span className="text-xs text-gray-300 px-1">—</span>
                       )}
                     </div>
 
+                    {/* Tarif — avtomatik to'ladi, tahrirlanadi */}
+                    <div className="col-span-6 sm:col-span-2">
+                      <input
+                        type="number" min="0" placeholder="so'm/dona"
+                        value={entry.tarif}
+                        onChange={e => updateEntry(i, 'tarif', e.target.value)}
+                        onFocus={e => e.target.select()}
+                        className="input text-sm border-blue-200 focus:border-blue-500"
+                      />
+                    </div>
+
                     {/* Miqdor */}
-                    <div className="col-span-4 sm:col-span-2">
+                    <div className="col-span-4 sm:col-span-1">
                       <input
                         type="number" min="0" placeholder="0"
                         value={entry.quantity_produced}

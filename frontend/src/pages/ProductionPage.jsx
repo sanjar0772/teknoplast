@@ -53,46 +53,62 @@ export default function ProductionPage() {
   (products?.products || []).forEach(p => { prodMap[p.id] = p; });
 
   const addEntry = () => {
-    setEntries(prev => [...prev, { employee_id: '', quantity_produced: 0, product_id: '', production_type: 'FINISHED' }]);
+    setEntries(prev => [...prev, { employee_id: '', quantity_produced: '', product_id: '', production_type: 'FINISHED', tarif: '' }]);
+  };
+
+  // Mahsulot/xodim/tur asosida tarifni avtomatik hisoblash
+  const autoTarif = (empId, prodId, ptype) => {
+    const emp = empMap[empId];
+    const p = prodMap[prodId];
+    if (!emp) return '';
+    if (emp.type === 'STANOKCHI' && p) {
+      return ptype === 'SEMI_FINISHED' ? (p.stanokchi_semi_rate || '') : (p.stanokchi_rate || '');
+    }
+    if (emp.type === 'DETALCHI' && p) return p.detalchi_rate || '';
+    return emp.daily_tariff || '';
   };
 
   const updateEntry = (i, field, value) => {
     setEntries(prev => prev.map((e, idx) => {
       if (idx !== i) return e;
       const next = { ...e, [field]: value };
-      // Xodim turi o'zgarsa — ishlab chiqarish turini moslaymiz
       if (field === 'employee_id') {
         const emp = empMap[value];
-        if (emp?.type === 'DETALCHI') next.production_type = 'SEMI_FINISHED'; // detalchi doim yarim tayyor
+        if (emp?.type === 'DETALCHI') next.production_type = 'SEMI_FINISHED';
         else if (emp?.type === 'STANOKCHI' && !next.production_type) next.production_type = 'FINISHED';
+        next.tarif = autoTarif(value, next.product_id, next.production_type);
+      }
+      if (field === 'product_id' || field === 'production_type') {
+        next.tarif = autoTarif(next.employee_id, field === 'product_id' ? value : next.product_id, field === 'production_type' ? value : next.production_type);
       }
       return next;
     }));
   };
 
-  // Haq: stanokchi/detalchi mahsulot dona narxidan; boshqalar kunlik tarifdan
+  // Haq: entry.tarif ustunlik qiladi, aks holda product rates
   const calcEarnings = (entry) => {
     const emp = empMap[entry.employee_id];
     if (!emp || !entry.quantity_produced) return 0;
+    const qty = parseFloat(entry.quantity_produced) || 0;
+    if (entry.tarif !== '' && parseFloat(entry.tarif) >= 0) return qty * parseFloat(entry.tarif);
     const p = prodMap[entry.product_id];
     if (emp.type === 'STANOKCHI') {
       const rate = entry.production_type === 'SEMI_FINISHED' ? (p?.stanokchi_semi_rate || 0) : (p?.stanokchi_rate || 0);
-      return entry.quantity_produced * rate;
+      return qty * rate;
     }
-    if (emp.type === 'DETALCHI') {
-      return entry.quantity_produced * (p?.detalchi_rate || 0);
-    }
-    return entry.quantity_produced * (emp.daily_tariff || 0);
+    if (emp.type === 'DETALCHI') return qty * (p?.detalchi_rate || 0);
+    return qty * (emp.daily_tariff || 0);
   };
 
   const saveBulk = () => {
     const valid = entries
-      .filter(e => e.employee_id && e.quantity_produced > 0)
+      .filter(e => e.employee_id && parseFloat(e.quantity_produced) > 0)
       .map(e => {
         const emp = empMap[e.employee_id];
         let production_type = e.production_type || 'FINISHED';
         if (emp?.type === 'DETALCHI') production_type = 'SEMI_FINISHED';
-        return { ...e, production_type };
+        return { ...e, production_type, quantity_produced: parseFloat(e.quantity_produced),
+          daily_tariff: e.tarif !== '' ? parseFloat(e.tarif) : undefined };
       });
     if (!valid.length) return toast.error('Kamida bitta xodim kiritilsin');
     bulkMutation.mutate({ production_date: date, entries: valid });
@@ -194,8 +210,9 @@ export default function ProductionPage() {
               <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 font-medium px-1">
                 <span className="col-span-3">Xodim</span>
                 <span className="col-span-3">Mahsulot</span>
-                <span className="col-span-2">Tur</span>
-                <span className="col-span-2">Dona</span>
+                <span className="col-span-1">Tur</span>
+                <span className="col-span-2 text-blue-500">Tarif (so'm/dona)</span>
+                <span className="col-span-1">Dona</span>
                 <span className="col-span-2 text-green-600 text-right">Hisoblangan</span>
               </div>
 
@@ -206,12 +223,9 @@ export default function ProductionPage() {
                 const earned = calcEarnings(entry);
                 return (
                   <div key={i} className={`grid grid-cols-12 gap-2 items-center p-2 rounded-lg ${isDetalchi ? 'bg-orange-50 border border-orange-100' : 'bg-gray-50'}`}>
+                    {/* Xodim */}
                     <div className="col-span-3">
-                      <select
-                        value={entry.employee_id}
-                        onChange={e => updateEntry(i, 'employee_id', e.target.value)}
-                        className="select text-sm w-full"
-                      >
+                      <select value={entry.employee_id} onChange={e => updateEntry(i, 'employee_id', e.target.value)} className="select text-sm w-full">
                         <option value="">Xodim tanlang</option>
                         {employees?.employees?.map(emp => (
                           <option key={emp.id} value={emp.id}>
@@ -220,43 +234,49 @@ export default function ProductionPage() {
                         ))}
                       </select>
                     </div>
+                    {/* Mahsulot */}
                     <div className="col-span-3">
-                      <select
-                        value={entry.product_id}
-                        onChange={e => updateEntry(i, 'product_id', e.target.value)}
-                        className="select text-sm w-full"
-                      >
+                      <select value={entry.product_id} onChange={e => updateEntry(i, 'product_id', e.target.value)} className="select text-sm w-full">
                         <option value="">Mahsulot</option>
                         {products?.products?.map(p => (
                           <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
                       </select>
                     </div>
-                    <div className="col-span-2">
+                    {/* Tur */}
+                    <div className="col-span-1">
                       {isStanokchi ? (
-                        <select
-                          value={entry.production_type || 'FINISHED'}
-                          onChange={e => updateEntry(i, 'production_type', e.target.value)}
-                          className="select text-sm w-full"
-                        >
+                        <select value={entry.production_type || 'FINISHED'} onChange={e => updateEntry(i, 'production_type', e.target.value)} className="select text-sm w-full">
                           <option value="FINISHED">Tayyor</option>
-                          <option value="SEMI_FINISHED">Yarim tayyor</option>
+                          <option value="SEMI_FINISHED">Yarim</option>
                         </select>
                       ) : isDetalchi ? (
-                        <span className="text-xs text-orange-600">Yarim tayyor</span>
+                        <span className="text-xs text-orange-600">Yarim</span>
                       ) : (
                         <span className="text-xs text-gray-300">—</span>
                       )}
                     </div>
+                    {/* Tarif — avtomatik to'ladi, tahrirlanadi */}
                     <div className="col-span-2">
                       <input
-                        type="number" min="0"
-                        placeholder="Dona"
-                        value={entry.quantity_produced || ''}
-                        onChange={e => updateEntry(i, 'quantity_produced', parseInt(e.target.value) || 0)}
+                        type="number" min="0" placeholder="so'm/dona"
+                        value={entry.tarif}
+                        onChange={e => updateEntry(i, 'tarif', e.target.value)}
+                        onFocus={e => e.target.select()}
+                        className="input text-sm border-blue-200 focus:border-blue-500"
+                      />
+                    </div>
+                    {/* Miqdor */}
+                    <div className="col-span-1">
+                      <input
+                        type="number" min="0" placeholder="dona"
+                        value={entry.quantity_produced}
+                        onChange={e => updateEntry(i, 'quantity_produced', e.target.value)}
+                        onFocus={e => e.target.select()}
                         className="input text-sm"
                       />
                     </div>
+                    {/* Hisoblangan + o'chirish */}
                     <div className="col-span-2 flex items-center justify-end gap-1">
                       {earned > 0 && (
                         <span className="text-sm font-semibold text-green-700">{fmt(earned)}</span>

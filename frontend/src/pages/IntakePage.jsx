@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { PackagePlus, X, Search, Plus, Trash2, Check, Ban, Eye, Clock } from 'lucide-react';
-import { intakesAPI, productsAPI } from '../services/api';
+import { PackagePlus, X, Search, Plus, Trash2, Check, Ban, Eye, Save, Users, ChevronDown } from 'lucide-react';
+import { intakesAPI, productsAPI, productionAPI, employeesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
+import clsx from 'clsx';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
+
 const STATUS = {
   PENDING:  { label: 'Kutilmoqda', cls: 'badge-yellow' },
   APPROVED: { label: 'Tasdiqlangan', cls: 'badge-green' },
@@ -28,17 +30,14 @@ function Modal({ open, onClose, title, children, wide }) {
   );
 }
 
-export default function IntakePage() {
-  const { isOwner, isSalesHead, isKirimchi, isProductionHead } = useAuthStore();
+// ─── Mahsulot kirimi tab ──────────────────────────────────────────────────────
+function ProductIntakeTab({ canCreate, canApprove }) {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [detailId, setDetailId] = useState(null);
   const [search, setSearch] = useState('');
-  const [cart, setCart] = useState([]); // [{id,name,razmer,rang,qty,stock}]
+  const [cart, setCart] = useState([]);
   const [notes, setNotes] = useState('');
-
-  const canCreate = isOwner() || isKirimchi() || isProductionHead();
-  const canApprove = isOwner() || isSalesHead();
 
   const { data, isLoading } = useQuery({
     queryKey: ['intakes'],
@@ -72,11 +71,20 @@ export default function IntakePage() {
   });
   const approveMutation = useMutation({
     mutationFn: (id) => intakesAPI.approve(id),
-    onSuccess: (res) => { toast.success(res.data.message); qc.invalidateQueries({ queryKey: ['intakes'] }); qc.invalidateQueries({ queryKey: ['products'] }); setDetailId(null); },
+    onSuccess: (res) => {
+      toast.success(res.data.message);
+      qc.invalidateQueries({ queryKey: ['intakes'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      setDetailId(null);
+    },
   });
   const rejectMutation = useMutation({
     mutationFn: (id) => intakesAPI.reject(id),
-    onSuccess: () => { toast.success('Kirim rad etildi'); qc.invalidateQueries({ queryKey: ['intakes'] }); setDetailId(null); },
+    onSuccess: () => {
+      toast.success('Kirim rad etildi');
+      qc.invalidateQueries({ queryKey: ['intakes'] });
+      setDetailId(null);
+    },
   });
 
   const addToCart = (p) => {
@@ -90,9 +98,8 @@ export default function IntakePage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="page-header">
-        <h1 className="page-title">Mahsulot Kirim</h1>
+    <>
+      <div className="flex justify-end mb-4">
         {canCreate && (
           <button onClick={() => { setCart([]); setNotes(''); setShowForm(true); }} className="btn-primary btn-sm">
             <PackagePlus size={14} /> Yangi kirim
@@ -207,12 +214,355 @@ export default function IntakePage() {
             {canApprove && detail.intake.status === 'PENDING' && (
               <div className="flex gap-3">
                 <button onClick={() => rejectMutation.mutate(detail.intake.id)} className="btn-danger flex-1"><Ban size={14} /> Rad etish</button>
-                <button onClick={() => approveMutation.mutate(detail.intake.id)} className="btn-success flex-1"><Check size={14} /> Tasdiqlash (omborga qo'shish)</button>
+                <button onClick={() => approveMutation.mutate(detail.intake.id)} className="btn-success flex-1"><Check size={14} /> Tasdiqlash</button>
               </div>
             )}
           </div>
         )}
       </Modal>
+    </>
+  );
+}
+
+// ─── Ishchilar ishi tab ───────────────────────────────────────────────────────
+function WorkerOutputTab() {
+  const qc = useQueryClient();
+  const today = new Date().toISOString().slice(0, 10);
+  const [date, setDate] = useState(today);
+  const [entries, setEntries] = useState([newEntry()]);
+
+  function newEntry() {
+    return { employee_id: '', product_id: '', quantity_produced: '', production_type: 'FINISHED' };
+  }
+
+  // Faqat STANOKCHI va DETALCHI ishchilarni yuklaymiz
+  const { data: empData } = useQuery({
+    queryKey: ['employees-active'],
+    queryFn: () => employeesAPI.getAll({ is_active: 'true' }).then(r => r.data),
+  });
+  const { data: prodData } = useQuery({
+    queryKey: ['products'],
+    queryFn: () => productsAPI.getAll().then(r => r.data),
+  });
+  const { data: dailyData, refetch: refetchDaily } = useQuery({
+    queryKey: ['production-daily', date],
+    queryFn: () => productionAPI.getAll({ date }).then(r => r.data),
+  });
+
+  const workers = (empData?.employees || []).filter(e => e.type === 'STANOKCHI' || e.type === 'DETALCHI');
+  const products = prodData?.products || [];
+
+  const empMap = {};
+  workers.forEach(e => { empMap[e.id] = e; });
+  const prodMap = {};
+  products.forEach(p => { prodMap[p.id] = p; });
+
+  // Bir qator uchun hisoblangan haq
+  const calcPay = (entry) => {
+    const emp = empMap[entry.employee_id];
+    const p = prodMap[entry.product_id];
+    const qty = parseFloat(entry.quantity_produced) || 0;
+    if (!emp || !qty) return 0;
+    if (emp.type === 'STANOKCHI') {
+      const rate = entry.production_type === 'SEMI_FINISHED'
+        ? (p?.stanokchi_semi_rate || 0)
+        : (p?.stanokchi_rate || 0);
+      return qty * rate;
+    }
+    if (emp.type === 'DETALCHI') {
+      return qty * (p?.detalchi_rate || 0);
+    }
+    return qty * (emp.daily_tariff || 0);
+  };
+
+  const totalPay = entries.reduce((sum, e) => sum + calcPay(e), 0);
+
+  const updateEntry = (i, field, value) => {
+    setEntries(prev => prev.map((e, idx) => {
+      if (idx !== i) return e;
+      const next = { ...e, [field]: value };
+      // Xodim o'zgarsa — tur moslaymiz
+      if (field === 'employee_id') {
+        const emp = empMap[value];
+        if (emp?.type === 'DETALCHI') next.production_type = 'SEMI_FINISHED';
+        else next.production_type = 'FINISHED';
+      }
+      return next;
+    }));
+  };
+
+  const bulkMutation = useMutation({
+    mutationFn: (data) => productionAPI.bulk(data),
+    onSuccess: (res) => {
+      toast.success(`${res.data.count} ta ishchi saqlandi`);
+      qc.invalidateQueries({ queryKey: ['production-daily', date] });
+      qc.invalidateQueries({ queryKey: ['production-summary'] });
+      setEntries([newEntry()]);
+      refetchDaily();
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+
+  const save = () => {
+    const valid = entries.filter(e => e.employee_id && parseFloat(e.quantity_produced) > 0);
+    if (!valid.length) return toast.error('Kamida bitta ishchi miqdori kiritilsin');
+    bulkMutation.mutate({
+      production_date: date,
+      entries: valid.map(e => ({
+        employee_id: e.employee_id,
+        product_id: e.product_id || null,
+        quantity_produced: parseFloat(e.quantity_produced),
+        production_type: empMap[e.employee_id]?.type === 'DETALCHI' ? 'SEMI_FINISHED' : (e.production_type || 'FINISHED'),
+      })),
+    });
+  };
+
+  const todayRows = (dailyData?.production || []).filter(r =>
+    r.employee_type === 'STANOKCHI' || r.employee_type === 'DETALCHI'
+  );
+
+  return (
+    <div className="space-y-6">
+      {/* Sana */}
+      <div className="flex items-center gap-3">
+        <label className="label mb-0 whitespace-nowrap">Sana:</label>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input w-44" />
+        {date === today && <span className="text-xs text-blue-600 font-medium">Bugun</span>}
+      </div>
+
+      {/* Kiritish jadvali */}
+      <div className="card">
+        <h2 className="text-sm font-semibold text-gray-700 mb-4">
+          Ishchilar mahsulot chiqimi — {new Date(date + 'T12:00:00').toLocaleDateString('uz-UZ', { day: 'numeric', month: 'long', year: 'numeric' })}
+        </h2>
+
+        {workers.length === 0 ? (
+          <p className="text-sm text-gray-400 py-4 text-center">Stanokchi yoki detalchi xodimlar topilmadi</p>
+        ) : (
+          <>
+            {/* Ustun sarlavhalari */}
+            <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-400 px-1 mb-2 hidden sm:grid">
+              <span className="col-span-3">Xodim</span>
+              <span className="col-span-3">Mahsulot</span>
+              <span className="col-span-2">Turi</span>
+              <span className="col-span-2">Miqdor (dona)</span>
+              <span className="col-span-2 text-right text-green-600">Hisoblangan haq</span>
+            </div>
+
+            <div className="space-y-2">
+              {entries.map((entry, i) => {
+                const emp = empMap[entry.employee_id];
+                const isDetalchi = emp?.type === 'DETALCHI';
+                const pay = calcPay(entry);
+
+                return (
+                  <div key={i} className={clsx(
+                    'grid grid-cols-12 gap-2 items-center p-2 rounded-lg border',
+                    isDetalchi ? 'bg-orange-50 border-orange-100' : 'bg-gray-50 border-gray-100'
+                  )}>
+                    {/* Xodim */}
+                    <div className="col-span-12 sm:col-span-3">
+                      <select
+                        value={entry.employee_id}
+                        onChange={e => updateEntry(i, 'employee_id', e.target.value)}
+                        className="select text-sm w-full"
+                      >
+                        <option value="">— Xodim tanlang —</option>
+                        {workers.map(w => (
+                          <option key={w.id} value={w.id}>
+                            {w.name} ({w.type === 'DETALCHI' ? 'D' : 'S'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Mahsulot */}
+                    <div className="col-span-12 sm:col-span-3">
+                      <select
+                        value={entry.product_id}
+                        onChange={e => updateEntry(i, 'product_id', e.target.value)}
+                        className="select text-sm w-full"
+                      >
+                        <option value="">— Mahsulot —</option>
+                        {products.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Tur */}
+                    <div className="col-span-6 sm:col-span-2">
+                      {emp?.type === 'STANOKCHI' ? (
+                        <select
+                          value={entry.production_type}
+                          onChange={e => updateEntry(i, 'production_type', e.target.value)}
+                          className="select text-sm w-full"
+                        >
+                          <option value="FINISHED">Tayyor</option>
+                          <option value="SEMI_FINISHED">Yarim tayyor</option>
+                        </select>
+                      ) : isDetalchi ? (
+                        <span className="text-xs text-orange-600 font-medium px-1">Yarim tayyor</span>
+                      ) : (
+                        <span className="text-xs text-gray-300 px-1">—</span>
+                      )}
+                    </div>
+
+                    {/* Miqdor */}
+                    <div className="col-span-4 sm:col-span-2">
+                      <input
+                        type="number" min="0" placeholder="0"
+                        value={entry.quantity_produced}
+                        onChange={e => updateEntry(i, 'quantity_produced', e.target.value)}
+                        onFocus={e => e.target.select()}
+                        className="input text-sm"
+                      />
+                    </div>
+
+                    {/* Haq + o'chirish */}
+                    <div className="col-span-2 sm:col-span-2 flex items-center justify-end gap-1">
+                      {pay > 0 && (
+                        <span className="text-sm font-bold text-green-700 whitespace-nowrap">
+                          {fmt(pay)} so'm
+                        </span>
+                      )}
+                      <button
+                        onClick={() => setEntries(prev => prev.length === 1 ? [newEntry()] : prev.filter((_, idx) => idx !== i))}
+                        className="text-gray-300 hover:text-red-500 ml-1"
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Jami */}
+            {totalPay > 0 && (
+              <div className="mt-3 p-3 bg-green-50 border border-green-100 rounded-xl flex justify-between items-center">
+                <span className="text-sm text-gray-600">Jami hisoblangan haq:</span>
+                <span className="font-bold text-green-700 text-lg">{fmt(totalPay)} so'm</span>
+              </div>
+            )}
+
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => setEntries(prev => [...prev, newEntry()])}
+                className="btn-secondary btn-sm"
+              >
+                <Plus size={14} /> Ishchi qo'shish
+              </button>
+              <button
+                onClick={save}
+                disabled={bulkMutation.isPending}
+                className="btn-primary btn-sm ml-auto"
+              >
+                <Save size={14} /> {bulkMutation.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Shu kun uchun saqlangan yozuvlar */}
+      {todayRows.length > 0 && (
+        <div className="card">
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">
+            {new Date(date + 'T12:00:00').toLocaleDateString('uz-UZ', { day: 'numeric', month: 'long' })} — Saqlangan natijalar
+          </h2>
+          <div className="table-container">
+            <table className="table text-sm">
+              <thead>
+                <tr>
+                  <th>Xodim</th>
+                  <th>Turi</th>
+                  <th>Mahsulot</th>
+                  <th>Tarif (so'm/dona)</th>
+                  <th>Miqdor</th>
+                  <th>Hisoblangan haq</th>
+                </tr>
+              </thead>
+              <tbody>
+                {todayRows.map(row => (
+                  <tr key={row.id}>
+                    <td className="font-medium">{row.employee_name}</td>
+                    <td>
+                      <span className={clsx(
+                        'text-xs font-medium px-2 py-0.5 rounded-full',
+                        row.employee_type === 'DETALCHI' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
+                      )}>
+                        {row.employee_type}
+                      </span>
+                    </td>
+                    <td>{row.product_name || '—'}</td>
+                    <td className="text-gray-500">{fmt(row.daily_tariff)} so'm</td>
+                    <td className="font-semibold">{fmt(row.quantity_produced)} dona</td>
+                    <td className="font-bold text-green-700">{fmt(row.calculated_amount)} so'm</td>
+                  </tr>
+                ))}
+                <tr className="bg-green-50">
+                  <td colSpan={5} className="text-right text-sm font-semibold text-gray-700 pr-2">Jami:</td>
+                  <td className="font-bold text-green-800 text-base">
+                    {fmt(todayRows.reduce((s, r) => s + parseFloat(r.calculated_amount || 0), 0))} so'm
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Asosiy sahifa ────────────────────────────────────────────────────────────
+export default function IntakePage() {
+  const { isOwner, isSalesHead, isKirimchi, isProductionHead } = useAuthStore();
+  const [tab, setTab] = useState('intake');
+
+  const canCreate = isOwner() || isKirimchi() || isProductionHead();
+  const canApprove = isOwner() || isSalesHead();
+
+  const TABS = [
+    { key: 'intake',  label: 'Mahsulot kirimi', icon: PackagePlus },
+    { key: 'workers', label: 'Ishchilar ishi',   icon: Users },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="page-header">
+        <h1 className="page-title">Mahsulot Kirim</h1>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {TABS.map(t => {
+          const Icon = t.icon;
+          const active = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={clsx(
+                'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
+                active
+                  ? 'border-blue-600 text-blue-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              )}
+            >
+              <Icon size={15} /> {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === 'intake' && (
+        <ProductIntakeTab canCreate={canCreate} canApprove={canApprove} />
+      )}
+      {tab === 'workers' && (
+        <WorkerOutputTab />
+      )}
     </div>
   );
 }

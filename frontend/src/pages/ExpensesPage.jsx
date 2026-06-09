@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { Plus, X, Trash2 } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { expensesAPI } from '../services/api';
+import { expensesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -37,6 +37,9 @@ export default function ExpensesPage() {
   const qc = useQueryClient();
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [showModal, setShowModal] = useState(false);
+  // Ta'minotchi uchun: tanlangan xom ashyo va kg miqdori
+  const [selRmId, setSelRmId] = useState('');
+  const [selKg, setSelKg] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['expenses', month, taminotchiOnly],
@@ -54,6 +57,16 @@ export default function ExpensesPage() {
     enabled: !taminotchiOnly,
   });
 
+  // Ta'minotchi uchun xom ashyolar ro'yxati
+  const { data: rawMatsData } = useQuery({
+    queryKey: ['raw-materials'],
+    queryFn: () => productsAPI.getRawMaterials().then(r => r.data),
+    enabled: taminotchiOnly,
+  });
+  const rawMats = rawMatsData?.raw_materials || [];
+  const selRm = rawMats.find(r => r.id === selRmId);
+  const calcAmount = selRm && selKg ? Math.round(parseFloat(selKg) * parseFloat(selRm.price_per_unit || 0)) : 0;
+
   const createMutation = useMutation({
     mutationFn: (d) => expensesAPI.create(d),
     onSuccess: () => {
@@ -62,6 +75,7 @@ export default function ExpensesPage() {
       qc.invalidateQueries({ queryKey: ['expenses-summary'] });
       setShowModal(false);
       reset();
+      setSelRmId(''); setSelKg('');
     },
   });
 
@@ -193,10 +207,61 @@ export default function ExpensesPage() {
         </table>
       </div>
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} title={taminotchiOnly ? "Kunlik Xom Ashyo Xarajati" : "Yangi Xarajat"}>
-        <form onSubmit={handleSubmit(d => createMutation.mutate(taminotchiOnly ? { ...d, category: 'RAW_MATERIAL' } : d))} className="space-y-4">
+      <Modal open={showModal} onClose={() => { setShowModal(false); setSelRmId(''); setSelKg(''); }} title={taminotchiOnly ? "Kunlik Xom Ashyo Xarajati" : "Yangi Xarajat"}>
+        <form
+          onSubmit={handleSubmit(d => {
+            if (taminotchiOnly) {
+              if (!selRmId) return toast.error('Xom ashyo nomini tanlang');
+              if (!selKg || parseFloat(selKg) <= 0) return toast.error('Miqdor (kg) kiriting');
+              createMutation.mutate({
+                category: 'RAW_MATERIAL',
+                amount: calcAmount,
+                description: d.description || `${selRm?.name} - ${selKg} ${selRm?.unit || 'kg'}`,
+                expense_date: d.expense_date,
+              });
+            } else {
+              createMutation.mutate(d);
+            }
+          })}
+          className="space-y-4"
+        >
           {taminotchiOnly ? (
-            <input type="hidden" value="RAW_MATERIAL" {...register('category')} />
+            <>
+              {/* Xom ashyo nomi */}
+              <div>
+                <label className="label">Xom ashyo nomi *</label>
+                <select
+                  value={selRmId}
+                  onChange={e => setSelRmId(e.target.value ? parseInt(e.target.value) : '')}
+                  className="select"
+                >
+                  <option value="">— Tanlang —</option>
+                  {rawMats.map(rm => (
+                    <option key={rm.id} value={rm.id}>
+                      {rm.name} ({fmt(rm.price_per_unit)} so'm/{rm.unit || 'kg'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {/* Miqdor kg */}
+              <div>
+                <label className="label">Miqdor ({selRm?.unit || 'kg'}) *</label>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={selKg}
+                  onChange={e => setSelKg(e.target.value)}
+                  className="input"
+                  placeholder={`Necha ${selRm?.unit || 'kg'}?`}
+                />
+              </div>
+              {/* Hisoblangan summa */}
+              {calcAmount > 0 && (
+                <div className="bg-blue-50 rounded-lg p-3 flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Hisoblangan summa:</span>
+                  <span className="font-bold text-blue-700">{fmt(calcAmount)} so'm</span>
+                </div>
+              )}
+            </>
           ) : (
             <div>
               <label className="label">Kategoriya *</label>
@@ -205,10 +270,14 @@ export default function ExpensesPage() {
               </select>
             </div>
           )}
-          <div>
-            <label className="label">Miqdor (so'm) *</label>
-            <input {...register('amount', { required: true, min: 1 })} type="number" min="0" className="input" />
-          </div>
+
+          {!taminotchiOnly && (
+            <div>
+              <label className="label">Miqdor (so'm) *</label>
+              <input {...register('amount', { required: true, min: 1 })} type="number" min="0" className="input" />
+            </div>
+          )}
+
           <div>
             <label className="label">Izoh</label>
             <input {...register('description')} className="input" placeholder="Ixtiyoriy" />
@@ -219,7 +288,7 @@ export default function ExpensesPage() {
               defaultValue={new Date().toISOString().slice(0, 10)} />
           </div>
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={() => setShowModal(false)} className="btn-secondary flex-1">Bekor</button>
+            <button type="button" onClick={() => { setShowModal(false); setSelRmId(''); setSelKg(''); }} className="btn-secondary flex-1">Bekor</button>
             <button type="submit" disabled={createMutation.isPending} className="btn-primary flex-1">
               {createMutation.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
             </button>

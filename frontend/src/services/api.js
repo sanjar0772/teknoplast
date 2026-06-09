@@ -110,6 +110,7 @@ export const productionAPI = {
   getSummary: (params) => api.get('/production/summary', { params }),
   create: (data) => api.post('/production', data),
   bulk: (data) => api.post('/production/bulk', data),
+  remove: (id) => api.delete(`/production/${id}`),
 };
 
 // Salaries

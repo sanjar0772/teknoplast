@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Save } from 'lucide-react';
+import { Plus, X, Save, Trash2 } from 'lucide-react';
 import { productionAPI, employeesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -42,6 +42,16 @@ export default function ProductionPage() {
       qc.invalidateQueries({ queryKey: ['production'] });
       setShowBulk(false);
     },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => productionAPI.remove(id),
+    onSuccess: () => {
+      toast.success('Yozuv o\'chirildi');
+      qc.invalidateQueries({ queryKey: ['production-daily', date] });
+      qc.invalidateQueries({ queryKey: ['production-summary', month] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
   const [entries, setEntries] = useState([]);
@@ -173,11 +183,11 @@ export default function ProductionPage() {
         <div className="table-container">
           <table className="table">
             <thead>
-              <tr><th>Xodim</th><th>Mahsulot</th><th>Tur</th><th>Miqdor</th><th>Tarif</th><th>Hisoblangan</th></tr>
+              <tr><th>Xodim</th><th>Mahsulot</th><th>Tur</th><th>Miqdor</th><th>Tarif</th><th>Hisoblangan</th>{canWrite && <th></th>}</tr>
             </thead>
             <tbody>
               {!daily?.production?.length ? (
-                <tr><td colSpan={6} className="text-center py-6 text-gray-400">Bu kun uchun ma'lumot yo'q</td></tr>
+                <tr><td colSpan={canWrite ? 7 : 6} className="text-center py-6 text-gray-400">Bu kun uchun ma'lumot yo'q</td></tr>
               ) : daily.production.map(row => (
                 <tr key={row.id}>
                   <td className="font-medium">{row.employee_name}</td>
@@ -186,6 +196,15 @@ export default function ProductionPage() {
                   <td>{fmt(row.quantity_produced)} dona</td>
                   <td>{fmt(row.daily_tariff)} so'm/dona</td>
                   <td className="font-semibold text-green-700">{fmt(row.calculated_amount)} so'm</td>
+                  {canWrite && (
+                    <td>
+                      <button
+                        onClick={() => { if (confirm(`${row.employee_name} — ${fmt(row.quantity_produced)} dona o'chirilsinmi?`)) deleteMutation.mutate(row.id); }}
+                        disabled={deleteMutation.isPending}
+                        className="text-gray-300 hover:text-red-500 p-1"
+                      ><Trash2 size={14} /></button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

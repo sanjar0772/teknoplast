@@ -265,4 +265,38 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async 
   } catch (err) { next(err); }
 });
 
+// DELETE /api/production/:id — yagona yozuvni o'chirish (OWNER yoki PRODUCTION_HEAD)
+router.delete('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async (req, res, next) => {
+  try {
+    // Avval yozuvni olamiz — ombor delta uchun
+    const existing = await query('SELECT * FROM employee_production WHERE id=$1', [req.params.id]);
+    if (!existing.rows.length) return res.status(404).json({ error: 'Yozuv topilmadi' });
+
+    const row = existing.rows[0];
+    const client = await require('../db').getClient();
+    try {
+      await client.query('BEGIN');
+      // Mahsulot omborini orqaga qaytaramiz (agar bog'langan mahsulot bo'lsa)
+      if (row.product_id && row.quantity_produced > 0) {
+        await client.query(
+          'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at=NOW() WHERE id=$2',
+          [row.quantity_produced, row.product_id]
+        );
+      }
+      await client.query('DELETE FROM employee_production WHERE id=$1', [req.params.id]);
+      await client.query('COMMIT');
+      logAudit(req, {
+        action: 'PRODUCTION_DELETE', table: 'employee_production', recordId: req.params.id,
+        newValues: { employee_id: row.employee_id, production_date: row.production_date, quantity: row.quantity_produced },
+      });
+      res.json({ message: 'Yozuv o\'chirildi' });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

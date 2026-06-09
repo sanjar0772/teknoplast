@@ -291,6 +291,26 @@ router.post('/raw-materials', requireRole('OWNER', 'TAMINOTCHI'), async (req, re
   } catch (err) { next(err); }
 });
 
+// PUT /api/products/raw-materials/:id — xom ashyo ma'lumotlarini tahrirlash
+router.put('/raw-materials/:id', requireRole('OWNER', 'TAMINOTCHI'), async (req, res, next) => {
+  try {
+    const { name, unit, price_per_unit, supplier_name, min_stock_level, stock_balance } = req.body;
+    const result = await query(
+      `UPDATE raw_materials
+       SET name=$1, unit=$2, price_per_unit=$3, supplier_name=$4, min_stock_level=$5,
+           stock_balance=$6, updated_at=NOW()
+       WHERE id=$7 RETURNING *`,
+      [name, unit, price_per_unit || 0, supplier_name || null, min_stock_level || 0, stock_balance || 0, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Xom ashyo topilmadi' });
+    logAudit(req, {
+      action: 'RAW_MATERIAL_UPDATE', table: 'raw_materials', recordId: req.params.id,
+      newValues: { name, unit, price_per_unit, supplier_name, min_stock_level, stock_balance },
+    });
+    res.json({ raw_material: result.rows[0] });
+  } catch (err) { next(err); }
+});
+
 // PUT /api/products/raw-materials/:id/stock — ombor balansini yangilash, faqat Ta'minotchi vazifasi
 router.put('/raw-materials/:id/stock', requireRole('OWNER', 'TAMINOTCHI'), async (req, res, next) => {
   try {

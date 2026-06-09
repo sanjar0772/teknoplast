@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, AlertTriangle, Warehouse, Package, Boxes, PackagePlus } from 'lucide-react';
+import { Plus, X, AlertTriangle, Warehouse, Package, Boxes, PackagePlus, Pencil } from 'lucide-react';
 import { productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import clsx from 'clsx';
@@ -34,6 +34,7 @@ export default function InventoryPage() {
   const taminotchiOnly = user?.role === 'TAMINOTCHI';
   const [tab, setTab] = useState(taminotchiOnly ? 'raw' : 'products'); // 'products' | 'raw'
   const [showRmModal, setShowRmModal] = useState(false);
+  const [editRmModal, setEditRmModal] = useState(null); // tahrirlash uchun
   const [rmStockModal, setRmStockModal] = useState(null);
   const [rmStockForm, setRmStockForm] = useState({ quantity: 0, operation: 'add' });
 
@@ -67,6 +68,29 @@ export default function InventoryPage() {
   });
 
   const { register: registerRm, handleSubmit: handleSubmitRm, reset: resetRm } = useForm();
+  const { register: registerEdit, handleSubmit: handleSubmitEdit, reset: resetEdit } = useForm();
+
+  const updateRmMutation = useMutation({
+    mutationFn: ({ id, ...d }) => productsAPI.updateRawMaterial(id, d),
+    onSuccess: () => {
+      toast.success('Xom ashyo yangilandi');
+      qc.invalidateQueries({ queryKey: ['raw-materials'] });
+      setEditRmModal(null);
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+
+  const openEdit = (rm) => {
+    setEditRmModal(rm);
+    resetEdit({
+      name: rm.name,
+      unit: rm.unit,
+      price_per_unit: rm.price_per_unit,
+      supplier_name: rm.supplier_name || '',
+      min_stock_level: rm.min_stock_level,
+      stock_balance: rm.stock_balance,
+    });
+  };
 
   const lowProducts = (products?.products || []).filter(p => p.stock_quantity < 10);
   const lowRm = (rawMats?.raw_materials || []).filter(rm => rm.stock_balance <= rm.min_stock_level);
@@ -206,6 +230,7 @@ export default function InventoryPage() {
               <table className="table">
                 <thead>
                   <tr><th>Nomi</th><th>Birlik</th><th>Omborda</th><th>Narxi</th><th>Ta'minotchi</th><th>Holat</th>{canWriteRaw && <th>Amal</th>}</tr>
+
                 </thead>
                 <tbody>
                   {!(rawMats?.raw_materials || []).length ? (
@@ -215,7 +240,7 @@ export default function InventoryPage() {
                       <td className="font-medium">{rm.name}</td>
                       <td>{rm.unit}</td>
                       <td className={`font-bold ${rm.stock_balance <= rm.min_stock_level ? 'text-red-600' : 'text-green-700'}`}>
-                        {rm.stock_balance}
+                        {rm.stock_balance} {rm.unit}
                       </td>
                       <td>{fmt(rm.price_per_unit)} so'm/{rm.unit}</td>
                       <td>{rm.supplier_name || '—'}</td>
@@ -229,8 +254,14 @@ export default function InventoryPage() {
                       </td>
                       {canWriteRaw && (
                         <td>
-                          <button onClick={() => { setRmStockModal(rm); setRmStockForm({ quantity: 0, operation: 'add' }); }}
-                            className="btn-secondary btn-sm">Ombor</button>
+                          <div className="flex gap-1">
+                            <button onClick={() => openEdit(rm)}
+                              className="btn-secondary btn-sm" title="Tahrirlash">
+                              <Pencil size={12} />
+                            </button>
+                            <button onClick={() => { setRmStockModal(rm); setRmStockForm({ quantity: 0, operation: 'add' }); }}
+                              className="btn-secondary btn-sm">Ombor</button>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -290,6 +321,52 @@ export default function InventoryPage() {
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={() => setShowRmModal(false)} className="btn-secondary flex-1">Bekor</button>
             <button type="submit" disabled={createRmMutation.isPending} className="btn-primary flex-1">Saqlash</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Xom ashyo tahrirlash modali */}
+      <Modal open={!!editRmModal} onClose={() => setEditRmModal(null)} title={`Tahrirlash — ${editRmModal?.name || ''}`}>
+        <form onSubmit={handleSubmitEdit(d => updateRmMutation.mutate({ id: editRmModal.id, ...d }))} className="space-y-4">
+          <div>
+            <label className="label">Nomi *</label>
+            <input {...registerEdit('name', { required: true })} className="input" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Ombordagi miqdor</label>
+              <input {...registerEdit('stock_balance')} type="number" min="0" step="0.01" className="input" />
+            </div>
+            <div>
+              <label className="label">Birlik</label>
+              <select {...registerEdit('unit')} className="select">
+                <option value="kg">kg</option>
+                <option value="ton">ton</option>
+                <option value="litr">litr</option>
+                <option value="dona">dona</option>
+                <option value="metr">metr</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Narxi (so'm/birlik)</label>
+              <input {...registerEdit('price_per_unit')} type="number" min="0" className="input" />
+            </div>
+            <div>
+              <label className="label">Min. ombor darajasi</label>
+              <input {...registerEdit('min_stock_level')} type="number" min="0" step="0.01" className="input" />
+            </div>
+          </div>
+          <div>
+            <label className="label">Ta'minotchi nomi</label>
+            <input {...registerEdit('supplier_name')} className="input" placeholder="Kompaniya yoki shaxs ismi" />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={() => setEditRmModal(null)} className="btn-secondary flex-1">Bekor</button>
+            <button type="submit" disabled={updateRmMutation.isPending} className="btn-primary flex-1">
+              {updateRmMutation.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
+            </button>
           </div>
         </form>
       </Modal>

@@ -136,6 +136,7 @@ export const productsAPI = {
   setPricing: (id, data) => api.put(`/products/${id}/pricing`, data),
   getRawMaterials: () => api.get('/products/raw-materials/list'),
   createRawMaterial: (data) => api.post('/products/raw-materials', data),
+  updateRawMaterial: (id, data) => api.put(`/products/raw-materials/${id}`, data),
   updateRawMaterialStock: (id, data) => api.put(`/products/raw-materials/${id}/stock`, data),
 };
 

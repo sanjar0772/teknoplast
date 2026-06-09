@@ -110,7 +110,7 @@ function ProductIntakeTab({ canCreate, canApprove }) {
       <div className="table-container">
         <table className="table">
           <thead>
-            <tr><th>Sana</th><th>Kirituvchi</th><th>Mahsulot xili</th><th>Jami miqdor</th><th>Status</th><th>Amal</th></tr>
+            <tr><th>Sana</th><th>Kirituvchi</th><th>Mahsulotlar</th><th>Jami</th><th>Status</th><th>Amal</th></tr>
           </thead>
           <tbody>
             {isLoading ? (
@@ -123,12 +123,16 @@ function ProductIntakeTab({ canCreate, canApprove }) {
                 <tr key={i.id}>
                   <td className="whitespace-nowrap">{new Date(i.created_at).toLocaleDateString('uz-UZ')}</td>
                   <td>{i.created_by_name || '—'}</td>
-                  <td>{i.item_count} xil</td>
-                  <td className="font-semibold">{fmt(i.total_qty)} dona</td>
+                  <td className="max-w-xs">
+                    {i.product_list
+                      ? <span className="text-sm text-gray-800">{i.product_list}</span>
+                      : <span className="text-gray-400 text-sm">{i.item_count} xil</span>}
+                  </td>
+                  <td className="font-semibold whitespace-nowrap">{fmt(i.total_qty)} dona</td>
                   <td><span className={st.cls}>{st.label}</span></td>
                   <td>
                     <div className="flex gap-1">
-                      <button onClick={() => setDetailId(i.id)} className="btn-secondary btn-sm"><Eye size={12} /></button>
+                      <button onClick={() => setDetailId(i.id)} className="btn-secondary btn-sm" title="Batafsil"><Eye size={12} /></button>
                       {canApprove && i.status === 'PENDING' && (
                         <>
                           <button onClick={() => approveMutation.mutate(i.id)} className="btn-success btn-sm"><Check size={12} /> Tasdiq</button>

@@ -14,7 +14,10 @@ router.get('/', async (req, res, next) => {
     let sql = `
       SELECT i.*, u.full_name as created_by_name, a.full_name as approved_by_name,
              (SELECT COUNT(*) FROM intake_items WHERE intake_id = i.id) as item_count,
-             (SELECT COALESCE(SUM(quantity),0) FROM intake_items WHERE intake_id = i.id) as total_qty
+             (SELECT COALESCE(SUM(quantity),0) FROM intake_items WHERE intake_id = i.id) as total_qty,
+             (SELECT STRING_AGG(p.name || ' (' || ii.quantity || ' dona)', ', ')
+              FROM intake_items ii JOIN products p ON ii.product_id = p.id
+              WHERE ii.intake_id = i.id) as product_list
       FROM product_intakes i
       LEFT JOIN users u ON i.created_by = u.id
       LEFT JOIN users a ON i.approved_by = a.id

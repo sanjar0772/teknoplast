@@ -81,6 +81,7 @@ if (USE_PG) {
       .replace(/ON\s+CONFLICT\s+DO\s+NOTHING/gi, 'OR IGNORE')
       .replace(/(?<!INSERT\s)INTO(?!\s+(?:ai_|users|sales|expense|employ|product|machine|salari|raw_mat|discount|audit|system|smart))/gi, 'INTO') // keep as is
       .replace(/GREATEST\(0,\s*([^)]+)\)/gi, 'MAX(0, $1)')
+      .replace(/STRING_AGG\(/gi, 'GROUP_CONCAT(')
       // RETURNING klauzasini olib tashlash (alohida boshqariladi).
       // RETURNING har doim oxirgi klauza — undan keyingi hammasini o'chiramiz
       // (RETURNING *, RETURNING id, RETURNING id, phone, ... — barchasi).

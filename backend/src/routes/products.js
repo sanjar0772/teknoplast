@@ -255,9 +255,12 @@ router.post('/raw-materials', requireRole('OWNER', 'TAMINOTCHI'), async (req, re
       await client.query('BEGIN');
 
       // Xom ashyo qo'shish
+      // MUHIM: $2 ni stock_balance uchun qayta ishlatmaymiz — SQLite'da $2,$2 → ?,? bo'lib
+      // keyingi parametrni (supplier_name) oladi, natijada stock_balance←supplier_name va
+      // supplier_name←0 bo'lib qoladi. Shu uchun quantity ni $6 sifatida alohida beramiz.
       const materialResult = await client.query(
-        'INSERT INTO raw_materials (name, quantity, unit, price_per_unit, received_date, stock_balance, supplier_name, min_stock_level) VALUES ($1,$2,$3,$4,$5,$2,$6,$7) RETURNING *',
-        [name, quantity, unit || 'kg', price_per_unit || 0, received_date || new Date(), supplier_name, min_stock_level || 0]
+        'INSERT INTO raw_materials (name, quantity, unit, price_per_unit, received_date, stock_balance, supplier_name, min_stock_level) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+        [name, quantity, unit || 'kg', price_per_unit || 0, received_date || new Date(), quantity, supplier_name || null, min_stock_level || 0]
       );
       const raw_material = materialResult.rows[0];
 

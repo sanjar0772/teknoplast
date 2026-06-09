@@ -22,6 +22,7 @@ export default function ProductionPage() {
   });
   const [rangeEnd, setRangeEnd] = useState(new Date().toISOString().slice(0, 10));
   const [selectedEmpIds, setSelectedEmpIds] = useState([]);
+  const [shiftFilter, setShiftFilter] = useState(''); // '' = hammasi, '1-SMENA', '2-SMENA' — faqat Stanokchiga ta'sir qiladi
   const empIdsInitialized = useRef(false);
 
   const { data: summary } = useQuery({
@@ -45,7 +46,10 @@ export default function ProductionPage() {
   });
 
   // Stanokchi/Detalchi xodimlar ro'yxati (davr statistikasi uchun)
-  const piecemealEmployees = (employees?.employees || []).filter(e => e.type === 'STANOKCHI' || e.type === 'DETALCHI');
+  // Smena filtri faqat Stanokchiga ta'sir qiladi — Detalchilar har doim hammasi ko'rinadi
+  const stanokchiList = (employees?.employees || []).filter(e => e.type === 'STANOKCHI' && (!shiftFilter || e.shift === shiftFilter));
+  const detalchiList = (employees?.employees || []).filter(e => e.type === 'DETALCHI');
+  const piecemealEmployees = [...stanokchiList, ...detalchiList];
   const allSelected = piecemealEmployees.length > 0 && selectedEmpIds.length === piecemealEmployees.length;
 
   // Birinchi yuklanganda hammasini belgilab qo'yamiz
@@ -55,6 +59,14 @@ export default function ProductionPage() {
       empIdsInitialized.current = true;
     }
   }, [piecemealEmployees.length]);
+
+  // Smena filtri o'zgarganda — shu smenadagi (+ barcha detalchi) xodimlarni qayta belgilaymiz
+  useEffect(() => {
+    if (empIdsInitialized.current) {
+      setSelectedEmpIds(piecemealEmployees.map(e => e.id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shiftFilter]);
 
   const toggleAllEmp = () => {
     setSelectedEmpIds(allSelected ? [] : piecemealEmployees.map(e => e.id));
@@ -68,6 +80,10 @@ export default function ProductionPage() {
     queryFn: () => productionAPI.getRangeSummary({ start_date: rangeStart, end_date: rangeEnd, employee_ids: selectedEmpIds.join(',') }).then(r => r.data),
     enabled: !!rangeStart && !!rangeEnd && selectedEmpIds.length > 0,
   });
+
+  const sumField = (rows, field) => rows.reduce((s, r) => s + parseFloat(r[field] || 0), 0);
+  const rangeStanokchiRows = (rangeSummary?.summary || []).filter(r => r.type === 'STANOKCHI');
+  const rangeDetalchiRows = (rangeSummary?.summary || []).filter(r => r.type === 'DETALCHI');
 
   const bulkMutation = useMutation({
     mutationFn: (data) => productionAPI.bulk(data),
@@ -224,7 +240,7 @@ export default function ProductionPage() {
       <div className="card">
         <h2 className="text-sm font-semibold text-gray-700 mb-4">Davr bo'yicha statistika — Stanokchi/Detalchi</h2>
 
-        <div className="flex flex-wrap gap-3 mb-4">
+        <div className="flex flex-wrap gap-3 mb-4 items-end">
           <div>
             <label className="label">Boshlanish sanasi</label>
             <input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} className="input w-44" />
@@ -233,6 +249,21 @@ export default function ProductionPage() {
             <label className="label">Tugash sanasi</label>
             <input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} className="input w-44" />
           </div>
+          <div>
+            <label className="label">Smena (Stanokchi)</label>
+            <div className="flex gap-1">
+              {[
+                { v: '', l: 'Hammasi' },
+                { v: '1-SMENA', l: '1-Smena' },
+                { v: '2-SMENA', l: '2-Smena' },
+              ].map(opt => (
+                <button key={opt.v} type="button" onClick={() => setShiftFilter(opt.v)}
+                  className={`btn-sm rounded-lg px-3 ${shiftFilter === opt.v ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                  {opt.l}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="mb-4">
@@ -240,17 +271,40 @@ export default function ProductionPage() {
             <input type="checkbox" checked={allSelected} onChange={toggleAllEmp} className="w-4 h-4" />
             <span className="text-sm font-medium text-gray-700">Hammasini belgilash</span>
           </label>
-          <div className="flex flex-wrap gap-2">
-            {!piecemealEmployees.length ? (
-              <span className="text-sm text-gray-400">Stanokchi/Detalchi xodim topilmadi</span>
-            ) : piecemealEmployees.map(emp => (
-              <label key={emp.id}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-sm cursor-pointer ${selectedEmpIds.includes(emp.id) ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
-                <input type="checkbox" checked={selectedEmpIds.includes(emp.id)} onChange={() => toggleOneEmp(emp.id)} className="w-3.5 h-3.5" />
-                {emp.name} <span className="text-xs opacity-60">({emp.type === 'STANOKCHI' ? 'Stanokchi' : 'Detalchi'})</span>
-              </label>
-            ))}
-          </div>
+          {!piecemealEmployees.length ? (
+            <span className="text-sm text-gray-400">Stanokchi/Detalchi xodim topilmadi</span>
+          ) : (
+            <div className="space-y-2">
+              {stanokchiList.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">Stanokchilar {shiftFilter && `(${shiftFilter === '1-SMENA' ? '1-Smena' : '2-Smena'})`}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {stanokchiList.map(emp => (
+                      <label key={emp.id}
+                        className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-sm cursor-pointer ${selectedEmpIds.includes(emp.id) ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
+                        <input type="checkbox" checked={selectedEmpIds.includes(emp.id)} onChange={() => toggleOneEmp(emp.id)} className="w-3.5 h-3.5" />
+                        {emp.name} <span className="text-xs opacity-60">({emp.shift === '2-SMENA' ? '2-Smena' : '1-Smena'})</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {detalchiList.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">Detalchilar (hammasi)</p>
+                  <div className="flex flex-wrap gap-2">
+                    {detalchiList.map(emp => (
+                      <label key={emp.id}
+                        className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-sm cursor-pointer ${selectedEmpIds.includes(emp.id) ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
+                        <input type="checkbox" checked={selectedEmpIds.includes(emp.id)} onChange={() => toggleOneEmp(emp.id)} className="w-3.5 h-3.5" />
+                        {emp.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="table-container">
@@ -263,23 +317,52 @@ export default function ProductionPage() {
                 <tr><td colSpan={5} className="text-center py-6 text-gray-400">Xodim tanlang</td></tr>
               ) : !rangeSummary?.summary?.length ? (
                 <tr><td colSpan={5} className="text-center py-6 text-gray-400">Ma'lumot yo'q</td></tr>
-              ) : rangeSummary.summary.map(row => (
-                <tr key={row.employee_id}>
-                  <td className="font-medium">{row.name}</td>
-                  <td>{row.type === 'STANOKCHI' ? 'Stanokchi' : 'Detalchi'}</td>
-                  <td>{row.work_days} kun</td>
-                  <td>{fmt(row.total_produced)} dona</td>
-                  <td className="font-semibold text-green-700">{fmt(row.total_earned)} so'm</td>
-                </tr>
-              ))}
+              ) : (
+                <>
+                  {rangeStanokchiRows.map(row => (
+                    <tr key={row.employee_id}>
+                      <td className="font-medium">{row.name}</td>
+                      <td>Stanokchi <span className="text-xs text-gray-400">({row.shift === '2-SMENA' ? '2-Smena' : '1-Smena'})</span></td>
+                      <td>{row.work_days} kun</td>
+                      <td>{fmt(row.total_produced)} dona</td>
+                      <td className="font-semibold text-green-700">{fmt(row.total_earned)} so'm</td>
+                    </tr>
+                  ))}
+                  {rangeStanokchiRows.length > 0 && (
+                    <tr className="bg-blue-50/60 font-semibold">
+                      <td colSpan={2}>Jami — Stanokchi{shiftFilter && ` (${shiftFilter === '1-SMENA' ? '1-Smena' : '2-Smena'})`}</td>
+                      <td>{sumField(rangeStanokchiRows, 'work_days')} kun</td>
+                      <td>{fmt(sumField(rangeStanokchiRows, 'total_produced'))} dona</td>
+                      <td className="text-green-700">{fmt(sumField(rangeStanokchiRows, 'total_earned'))} so'm</td>
+                    </tr>
+                  )}
+                  {rangeDetalchiRows.map(row => (
+                    <tr key={row.employee_id}>
+                      <td className="font-medium">{row.name}</td>
+                      <td>Detalchi</td>
+                      <td>{row.work_days} kun</td>
+                      <td>{fmt(row.total_produced)} dona</td>
+                      <td className="font-semibold text-green-700">{fmt(row.total_earned)} so'm</td>
+                    </tr>
+                  ))}
+                  {rangeDetalchiRows.length > 0 && (
+                    <tr className="bg-orange-50/60 font-semibold">
+                      <td colSpan={2}>Jami — Detalchi (hammasi)</td>
+                      <td>{sumField(rangeDetalchiRows, 'work_days')} kun</td>
+                      <td>{fmt(sumField(rangeDetalchiRows, 'total_produced'))} dona</td>
+                      <td className="text-green-700">{fmt(sumField(rangeDetalchiRows, 'total_earned'))} so'm</td>
+                    </tr>
+                  )}
+                </>
+              )}
             </tbody>
             {rangeSummary?.summary?.length > 0 && (
               <tfoot>
-                <tr className="font-semibold bg-gray-50">
-                  <td colSpan={2}>Jami</td>
-                  <td>{rangeSummary.summary.reduce((s, r) => s + (r.work_days || 0), 0)} kun</td>
-                  <td>{fmt(rangeSummary.summary.reduce((s, r) => s + parseFloat(r.total_produced || 0), 0))} dona</td>
-                  <td className="text-green-700">{fmt(rangeSummary.summary.reduce((s, r) => s + parseFloat(r.total_earned || 0), 0))} so'm</td>
+                <tr className="font-semibold bg-gray-100">
+                  <td colSpan={2}>Umumiy Jami</td>
+                  <td>{sumField(rangeSummary.summary, 'work_days')} kun</td>
+                  <td>{fmt(sumField(rangeSummary.summary, 'total_produced'))} dona</td>
+                  <td className="text-green-700">{fmt(sumField(rangeSummary.summary, 'total_earned'))} so'm</td>
                 </tr>
               </tfoot>
             )}

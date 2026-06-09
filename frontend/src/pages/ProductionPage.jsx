@@ -63,7 +63,18 @@ export default function ProductionPage() {
   (products?.products || []).forEach(p => { prodMap[p.id] = p; });
 
   const addEntry = () => {
-    setEntries(prev => [...prev, { employee_id: '', quantity_produced: '', product_id: '', production_type: 'FINISHED', tarif: '' }]);
+    setEntries(prev => [...prev, { employee_id: '', quantity_produced: '', product_id: '', production_type: 'FINISHED', tarif: '', prodSearch: '' }]);
+  };
+
+  // Mahsulot qidirish: matn yozilganda product_id va tarifni avtomatik to'ldiradi
+  const handleProdSearch = (i, text) => {
+    const match = (products?.products || []).find(p => p.name === text);
+    setEntries(prev => prev.map((e, idx) => {
+      if (idx !== i) return e;
+      const next = { ...e, prodSearch: text, product_id: match ? match.id : '' };
+      if (match) next.tarif = autoTarif(next.employee_id, match.id, next.production_type);
+      return next;
+    }));
   };
 
   // Mahsulot/xodim/tur asosida tarifni avtomatik hisoblash
@@ -225,21 +236,20 @@ export default function ProductionPage() {
             <p className="text-sm text-gray-500 mb-4">Sana: <strong>{new Date(date).toLocaleDateString('uz-UZ')}</strong></p>
 
             <div className="space-y-2">
-              {/* Sarlavha */}
+              {/* Sarlavha — 3+3+1+2+2+1=12 */}
               <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 font-medium px-1">
                 <span className="col-span-3">Xodim</span>
                 <span className="col-span-3">Mahsulot</span>
                 <span className="col-span-1">Tur</span>
-                <span className="col-span-2 text-blue-500">Tarif (so'm/dona)</span>
-                <span className="col-span-1">Dona</span>
-                <span className="col-span-2 text-green-600 text-right">Hisoblangan</span>
+                <span className="col-span-2 text-blue-500">Tarif so'm/dona</span>
+                <span className="col-span-2">Dona</span>
+                <span className="col-span-1"></span>
               </div>
 
               {entries.map((entry, i) => {
                 const emp = empMap[entry.employee_id];
                 const isDetalchi = emp?.type === 'DETALCHI';
                 const isStanokchi = emp?.type === 'STANOKCHI';
-                const earned = calcEarnings(entry);
                 return (
                   <div key={i} className={`grid grid-cols-12 gap-2 items-center p-2 rounded-lg ${isDetalchi ? 'bg-orange-50 border border-orange-100' : 'bg-gray-50'}`}>
                     {/* Xodim */}
@@ -253,14 +263,21 @@ export default function ProductionPage() {
                         ))}
                       </select>
                     </div>
-                    {/* Mahsulot */}
+                    {/* Mahsulot — qidiruv bilan */}
                     <div className="col-span-3">
-                      <select value={entry.product_id} onChange={e => updateEntry(i, 'product_id', e.target.value)} className="select text-sm w-full">
-                        <option value="">Mahsulot</option>
-                        {products?.products?.map(p => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
+                      <input
+                        type="text"
+                        list={`prod-list-${i}`}
+                        value={entry.prodSearch !== undefined ? entry.prodSearch : (prodMap[entry.product_id]?.name || '')}
+                        onChange={e => handleProdSearch(i, e.target.value)}
+                        placeholder="Mahsulot qidiring..."
+                        className="input text-sm w-full"
+                      />
+                      <datalist id={`prod-list-${i}`}>
+                        {(products?.products || []).map(p => (
+                          <option key={p.id} value={p.name} />
                         ))}
-                      </select>
+                      </datalist>
                     </div>
                     {/* Tur */}
                     <div className="col-span-1">
@@ -275,34 +292,31 @@ export default function ProductionPage() {
                         <span className="text-xs text-gray-300">—</span>
                       )}
                     </div>
-                    {/* Tarif — avtomatik to'ladi, tahrirlanadi */}
+                    {/* Tarif — strelkasiz */}
                     <div className="col-span-2">
                       <input
-                        type="number" min="0" placeholder="so'm/dona"
+                        type="number" min="0" placeholder="so'm"
                         value={entry.tarif}
                         onChange={e => updateEntry(i, 'tarif', e.target.value)}
                         onFocus={e => e.target.select()}
-                        className="input text-sm border-blue-200 focus:border-blue-500"
+                        className="input text-sm border-blue-200 focus:border-blue-500 [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
                       />
                     </div>
-                    {/* Miqdor */}
-                    <div className="col-span-1">
+                    {/* Miqdor — kengaytirilgan, strelkasiz */}
+                    <div className="col-span-2">
                       <input
                         type="number" min="0" placeholder="dona"
                         value={entry.quantity_produced}
                         onChange={e => updateEntry(i, 'quantity_produced', e.target.value)}
                         onFocus={e => e.target.select()}
-                        className="input text-sm"
+                        className="input text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
                       />
                     </div>
-                    {/* Hisoblangan + o'chirish */}
-                    <div className="col-span-2 flex items-center justify-end gap-1">
-                      {earned > 0 && (
-                        <span className="text-sm font-semibold text-green-700">{fmt(earned)}</span>
-                      )}
+                    {/* O'chirish */}
+                    <div className="col-span-1 flex justify-end">
                       <button
                         onClick={() => setEntries(prev => prev.filter((_, idx) => idx !== i))}
-                        className="text-red-400 hover:text-red-600"
+                        className="text-red-400 hover:text-red-600 p-1"
                       ><X size={16} /></button>
                     </div>
                   </div>

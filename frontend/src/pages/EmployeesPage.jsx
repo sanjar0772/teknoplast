@@ -35,7 +35,7 @@ function Modal({ open, onClose, title, children }) {
 }
 
 export default function EmployeesPage() {
-  const { isOwner, isProductionHead } = useAuthStore();
+  const { isOwner, isProductionHead, isKirimchi } = useAuthStore();
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editEmployee, setEditEmployee] = useState(null);
@@ -106,6 +106,8 @@ export default function EmployeesPage() {
   });
 
   const canWrite = isOwner() || isProductionHead();
+  // KIRIMCHI faqat yangi xodim (stanokchi/detalchi) qo'shishi mumkin
+  const canAdd = canWrite || isKirimchi();
 
   const typeCount = (data?.employees || []).reduce((acc, e) => {
     if (e.is_active) acc[e.type] = (acc[e.type] || 0) + 1;
@@ -129,7 +131,7 @@ export default function EmployeesPage() {
               <Trash2 size={14} /> Hammasini o'chirish
             </button>
           )}
-          {canWrite && (
+          {canAdd && (
             <button onClick={openCreate} className="btn-primary btn-sm">
               <Plus size={14} /> Xodim qo'shish
             </button>

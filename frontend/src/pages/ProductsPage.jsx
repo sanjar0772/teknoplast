@@ -25,7 +25,7 @@ function Modal({ open, onClose, title, children }) {
 }
 
 export default function ProductsPage() {
-  const { isOwner, isProductionHead, isAccountant } = useAuthStore();
+  const { isOwner, isProductionHead, isAccountant, isKirimchi } = useAuthStore();
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
@@ -90,12 +90,14 @@ export default function ProductsPage() {
 
   const canWrite = isOwner() || isProductionHead();
   const canPrice = isOwner() || isAccountant() || isProductionHead();
+  // KIRIMCHI faqat yangi mahsulot qo'shishi mumkin
+  const canAdd = canWrite || isKirimchi();
 
   return (
     <div className="space-y-6">
       <div className="page-header">
         <h1 className="page-title">Mahsulotlar</h1>
-        {canWrite && (
+        {canAdd && (
           <button onClick={() => { reset(); setEditProduct(null); setShowModal(true); }} className="btn-primary btn-sm">
             <Plus size={14} /> Mahsulot qo'shish
           </button>

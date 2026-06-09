@@ -55,7 +55,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /api/employees
-router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD'), [
+router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
   body('name').notEmpty().trim(),
   body('type').isIn(EMPLOYEE_TYPES),
 ], async (req, res, next) => {

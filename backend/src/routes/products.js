@@ -58,7 +58,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /api/products
-router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD'), [
+router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
   body('name').notEmpty().trim(),
   body('price').isFloat({ min: 0 }),
   body('type').notEmpty(),

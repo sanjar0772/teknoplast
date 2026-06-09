@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
@@ -14,6 +14,15 @@ export default function ProductionPage() {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [showBulk, setShowBulk] = useState(false);
+
+  // Davr bo'yicha statistika (Stanokchi/Detalchi)
+  const [rangeStart, setRangeStart] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  });
+  const [rangeEnd, setRangeEnd] = useState(new Date().toISOString().slice(0, 10));
+  const [selectedEmpIds, setSelectedEmpIds] = useState([]);
+  const empIdsInitialized = useRef(false);
 
   const { data: summary } = useQuery({
     queryKey: ['production-summary', month],
@@ -33,6 +42,31 @@ export default function ProductionPage() {
   const { data: products } = useQuery({
     queryKey: ['products'],
     queryFn: () => productsAPI.getAll().then(r => r.data),
+  });
+
+  // Stanokchi/Detalchi xodimlar ro'yxati (davr statistikasi uchun)
+  const piecemealEmployees = (employees?.employees || []).filter(e => e.type === 'STANOKCHI' || e.type === 'DETALCHI');
+  const allSelected = piecemealEmployees.length > 0 && selectedEmpIds.length === piecemealEmployees.length;
+
+  // Birinchi yuklanganda hammasini belgilab qo'yamiz
+  useEffect(() => {
+    if (!empIdsInitialized.current && piecemealEmployees.length) {
+      setSelectedEmpIds(piecemealEmployees.map(e => e.id));
+      empIdsInitialized.current = true;
+    }
+  }, [piecemealEmployees.length]);
+
+  const toggleAllEmp = () => {
+    setSelectedEmpIds(allSelected ? [] : piecemealEmployees.map(e => e.id));
+  };
+  const toggleOneEmp = (id) => {
+    setSelectedEmpIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const { data: rangeSummary } = useQuery({
+    queryKey: ['production-range', rangeStart, rangeEnd, selectedEmpIds],
+    queryFn: () => productionAPI.getRangeSummary({ start_date: rangeStart, end_date: rangeEnd, employee_ids: selectedEmpIds.join(',') }).then(r => r.data),
+    enabled: !!rangeStart && !!rangeEnd && selectedEmpIds.length > 0,
   });
 
   const bulkMutation = useMutation({
@@ -182,6 +216,73 @@ export default function ProductionPage() {
                 </tr>
               ))}
             </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Davr bo'yicha statistika — Stanokchi/Detalchi */}
+      <div className="card">
+        <h2 className="text-sm font-semibold text-gray-700 mb-4">Davr bo'yicha statistika — Stanokchi/Detalchi</h2>
+
+        <div className="flex flex-wrap gap-3 mb-4">
+          <div>
+            <label className="label">Boshlanish sanasi</label>
+            <input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} className="input w-44" />
+          </div>
+          <div>
+            <label className="label">Tugash sanasi</label>
+            <input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} className="input w-44" />
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className="flex items-center gap-2 mb-2 cursor-pointer w-fit">
+            <input type="checkbox" checked={allSelected} onChange={toggleAllEmp} className="w-4 h-4" />
+            <span className="text-sm font-medium text-gray-700">Hammasini belgilash</span>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {!piecemealEmployees.length ? (
+              <span className="text-sm text-gray-400">Stanokchi/Detalchi xodim topilmadi</span>
+            ) : piecemealEmployees.map(emp => (
+              <label key={emp.id}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-sm cursor-pointer ${selectedEmpIds.includes(emp.id) ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
+                <input type="checkbox" checked={selectedEmpIds.includes(emp.id)} onChange={() => toggleOneEmp(emp.id)} className="w-3.5 h-3.5" />
+                {emp.name} <span className="text-xs opacity-60">({emp.type === 'STANOKCHI' ? 'Stanokchi' : 'Detalchi'})</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr><th>Xodim</th><th>Turi</th><th>Ish kunlari</th><th>Jami ishlab chiqargan</th><th>Hisoblangan haq</th></tr>
+            </thead>
+            <tbody>
+              {!selectedEmpIds.length ? (
+                <tr><td colSpan={5} className="text-center py-6 text-gray-400">Xodim tanlang</td></tr>
+              ) : !rangeSummary?.summary?.length ? (
+                <tr><td colSpan={5} className="text-center py-6 text-gray-400">Ma'lumot yo'q</td></tr>
+              ) : rangeSummary.summary.map(row => (
+                <tr key={row.employee_id}>
+                  <td className="font-medium">{row.name}</td>
+                  <td>{row.type === 'STANOKCHI' ? 'Stanokchi' : 'Detalchi'}</td>
+                  <td>{row.work_days} kun</td>
+                  <td>{fmt(row.total_produced)} dona</td>
+                  <td className="font-semibold text-green-700">{fmt(row.total_earned)} so'm</td>
+                </tr>
+              ))}
+            </tbody>
+            {rangeSummary?.summary?.length > 0 && (
+              <tfoot>
+                <tr className="font-semibold bg-gray-50">
+                  <td colSpan={2}>Jami</td>
+                  <td>{rangeSummary.summary.reduce((s, r) => s + (r.work_days || 0), 0)} kun</td>
+                  <td>{fmt(rangeSummary.summary.reduce((s, r) => s + parseFloat(r.total_produced || 0), 0))} dona</td>
+                  <td className="text-green-700">{fmt(rangeSummary.summary.reduce((s, r) => s + parseFloat(r.total_earned || 0), 0))} so'm</td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>

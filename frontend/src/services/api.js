@@ -108,6 +108,7 @@ export const employeesAPI = {
 export const productionAPI = {
   getAll: (params) => api.get('/production', { params }),
   getSummary: (params) => api.get('/production/summary', { params }),
+  getRangeSummary: (params) => api.get('/production/range-summary', { params }),
   create: (data) => api.post('/production', data),
   bulk: (data) => api.post('/production/bulk', data),
   remove: (id) => api.delete(`/production/${id}`),

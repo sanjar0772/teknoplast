@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Save, Trash2 } from 'lucide-react';
+import { Plus, X, Save, Trash2, Download, Printer } from 'lucide-react';
 import { productionAPI, employeesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -84,6 +84,16 @@ export default function ProductionPage() {
   const sumField = (rows, field) => rows.reduce((s, r) => s + parseFloat(r[field] || 0), 0);
   const rangeStanokchiRows = (rangeSummary?.summary || []).filter(r => r.type === 'STANOKCHI');
   const rangeDetalchiRows = (rangeSummary?.summary || []).filter(r => r.type === 'DETALCHI');
+
+  const downloadRangeExcel = async () => {
+    try {
+      const res = await productionAPI.getRangeSummaryExcel({ start_date: rangeStart, end_date: rangeEnd, employee_ids: selectedEmpIds.join(',') });
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url; a.download = `ishlab-chiqarish-${rangeStart}_${rangeEnd}.xlsx`; a.click();
+      URL.revokeObjectURL(url);
+    } catch { toast.error('Yuklab bo\'lmadi'); }
+  };
 
   const bulkMutation = useMutation({
     mutationFn: (data) => productionAPI.bulk(data),
@@ -237,10 +247,29 @@ export default function ProductionPage() {
       </div>
 
       {/* Davr bo'yicha statistika — Stanokchi/Detalchi */}
-      <div className="card">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Davr bo'yicha statistika — Stanokchi/Detalchi</h2>
+      <div className="card" id="production-range-print">
+        <div className="flex items-center justify-between mb-4 no-print">
+          <h2 className="text-sm font-semibold text-gray-700">Davr bo'yicha statistika — Stanokchi/Detalchi</h2>
+          <div className="flex gap-2">
+            <button onClick={downloadRangeExcel} className="btn-secondary btn-sm">
+              <Download size={14} /> Excel
+            </button>
+            <button onClick={() => window.print()} className="btn-secondary btn-sm">
+              <Printer size={14} /> Chop etish
+            </button>
+          </div>
+        </div>
 
-        <div className="flex flex-wrap gap-3 mb-4 items-end">
+        {/* Faqat chop etishda ko'rinadigan sarlavha */}
+        <div className="hidden print:block mb-3">
+          <h2 className="text-base font-bold">Ishlab chiqarish — Davr bo'yicha statistika</h2>
+          <p className="text-sm text-gray-600">
+            Davr: {new Date(rangeStart).toLocaleDateString('uz-UZ')} — {new Date(rangeEnd).toLocaleDateString('uz-UZ')}
+            {shiftFilter && ` · Smena: ${shiftFilter === '1-SMENA' ? '1-Smena' : '2-Smena'}`}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-3 mb-4 items-end no-print">
           <div>
             <label className="label">Boshlanish sanasi</label>
             <input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} className="input w-44" />
@@ -266,7 +295,7 @@ export default function ProductionPage() {
           </div>
         </div>
 
-        <div className="mb-4">
+        <div className="mb-4 no-print">
           <label className="flex items-center gap-2 mb-2 cursor-pointer w-fit">
             <input type="checkbox" checked={allSelected} onChange={toggleAllEmp} className="w-4 h-4" />
             <span className="text-sm font-medium text-gray-700">Hammasini belgilash</span>

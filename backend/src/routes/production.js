@@ -111,6 +111,34 @@ router.get('/summary', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Davr bo'yicha statistika SQL'ini quradi (Stanokchi/Detalchi)
+function buildRangeSummaryQuery(employee_ids) {
+  let sql = `
+    SELECT e.id as employee_id, e.name, e.type, e.shift,
+           COUNT(DISTINCT ep.production_date) as work_days,
+           COALESCE(SUM(ep.quantity_produced), 0) as total_produced,
+           COALESCE(SUM(ep.calculated_amount), 0) as total_earned
+    FROM employees e
+    LEFT JOIN employee_production ep
+      ON ep.employee_id = e.id AND ep.production_date BETWEEN $1 AND $2
+    WHERE e.type IN ('STANOKCHI', 'DETALCHI')
+  `;
+  const extraParams = [];
+  let idx = 3;
+
+  if (employee_ids) {
+    const ids = String(employee_ids).split(',').map(s => s.trim()).filter(Boolean);
+    if (ids.length) {
+      const placeholders = ids.map(() => `$${idx++}`).join(',');
+      sql += ` AND e.id IN (${placeholders})`;
+      extraParams.push(...ids);
+    }
+  }
+
+  sql += ' GROUP BY e.id, e.name, e.type, e.shift ORDER BY e.type, e.name';
+  return { sql, extraParams };
+}
+
 // GET /api/production/range-summary — tanlangan davr va xodimlar bo'yicha statistika (Stanokchi/Detalchi)
 router.get('/range-summary', async (req, res, next) => {
   try {
@@ -119,31 +147,28 @@ router.get('/range-summary', async (req, res, next) => {
       return res.status(400).json({ error: 'start_date va end_date kerak' });
     }
 
-    let sql = `
-      SELECT e.id as employee_id, e.name, e.type, e.shift,
-             COUNT(DISTINCT ep.production_date) as work_days,
-             COALESCE(SUM(ep.quantity_produced), 0) as total_produced,
-             COALESCE(SUM(ep.calculated_amount), 0) as total_earned
-      FROM employees e
-      LEFT JOIN employee_production ep
-        ON ep.employee_id = e.id AND ep.production_date BETWEEN $1 AND $2
-      WHERE e.type IN ('STANOKCHI', 'DETALCHI')
-    `;
-    const params = [start_date, end_date];
-    let idx = 3;
+    const { sql, extraParams } = buildRangeSummaryQuery(employee_ids);
+    const result = await query(sql, [start_date, end_date, ...extraParams]);
+    res.json({ summary: result.rows, start_date, end_date });
+  } catch (err) { next(err); }
+});
 
-    if (employee_ids) {
-      const ids = String(employee_ids).split(',').map(s => s.trim()).filter(Boolean);
-      if (ids.length) {
-        const placeholders = ids.map(() => `$${idx++}`).join(',');
-        sql += ` AND e.id IN (${placeholders})`;
-        params.push(...ids);
-      }
+// GET /api/production/range-summary/excel — Excel hisobot (Stanokchi/Detalchi)
+router.get('/range-summary/excel', async (req, res, next) => {
+  try {
+    const { start_date, end_date, employee_ids } = req.query;
+    if (!start_date || !end_date) {
+      return res.status(400).json({ error: 'start_date va end_date kerak' });
     }
 
-    sql += ' GROUP BY e.id, e.name, e.type, e.shift ORDER BY e.type, e.name';
-    const result = await query(sql, params);
-    res.json({ summary: result.rows, start_date, end_date });
+    const { sql, extraParams } = buildRangeSummaryQuery(employee_ids);
+    const result = await query(sql, [start_date, end_date, ...extraParams]);
+
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateProductionRangeExcel(result.rows, start_date, end_date);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="ishlab-chiqarish-${start_date}_${end_date}.xlsx"`);
+    res.send(Buffer.from(buffer));
   } catch (err) { next(err); }
 });
 

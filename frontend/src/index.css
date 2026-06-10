@@ -13,6 +13,17 @@
     box-shadow: none !important;
     border-radius: 0 !important;
   }
+
+  /* Ishlab chiqarish — davr statistikasini chop etish */
+  #production-range-print, #production-range-print * { visibility: visible !important; }
+  #production-range-print {
+    position: absolute !important;
+    left: 0; top: 0;
+    width: 100% !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  #production-range-print .no-print { display: none !important; }
 }
 
 @layer base {

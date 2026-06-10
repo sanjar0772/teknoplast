@@ -198,6 +198,51 @@ async function generateSalaryExcel(salaryData, period) {
   return buffer;
 }
 
+// Ishlab chiqarish — davr bo'yicha statistika (Stanokchi/Detalchi)
+async function generateProductionRangeExcel(rows, startDate, endDate) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet(`${startDate}_${endDate}`.slice(0, 31));
+
+  sheet.columns = [
+    { header: '№', key: 'num', width: 5 },
+    { header: 'Xodim', key: 'name', width: 25 },
+    { header: 'Turi', key: 'type', width: 14 },
+    { header: 'Smena', key: 'shift', width: 12 },
+    { header: 'Ish kunlari', key: 'work_days', width: 12 },
+    { header: "Ishlab chiqargan (dona)", key: 'total_produced', width: 20 },
+    { header: "Hisoblangan haq (so'm)", key: 'total_earned', width: 20 },
+  ];
+
+  sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF065F46' } };
+
+  const typeMap = { STANOKCHI: 'Stanokchi', DETALCHI: 'Detalchi' };
+  const shiftMap = { '1-SMENA': '1-Smena', '2-SMENA': '2-Smena' };
+
+  rows.forEach((r, i) => {
+    sheet.addRow({
+      num: i + 1,
+      name: r.name,
+      type: typeMap[r.type] || r.type,
+      shift: r.type === 'STANOKCHI' ? (shiftMap[r.shift] || r.shift || '—') : '—',
+      work_days: r.work_days || 0,
+      total_produced: parseFloat(r.total_produced || 0),
+      total_earned: parseFloat(r.total_earned || 0),
+    });
+  });
+
+  const totalRow = sheet.addRow({
+    num: '', name: 'JAMI:',
+    work_days: rows.reduce((a, r) => a + (parseInt(r.work_days) || 0), 0),
+    total_produced: rows.reduce((a, r) => a + parseFloat(r.total_produced || 0), 0),
+    total_earned: rows.reduce((a, r) => a + parseFloat(r.total_earned || 0), 0),
+  });
+  totalRow.font = { bold: true };
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return buffer;
+}
+
 // Nakladnoy (yuk xati) — QR kod bilan
 async function generateWaybillPDF(order) {
   const QRCode = require('qrcode');
@@ -374,4 +419,4 @@ async function generateInvoicePDF(sale, items, viewUrl) {
   });
 }
 
-module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateWaybillPDF, generateInvoicePDF };
+module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateWaybillPDF, generateInvoicePDF };

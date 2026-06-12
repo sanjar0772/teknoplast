@@ -122,22 +122,12 @@ export default function ProductionPage() {
   const prodMap = {};
   (products?.products || []).forEach(p => { prodMap[p.id] = p; });
 
+  const newItem = () => ({ prodSearch: '', product_id: '', production_type: 'FINISHED', tarif: '', quantity_produced: '' });
+
   const addEntry = () => {
-    setEntries(prev => [...prev, { employee_id: '', quantity_produced: '', product_id: '', production_type: 'FINISHED', tarif: '', prodSearch: '' }]);
+    setEntries(prev => [...prev, { employee_id: '', items: [newItem()] }]);
   };
 
-  // Mahsulot qidirish: matn yozilganda product_id va tarifni avtomatik to'ldiradi
-  const handleProdSearch = (i, text) => {
-    const match = (products?.products || []).find(p => p.name === text);
-    setEntries(prev => prev.map((e, idx) => {
-      if (idx !== i) return e;
-      const next = { ...e, prodSearch: text, product_id: match ? match.id : '' };
-      if (match) next.tarif = autoTarif(next.employee_id, match.id, next.production_type);
-      return next;
-    }));
-  };
-
-  // Mahsulot/xodim/tur asosida tarifni avtomatik hisoblash
   const autoTarif = (empId, prodId, ptype) => {
     const emp = empMap[empId];
     const p = prodMap[prodId];
@@ -149,48 +139,89 @@ export default function ProductionPage() {
     return emp.daily_tariff || '';
   };
 
-  const updateEntry = (i, field, value) => {
+  const updateEntryEmp = (i, empId) => {
     setEntries(prev => prev.map((e, idx) => {
       if (idx !== i) return e;
-      const next = { ...e, [field]: value };
-      if (field === 'employee_id') {
-        const emp = empMap[value];
+      const emp = empMap[empId];
+      const items = e.items.map(item => {
+        const next = { ...item };
         if (emp?.type === 'DETALCHI') next.production_type = 'SEMI_FINISHED';
         else if (emp?.type === 'STANOKCHI' && !next.production_type) next.production_type = 'FINISHED';
-        next.tarif = autoTarif(value, next.product_id, next.production_type);
-      }
-      if (field === 'product_id' || field === 'production_type') {
-        next.tarif = autoTarif(next.employee_id, field === 'product_id' ? value : next.product_id, field === 'production_type' ? value : next.production_type);
-      }
-      return next;
+        next.tarif = autoTarif(empId, next.product_id, next.production_type);
+        return next;
+      });
+      return { ...e, employee_id: empId, items };
     }));
   };
 
-  // Haq: entry.tarif ustunlik qiladi, aks holda product rates
-  const calcEarnings = (entry) => {
-    const emp = empMap[entry.employee_id];
-    if (!emp || !entry.quantity_produced) return 0;
-    const qty = parseFloat(entry.quantity_produced) || 0;
-    if (entry.tarif !== '' && parseFloat(entry.tarif) >= 0) return qty * parseFloat(entry.tarif);
-    const p = prodMap[entry.product_id];
+  const updateItem = (i, j, field, value) => {
+    setEntries(prev => prev.map((e, idx) => {
+      if (idx !== i) return e;
+      const items = e.items.map((item, jdx) => {
+        if (jdx !== j) return item;
+        const next = { ...item, [field]: value };
+        if (field === 'prodSearch') {
+          const match = (products?.products || []).find(p => p.name === value);
+          next.product_id = match ? match.id : '';
+          if (match) next.tarif = autoTarif(e.employee_id, match.id, next.production_type);
+        }
+        if (field === 'production_type') {
+          next.tarif = autoTarif(e.employee_id, next.product_id, value);
+        }
+        return next;
+      });
+      return { ...e, items };
+    }));
+  };
+
+  const addItem = (i) => {
+    setEntries(prev => prev.map((e, idx) => {
+      if (idx !== i || e.items.length >= 4) return e;
+      return { ...e, items: [...e.items, newItem()] };
+    }));
+  };
+
+  const removeItem = (i, j) => {
+    setEntries(prev => prev.map((e, idx) => {
+      if (idx !== i) return e;
+      if (e.items.length === 1) return null;
+      return { ...e, items: e.items.filter((_, jdx) => jdx !== j) };
+    }).filter(Boolean));
+  };
+
+  const calcItemEarnings = (empId, item) => {
+    const emp = empMap[empId];
+    if (!emp || !item.quantity_produced) return 0;
+    const qty = parseFloat(item.quantity_produced) || 0;
+    if (item.tarif !== '' && parseFloat(item.tarif) >= 0) return qty * parseFloat(item.tarif);
+    const p = prodMap[item.product_id];
     if (emp.type === 'STANOKCHI') {
-      const rate = entry.production_type === 'SEMI_FINISHED' ? (p?.stanokchi_semi_rate || 0) : (p?.stanokchi_rate || 0);
+      const rate = item.production_type === 'SEMI_FINISHED' ? (p?.stanokchi_semi_rate || 0) : (p?.stanokchi_rate || 0);
       return qty * rate;
     }
     if (emp.type === 'DETALCHI') return qty * (p?.detalchi_rate || 0);
     return qty * (emp.daily_tariff || 0);
   };
 
+  const calcEarnings = (entry) => entry.items.reduce((s, item) => s + calcItemEarnings(entry.employee_id, item), 0);
+
   const saveBulk = () => {
-    const valid = entries
-      .filter(e => e.employee_id && parseFloat(e.quantity_produced) > 0)
-      .map(e => {
-        const emp = empMap[e.employee_id];
-        let production_type = e.production_type || 'FINISHED';
-        if (emp?.type === 'DETALCHI') production_type = 'SEMI_FINISHED';
-        return { ...e, production_type, quantity_produced: parseFloat(e.quantity_produced),
-          daily_tariff: e.tarif !== '' ? parseFloat(e.tarif) : undefined };
-      });
+    const valid = entries.flatMap(e =>
+      e.items
+        .filter(item => e.employee_id && parseFloat(item.quantity_produced) > 0)
+        .map(item => {
+          const emp = empMap[e.employee_id];
+          let production_type = item.production_type || 'FINISHED';
+          if (emp?.type === 'DETALCHI') production_type = 'SEMI_FINISHED';
+          return {
+            employee_id: e.employee_id,
+            product_id: item.product_id,
+            production_type,
+            quantity_produced: parseFloat(item.quantity_produced),
+            daily_tariff: item.tarif !== '' ? parseFloat(item.tarif) : undefined,
+          };
+        })
+    );
     if (!valid.length) return toast.error('Kamida bitta xodim kiritilsin');
     bulkMutation.mutate({ production_date: date, entries: valid });
   };
@@ -202,7 +233,7 @@ export default function ProductionPage() {
       <div className="page-header">
         <h1 className="page-title">Ishlab Chiqarish</h1>
         {canWrite && (
-          <button onClick={() => { setEntries([{ employee_id: '', quantity_produced: 0 }]); setShowBulk(true); }}
+          <button onClick={() => { setEntries([{ employee_id: '', items: [newItem()] }]); setShowBulk(true); }}
             className="btn-primary btn-sm">
             <Plus size={14} /> Kunlik kiritish
           </button>
@@ -449,14 +480,16 @@ export default function ProductionPage() {
             <p className="text-sm text-gray-500 mb-4">Sana: <strong>{new Date(date).toLocaleDateString('uz-UZ')}</strong></p>
 
             <div className="space-y-2">
-              {/* Sarlavha — 3+3+1+2+2+1=12 */}
-              <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 font-medium px-1">
-                <span className="col-span-3">Xodim</span>
-                <span className="col-span-3">Mahsulot</span>
-                <span className="col-span-1">Tur</span>
-                <span className="col-span-2 text-blue-500">Tarif so'm/dona</span>
-                <span className="col-span-2">Dona</span>
-                <span className="col-span-1"></span>
+              {/* Sarlavha */}
+              <div className="flex gap-2 text-xs text-gray-400 font-medium px-1 ml-2">
+                <span className="w-48 shrink-0">Xodim</span>
+                <div className="grid grid-cols-12 gap-2 flex-1">
+                  <span className="col-span-4">Mahsulot</span>
+                  <span className="col-span-2">Tur</span>
+                  <span className="col-span-3 text-blue-500">Tarif so'm/dona</span>
+                  <span className="col-span-2">Dona</span>
+                  <span className="col-span-1"></span>
+                </div>
               </div>
 
               {entries.map((entry, i) => {
@@ -464,73 +497,91 @@ export default function ProductionPage() {
                 const isDetalchi = emp?.type === 'DETALCHI';
                 const isStanokchi = emp?.type === 'STANOKCHI';
                 return (
-                  <div key={i} className={`grid grid-cols-12 gap-2 items-center p-2 rounded-lg ${isDetalchi ? 'bg-orange-50 border border-orange-100' : 'bg-gray-50'}`}>
-                    {/* Xodim */}
-                    <div className="col-span-3">
-                      <select value={entry.employee_id} onChange={e => updateEntry(i, 'employee_id', e.target.value)} className="select text-sm w-full">
-                        <option value="">Xodim tanlang</option>
-                        {employees?.employees?.map(emp => (
-                          <option key={emp.id} value={emp.id}>
-                            {emp.name} {emp.type === 'DETALCHI' ? '(D)' : emp.type === 'STANOKCHI' ? '(S)' : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    {/* Mahsulot — qidiruv bilan */}
-                    <div className="col-span-3">
-                      <input
-                        type="text"
-                        list={`prod-list-${i}`}
-                        value={entry.prodSearch !== undefined ? entry.prodSearch : (prodMap[entry.product_id]?.name || '')}
-                        onChange={e => handleProdSearch(i, e.target.value)}
-                        placeholder="Mahsulot qidiring..."
-                        className="input text-sm w-full"
-                      />
-                      <datalist id={`prod-list-${i}`}>
-                        {(products?.products || []).map(p => (
-                          <option key={p.id} value={p.name} />
-                        ))}
-                      </datalist>
-                    </div>
-                    {/* Tur */}
-                    <div className="col-span-1">
-                      {isStanokchi ? (
-                        <select value={entry.production_type || 'FINISHED'} onChange={e => updateEntry(i, 'production_type', e.target.value)} className="select text-sm w-full">
-                          <option value="FINISHED">Tayyor</option>
-                          <option value="SEMI_FINISHED">Yarim</option>
+                  <div key={i} className={`p-2 rounded-lg border ${isDetalchi ? 'bg-orange-50 border-orange-100' : 'bg-gray-50 border-gray-100'}`}>
+                    {/* Xodim qatori */}
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-48 shrink-0">
+                        <select value={entry.employee_id} onChange={e => updateEntryEmp(i, e.target.value)} className="select text-sm w-full">
+                          <option value="">Xodim tanlang</option>
+                          {employees?.employees?.map(emp => (
+                            <option key={emp.id} value={emp.id}>
+                              {emp.name} {emp.type === 'DETALCHI' ? '(D)' : emp.type === 'STANOKCHI' ? '(S)' : ''}
+                            </option>
+                          ))}
                         </select>
-                      ) : isDetalchi ? (
-                        <span className="text-xs text-orange-600">Yarim</span>
-                      ) : (
-                        <span className="text-xs text-gray-300">—</span>
+                      </div>
+                      <div className="flex-1" />
+                      {entry.items.length < 4 && (
+                        <button onClick={() => addItem(i)} title="Mahsulot qo'shish"
+                          className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg px-2 py-1 bg-white">
+                          <Plus size={12} /> Mahsulot
+                        </button>
                       )}
+                      <button onClick={() => setEntries(prev => prev.filter((_, idx) => idx !== i))}
+                        className="text-red-400 hover:text-red-600 p-1"><X size={16} /></button>
                     </div>
-                    {/* Tarif — strelkasiz */}
-                    <div className="col-span-2">
-                      <input
-                        type="number" min="0" placeholder="so'm"
-                        value={entry.tarif}
-                        onChange={e => updateEntry(i, 'tarif', e.target.value)}
-                        onFocus={e => e.target.select()}
-                        className="input text-sm border-blue-200 focus:border-blue-500 [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
-                      />
-                    </div>
-                    {/* Miqdor — kengaytirilgan, strelkasiz */}
-                    <div className="col-span-2">
-                      <input
-                        type="number" min="0" placeholder="dona"
-                        value={entry.quantity_produced}
-                        onChange={e => updateEntry(i, 'quantity_produced', e.target.value)}
-                        onFocus={e => e.target.select()}
-                        className="input text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
-                      />
-                    </div>
-                    {/* O'chirish */}
-                    <div className="col-span-1 flex justify-end">
-                      <button
-                        onClick={() => setEntries(prev => prev.filter((_, idx) => idx !== i))}
-                        className="text-red-400 hover:text-red-600 p-1"
-                      ><X size={16} /></button>
+
+                    {/* Mahsulotlar */}
+                    <div className="space-y-1 ml-2">
+                      {entry.items.map((item, j) => (
+                        <div key={j} className="grid grid-cols-12 gap-2 items-center">
+                          {/* Mahsulot */}
+                          <div className="col-span-4">
+                            <input
+                              type="text"
+                              list={`prod-list-${i}-${j}`}
+                              value={item.prodSearch}
+                              onChange={e => updateItem(i, j, 'prodSearch', e.target.value)}
+                              placeholder="Mahsulot qidirir..."
+                              className="input text-sm w-full"
+                            />
+                            <datalist id={`prod-list-${i}-${j}`}>
+                              {(products?.products || []).map(p => (
+                                <option key={p.id} value={p.name} />
+                              ))}
+                            </datalist>
+                          </div>
+                          {/* Tur */}
+                          <div className="col-span-2">
+                            {isStanokchi ? (
+                              <select value={item.production_type || 'FINISHED'} onChange={e => updateItem(i, j, 'production_type', e.target.value)} className="select text-sm w-full">
+                                <option value="FINISHED">Tayyor</option>
+                                <option value="SEMI_FINISHED">Yarim</option>
+                              </select>
+                            ) : isDetalchi ? (
+                              <span className="text-xs text-orange-600">Yarim</span>
+                            ) : (
+                              <span className="text-xs text-gray-300">—</span>
+                            )}
+                          </div>
+                          {/* Tarif */}
+                          <div className="col-span-3">
+                            <input
+                              type="number" min="0" placeholder="so'm"
+                              value={item.tarif}
+                              onChange={e => updateItem(i, j, 'tarif', e.target.value)}
+                              onFocus={e => e.target.select()}
+                              className="input text-sm border-blue-200 focus:border-blue-500 [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                            />
+                          </div>
+                          {/* Miqdor */}
+                          <div className="col-span-2">
+                            <input
+                              type="number" min="0" placeholder="dona"
+                              value={item.quantity_produced}
+                              onChange={e => updateItem(i, j, 'quantity_produced', e.target.value)}
+                              onFocus={e => e.target.select()}
+                              className="input text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                            />
+                          </div>
+                          {/* Mahsulot o'chirish */}
+                          <div className="col-span-1 flex justify-end">
+                            {entry.items.length > 1 && (
+                              <button onClick={() => removeItem(i, j)} className="text-red-300 hover:text-red-500 p-1"><X size={14} /></button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 );

@@ -93,7 +93,7 @@ export default function InvoicePage() {
         </div>
       </div>
 
-      <div className="card p-6 max-w-3xl mx-auto print:shadow-none print:border-none">
+      <div id="invoice-print" className="card p-6 max-w-3xl mx-auto print:shadow-none print:border-none">
         <div className="flex items-start justify-between border-b pb-4 mb-4">
           <div>
             <h2 className="text-xl font-bold text-gray-900">TEKNOPLAST</h2>

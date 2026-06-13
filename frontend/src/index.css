@@ -24,6 +24,17 @@
     border-radius: 0 !important;
   }
   #production-range-print .no-print { display: none !important; }
+
+  /* Schyot-faktura chop etish */
+  #invoice-print, #invoice-print * { visibility: visible !important; }
+  #invoice-print {
+    position: absolute !important;
+    left: 0; top: 0;
+    width: 100% !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    border: none !important;
+  }
 }
 
 @layer base {

@@ -90,16 +90,12 @@ router.get('/summary', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// UUID shabloni — :id parametri UUID emas bo'lsa, uni order_ref deb hisoblaymiz
-// (masalan QR/havola "/invoice/ORD-20260606-1259" ko'rinishida bo'lishi mumkin)
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 // GET /api/sales/:id — bitta sotuv haqida to'liq ma'lumot (schyot-faktura/chek uchun)
-// :id — sale UUID YOKI order_ref (masalan "ORD-20260606-1259") bo'lishi mumkin
+// :id — sale id YOKI order_ref (masalan "ORD-20260606-1259") bo'lishi mumkin.
+// SQLite id'lari chiziqchasiz hex bo'lgani uchun ikkala ustundan ham qidiramiz.
 router.get('/:id', async (req, res, next) => {
   try {
     const idParam = req.params.id;
-    const lookupCol = UUID_RE.test(idParam) ? 's.id' : 's.order_ref';
     const result = await query(
       `SELECT s.*, COALESCE(p.name, '[O''chirilgan mahsulot]') as product_name, COALESCE(p.unit, 'dona') as unit,
               u.full_name as created_by_name,
@@ -111,7 +107,7 @@ router.get('/:id', async (req, res, next) => {
        LEFT JOIN users u ON s.created_by = u.id
        LEFT JOIN customers c ON s.customer_id = c.id
        LEFT JOIN discounts d ON s.discount_id = d.id
-       WHERE ${lookupCol} = $1
+       WHERE s.id = $1 OR s.order_ref = $1
        ORDER BY s.created_at LIMIT 1`,
       [idParam]
     );
@@ -139,7 +135,6 @@ router.get('/:id', async (req, res, next) => {
 router.get('/:id/invoice-pdf', async (req, res, next) => {
   try {
     const idParam = req.params.id;
-    const lookupCol = UUID_RE.test(idParam) ? 's.id' : 's.order_ref';
     const result = await query(
       `SELECT s.*, COALESCE(p.name, '[O''chirilgan mahsulot]') as product_name, COALESCE(p.unit, 'dona') as unit,
               c.name as customer_full_name, c.phone as customer_full_phone,
@@ -147,7 +142,7 @@ router.get('/:id/invoice-pdf', async (req, res, next) => {
        FROM sales s
        LEFT JOIN products p ON s.product_id = p.id
        LEFT JOIN customers c ON s.customer_id = c.id
-       WHERE ${lookupCol} = $1
+       WHERE s.id = $1 OR s.order_ref = $1
        ORDER BY s.created_at LIMIT 1`,
       [idParam]
     );

@@ -101,7 +101,7 @@ router.get('/:id', async (req, res, next) => {
     const idParam = req.params.id;
     const lookupCol = UUID_RE.test(idParam) ? 's.id' : 's.order_ref';
     const result = await query(
-      `SELECT s.*, COALESCE(p.name, '[O\'chirilgan mahsulot]') as product_name, COALESCE(p.unit, 'dona') as unit,
+      `SELECT s.*, COALESCE(p.name, '[O''chirilgan mahsulot]') as product_name, COALESCE(p.unit, 'dona') as unit,
               u.full_name as created_by_name,
               c.name as customer_full_name, c.phone as customer_full_phone,
               c.company_name as customer_company, c.address as customer_address,
@@ -122,7 +122,7 @@ router.get('/:id', async (req, res, next) => {
     let items = [sale];
     if (sale.order_ref) {
       const itemsR = await query(
-        `SELECT s.*, COALESCE(p.name, '[O\'chirilgan mahsulot]') as product_name, COALESCE(p.unit, 'dona') as unit
+        `SELECT s.*, COALESCE(p.name, '[O''chirilgan mahsulot]') as product_name, COALESCE(p.unit, 'dona') as unit
          FROM sales s LEFT JOIN products p ON s.product_id = p.id
          WHERE s.order_ref = $1 ORDER BY s.created_at`,
         [sale.order_ref]

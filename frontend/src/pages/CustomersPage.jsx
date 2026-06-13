@@ -4,9 +4,9 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import {
   Plus, Search, X, Phone, Building2, MapPin, Eye,
-  Trash2, Users, Crown, Store, ShoppingBag, AlertTriangle
+  Trash2, Users, Crown, Store, ShoppingBag, AlertTriangle, Pencil
 } from 'lucide-react';
-import { customersAPI } from '../services/api';
+import { customersAPI, salesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -62,6 +62,65 @@ export default function CustomersPage() {
     queryFn: () => customersAPI.getById(detailId).then(r => r.data),
     enabled: !!detailId,
   });
+
+  const { data: productsData } = useQuery({
+    queryKey: ['products'],
+    queryFn: () => productsAPI.getAll().then(r => r.data),
+    enabled: !!detailId,
+  });
+
+  // Mijoz xaridini qo'shish/tahrirlash formasi (null = yopiq, {id} bo'lsa = tahrir)
+  const [saleForm, setSaleForm] = useState(null);
+
+  const invalidateSaleData = () => {
+    qc.invalidateQueries({ queryKey: ['customer', detailId] });
+    qc.invalidateQueries({ queryKey: ['customers'] });
+    qc.invalidateQueries({ queryKey: ['customers-summary'] });
+    qc.invalidateQueries({ queryKey: ['sales'] });
+    qc.invalidateQueries({ queryKey: ['products'] });
+  };
+
+  const saveSaleMutation = useMutation({
+    mutationFn: (d) => d.id ? salesAPI.update(d.id, d) : salesAPI.create(d),
+    onSuccess: () => {
+      toast.success('Xarid saqlandi');
+      invalidateSaleData();
+      setSaleForm(null);
+    },
+    onError: (e) => toast.error(e?.response?.data?.error || 'Saqlashda xato'),
+  });
+
+  const deleteSaleMutation = useMutation({
+    mutationFn: (id) => salesAPI.delete(id),
+    onSuccess: () => { toast.success('Xarid o\'chirildi'); invalidateSaleData(); },
+    onError: (e) => toast.error(e?.response?.data?.error || 'O\'chirishda xato'),
+  });
+
+  const openAddSale = () => setSaleForm({
+    product_id: '', quantity: 1, unit_price: '',
+    sale_date: new Date().toISOString().slice(0, 10), status: 'PAID',
+  });
+  const openEditSale = (s) => setSaleForm({
+    id: s.id, product_id: s.product_id || '', quantity: s.quantity,
+    unit_price: parseFloat(s.unit_price),
+    sale_date: s.sale_date ? String(s.sale_date).slice(0, 10) : new Date().toISOString().slice(0, 10),
+    status: s.status,
+  });
+  const submitSale = () => {
+    if (!saleForm.product_id) return toast.error('Mahsulotni tanlang');
+    if (!saleForm.quantity || saleForm.quantity < 1) return toast.error('Miqdor noto\'g\'ri');
+    const total = (parseFloat(saleForm.quantity) || 0) * (parseFloat(saleForm.unit_price) || 0);
+    saveSaleMutation.mutate({
+      id: saleForm.id,
+      customer_id: detailId,
+      product_id: saleForm.product_id,
+      quantity: parseInt(saleForm.quantity),
+      unit_price: parseFloat(saleForm.unit_price),
+      sale_date: saleForm.sale_date,
+      status: saleForm.status,
+      payment_amount: saleForm.status === 'PAID' ? total : 0,
+    });
+  };
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm();
 
@@ -240,7 +299,7 @@ export default function CustomersPage() {
       </Modal>
 
       {/* Detail Modal */}
-      <Modal open={!!detailId} onClose={() => setDetailId(null)} title="Mijoz tafsiloti" wide>
+      <Modal open={!!detailId} onClose={() => { setDetailId(null); setSaleForm(null); }} title="Mijoz tafsiloti" wide>
         {!detail ? (
           <p className="text-center py-8 text-gray-400">Yuklanmoqda...</p>
         ) : (
@@ -285,15 +344,90 @@ export default function CustomersPage() {
 
             {/* Purchase history */}
             <div>
-              <h5 className="font-semibold text-gray-700 text-sm mb-2">Xaridlar tarixi</h5>
+              <div className="flex items-center justify-between mb-2">
+                <h5 className="font-semibold text-gray-700 text-sm">Xaridlar tarixi</h5>
+                <button onClick={openAddSale} className="btn-primary btn-sm">
+                  <Plus size={13} /> Yangi xarid
+                </button>
+              </div>
+
+              {/* Qo'shish/Tahrirlash formasi */}
+              {saleForm && (
+                <div className="border border-blue-200 bg-blue-50/50 rounded-xl p-3 mb-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-blue-800">
+                      {saleForm.id ? 'Xaridni tahrirlash' : 'Yangi xarid qo\'shish'}
+                    </span>
+                    <button onClick={() => setSaleForm(null)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+                  </div>
+                  <div>
+                    <label className="label text-xs">Mahsulot *</label>
+                    <select
+                      value={saleForm.product_id}
+                      onChange={e => {
+                        const p = productsData?.products?.find(x => x.id === e.target.value);
+                        setSaleForm(f => ({ ...f, product_id: e.target.value, unit_price: f.unit_price || (p ? parseFloat(p.price) : '') }));
+                      }}
+                      className="select text-sm"
+                    >
+                      <option value="">Tanlang...</option>
+                      {productsData?.products?.map(p => (
+                        <option key={p.id} value={p.id}>{p.name} (Ombor: {p.stock_quantity})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="label text-xs">Miqdor *</label>
+                      <input type="number" min="1" value={saleForm.quantity}
+                        onChange={e => setSaleForm(f => ({ ...f, quantity: e.target.value }))}
+                        className="input text-sm" />
+                    </div>
+                    <div>
+                      <label className="label text-xs">Birlik narxi *</label>
+                      <input type="number" min="0" value={saleForm.unit_price}
+                        onChange={e => setSaleForm(f => ({ ...f, unit_price: e.target.value }))}
+                        className="input text-sm" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="label text-xs">Sana</label>
+                      <input type="date" value={saleForm.sale_date}
+                        onChange={e => setSaleForm(f => ({ ...f, sale_date: e.target.value }))}
+                        className="input text-sm" />
+                    </div>
+                    <div>
+                      <label className="label text-xs">Status</label>
+                      <select value={saleForm.status}
+                        onChange={e => setSaleForm(f => ({ ...f, status: e.target.value }))}
+                        className="select text-sm">
+                        <option value="PAID">To'langan</option>
+                        <option value="PENDING">Kutilmoqda</option>
+                        <option value="PARTIALLY_PAID">Qisman</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="text-sm text-blue-700 font-semibold">
+                    Jami: {fmt((parseFloat(saleForm.quantity) || 0) * (parseFloat(saleForm.unit_price) || 0))} so'm
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setSaleForm(null)} className="btn-secondary btn-sm flex-1">Bekor</button>
+                    <button onClick={submitSale} disabled={saveSaleMutation.isPending} className="btn-primary btn-sm flex-1">
+                      {saveSaleMutation.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="border border-gray-100 rounded-xl overflow-hidden">
                 <table className="table text-sm">
                   <thead>
-                    <tr><th>Sana</th><th>Mahsulot</th><th>Miqdor</th><th>Summa</th><th>Status</th></tr>
+                    <tr><th>Sana</th><th>Mahsulot</th><th>Miqdor</th><th>Summa</th><th>Status</th><th>Amal</th></tr>
                   </thead>
                   <tbody>
                     {!detail.sales.length ? (
-                      <tr><td colSpan={5} className="text-center py-6 text-gray-400">Hali xarid yo'q</td></tr>
+                      <tr><td colSpan={6} className="text-center py-6 text-gray-400">Hali xarid yo'q</td></tr>
                     ) : detail.sales.map(s => (
                       <tr key={s.id}>
                         <td className="whitespace-nowrap">{new Date(s.sale_date).toLocaleDateString('uz-UZ')}</td>
@@ -301,6 +435,21 @@ export default function CustomersPage() {
                         <td>{s.quantity} {s.unit}</td>
                         <td className="font-medium">{fmt(s.total_amount)}</td>
                         <td><span className={STATUS_MAP[s.status]?.cls || 'badge-gray'}>{STATUS_MAP[s.status]?.label}</span></td>
+                        <td>
+                          <div className="flex gap-1">
+                            <button onClick={() => openEditSale(s)} className="btn-secondary btn-sm" title="Tahrirlash">
+                              <Pencil size={12} />
+                            </button>
+                            {isOwner() && (
+                              <button
+                                onClick={() => { if (confirm(`${s.product_name} — ${s.quantity} ${s.unit} xaridi o'chirilsinmi?`)) deleteSaleMutation.mutate(s.id); }}
+                                disabled={deleteSaleMutation.isPending}
+                                className="btn-danger btn-sm" title="O'chirish">
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

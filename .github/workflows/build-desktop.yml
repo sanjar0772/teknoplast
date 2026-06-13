@@ -1,0 +1,38 @@
+name: Desktop Installer Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Kodni yuklab olish
+        uses: actions/checkout@v4
+
+      - name: Node.js o'rnatish
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Paketlarni o'rnatish
+        working-directory: desktop
+        run: npm ci
+
+      - name: Installer yaratish
+        working-directory: desktop
+        run: npm run dist
+
+      - name: Installer faylini yuklash
+        uses: actions/upload-artifact@v4
+        with:
+          name: TEKNOPLAST-Setup
+          path: desktop/dist/*.exe
+          retention-days: 30

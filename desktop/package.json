@@ -6,19 +6,21 @@
   "author": "Teknoplast",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win",
-    "pack": "electron-packager . TEKNOPLAST --platform=win32 --arch=x64 --out=dist --overwrite --ignore=\"dist\""
+    "dist": "electron-builder --win --publish never"
   },
   "devDependencies": {
-    "@electron/packager": "^18.4.4",
     "electron": "^31.7.7",
     "electron-builder": "^24.13.3"
   },
   "build": {
     "appId": "uz.teknoplast.app",
     "productName": "TEKNOPLAST",
+    "asar": true,
+    "compression": "normal",
+    "publish": null,
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     },
     "files": [
       "main.js",
@@ -28,11 +30,10 @@
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
-      ]
+      ],
+      "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
       "oneClick": false,
@@ -40,7 +41,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "TEKNOPLAST"
+      "shortcutName": "TEKNOPLAST",
+      "installerLanguages": ["uz", "ru"],
+      "language": "1090",
+      "deleteAppDataOnUninstall": false
     }
   }
 }

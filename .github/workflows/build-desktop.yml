@@ -3,8 +3,6 @@ name: Desktop Installer Build
 on:
   push:
     branches: [main]
-    paths:
-      - 'desktop/**'
   workflow_dispatch:
 
 jobs:

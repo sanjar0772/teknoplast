@@ -124,6 +124,7 @@ export default function QuickSalePage() {
 
   const checkout = () => {
     if (!cart.length) return toast.error('Savat bo\'sh');
+    if (!customerId) return toast.error('Mijozni tanlang — savdo faqat mijozga qilinadi');
     // Validatsiya
     for (const x of cart) {
       if (!x.qty || x.qty < 1) return toast.error(`"${x.name}" miqdori noto'g'ri`);
@@ -136,7 +137,7 @@ export default function QuickSalePage() {
     const paymentLabel = paymentType === 'CASH' ? 'Naqd'
                        : paymentType === 'CARD' ? 'Karta' : 'Qarz';
     saveMutation.mutate({
-      customer_id: customerId || null,
+      customer_id: customerId,
       sale_date: saleDate,
       status,
       notes: `To'lov turi: ${paymentLabel}`,
@@ -183,7 +184,7 @@ export default function QuickSalePage() {
               <div className="text-[11px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-2">
                 <div className="flex justify-between"><span>Chek:</span><span className="font-bold">{lastOrder.order_ref}</span></div>
                 <div className="flex justify-between"><span>Sana:</span><span>{new Date(lastOrder.date).toLocaleString('uz-UZ')}</span></div>
-                <div className="flex justify-between"><span>Mijoz:</span><span>{lastOrder.customer_name || 'Tasodifiy'}</span></div>
+                <div className="flex justify-between"><span>Mijoz:</span><span>{lastOrder.customer_name || '—'}</span></div>
               </div>
 
               {/* Items */}
@@ -290,9 +291,13 @@ export default function QuickSalePage() {
           {/* Mijoz / sana / status */}
           <div className="card p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
-              <label className="label">Mijoz</label>
-              <select value={customerId} onChange={e => setCustomerId(e.target.value)} className="select text-sm">
-                <option value="">— Tasodifiy mijoz —</option>
+              <label className="label">Mijoz <span className="text-red-500">*</span></label>
+              <select
+                value={customerId}
+                onChange={e => setCustomerId(e.target.value)}
+                className={`select text-sm ${!customerId ? 'border-red-300' : ''}`}
+              >
+                <option value="" disabled>— Mijozni tanlang —</option>
                 {customersData?.customers?.map(c => (
                   <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ''}</option>
                 ))}

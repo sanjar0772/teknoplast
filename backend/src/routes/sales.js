@@ -236,6 +236,9 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (re
     if (!Array.isArray(items) || !items.length) {
       return res.status(400).json({ error: 'Kamida bitta mahsulot kerak' });
     }
+    if (!customer_id) {
+      return res.status(400).json({ error: 'Mijozni tanlang — savdo faqat mijozga qilinadi' });
+    }
 
     // Mijoz ma'lumotini olish
     let custName = customer_name, custPhone = customer_phone;

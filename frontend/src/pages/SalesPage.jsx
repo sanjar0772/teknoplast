@@ -122,6 +122,7 @@ export default function SalesPage() {
 
   const submitEdit = () => {
     if (!editForm.product_id) return toast.error('Mahsulotni tanlang');
+    if (!editForm.customer_id) return toast.error('Mijozni tanlang — savdo faqat mijozga qilinadi');
     if (!editForm.quantity || editForm.quantity < 1) return toast.error('Miqdor noto\'g\'ri');
     updateMutation.mutate({
       id: editForm.id,
@@ -302,9 +303,9 @@ export default function SalesPage() {
             </div>
           )}
           <div>
-            <label className="label">Mijoz (bazadan)</label>
-            <select {...register('customer_id')} className="select">
-              <option value="">— Tanlanmagan (yangi/tasodifiy) —</option>
+            <label className="label">Mijoz <span className="text-red-500">*</span></label>
+            <select {...register('customer_id', { required: true })} className={`select ${errors.customer_id ? 'border-red-300' : ''}`}>
+              <option value="">— Mijozni tanlang —</option>
               {customers?.customers?.map(c => (
                 <option key={c.id} value={c.id}>
                   {c.name}{c.phone ? ` · ${c.phone}` : ''}
@@ -312,7 +313,7 @@ export default function SalesPage() {
               ))}
             </select>
             <p className="text-xs text-gray-400 mt-1">
-              Mijoz tanlansa, ism avtomatik to'ladi. Yangi mijozni "Mijozlar" bo'limidan qo'shing.
+              Savdo faqat mijozga qilinadi. Yangi mijozni "Mijozlar" bo'limidan qo'shing.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -384,13 +385,13 @@ export default function SalesPage() {
               </div>
             )}
             <div>
-              <label className="label">Mijoz</label>
+              <label className="label">Mijoz <span className="text-red-500">*</span></label>
               <select
                 value={editForm.customer_id}
                 onChange={e => setEditForm(f => ({ ...f, customer_id: e.target.value }))}
-                className="select"
+                className={`select ${!editForm.customer_id ? 'border-red-300' : ''}`}
               >
-                <option value="">— Tanlanmagan —</option>
+                <option value="" disabled>— Mijozni tanlang —</option>
                 {customers?.customers?.map(c => (
                   <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ''}</option>
                 ))}

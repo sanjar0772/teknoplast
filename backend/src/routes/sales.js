@@ -180,6 +180,7 @@ router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), [
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { product_id, customer_id, quantity, unit_price, customer_name, customer_phone, sale_date, status, payment_amount, discount_id, notes } = req.body;
+    if (!customer_id) return res.status(400).json({ error: 'Mijozni tanlang — savdo faqat mijozga qilinadi' });
     const total_amount = quantity * unit_price;
 
     // Mijoz tanlangan bo'lsa, ism/telefonni avtomatik to'ldirish
@@ -338,6 +339,7 @@ router.put('/:id', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req,
     const status = req.body.status || prev.status;
     const customer_id = req.body.customer_id !== undefined ? req.body.customer_id : prev.customer_id;
 
+    if (!customer_id) return res.status(400).json({ error: 'Mijozni tanlang — savdo faqat mijozga qilinadi' });
     if (!quantity || quantity < 1) return res.status(400).json({ error: 'Miqdor noto\'g\'ri' });
     if (unit_price < 0) return res.status(400).json({ error: 'Narx noto\'g\'ri' });
     if (!['PENDING', 'PAID', 'PARTIALLY_PAID'].includes(status)) {

@@ -180,6 +180,7 @@ if (USE_PG) {
       runMigrations();         // Mavjud jadvallarga yangi ustun qo'shadi
       fixEmployeesConstraint(); // DETALCHI constraint ni tuzatadi
       relaxEmployeesTypeConstraint(); // type CHECK ni olib tashlaydi (yangi turlar uchun)
+      relaxProductionUniqueConstraint(); // bir kunda ko'p mahsulot kiritish uchun UNIQUE cheklovni olib tashlaydi
       backfillProductMeta();   // nomdan rang/razmer/base_name to'ldiradi (kirill mahsulotlar uchun)
       saveDBSync();
     } else {
@@ -319,8 +320,7 @@ if (USE_PG) {
         recorded_at TEXT,
         kirimchi_notes TEXT,
         created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now')),
-        UNIQUE(employee_id, production_date)
+        updated_at TEXT DEFAULT (datetime('now'))
       )`);
 
       // Recreate salaries
@@ -403,6 +403,61 @@ if (USE_PG) {
       try { _db.run('ROLLBACK'); } catch {}
       try { _db.run('PRAGMA foreign_keys = ON'); } catch {}
       console.error('❌ relaxEmployeesTypeConstraint xato:', e.message);
+    }
+  }
+
+  // employee_production'da UNIQUE(employee_id, production_date) cheklovi bor edi —
+  // bu bir xodimga bir kunda faqat bitta yozuv (bitta mahsulot) imkonini berardi.
+  // Kunlik kiritishda 4 tagacha mahsulot qo'shish uchun bu cheklovni olib tashlaymiz.
+  // Ma'lumotni yo'qotmaymiz: jadvalni qayta qurib, mavjud ustunlarni ko'chiramiz.
+  function relaxProductionUniqueConstraint() {
+    try {
+      const result = _db.exec("SELECT sql FROM sqlite_master WHERE type='table' AND name='employee_production'");
+      if (!result || !result[0]) return;
+      const tableSql = result[0].values[0][0];
+      if (!/UNIQUE\s*\(\s*employee_id\s*,\s*production_date\s*\)/i.test(tableSql)) return; // cheklov yo'q — shart emas
+
+      console.log('🔧 employee_production UNIQUE(employee_id, production_date) cheklovi olib tashlanmoqda...');
+
+      const info = _db.exec('PRAGMA table_info(employee_production)');
+      const existingCols = (info && info[0]) ? info[0].values.map(r => r[1]) : [];
+
+      _db.run('PRAGMA foreign_keys = OFF');
+      _db.run('BEGIN');
+
+      _db.run(`CREATE TABLE employee_production_new (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        employee_id TEXT NOT NULL REFERENCES employees(id),
+        product_id TEXT REFERENCES products(id),
+        machine_id TEXT REFERENCES machines(id),
+        production_date TEXT NOT NULL,
+        quantity_produced INTEGER NOT NULL DEFAULT 0,
+        daily_tariff REAL NOT NULL,
+        calculated_amount REAL NOT NULL,
+        month TEXT NOT NULL,
+        notes TEXT,
+        production_type TEXT DEFAULT 'FINISHED',
+        recorded_by TEXT REFERENCES users(id),
+        recorded_at TEXT,
+        kirimchi_notes TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )`);
+
+      const targetCols = ['id','employee_id','product_id','machine_id','production_date','quantity_produced','daily_tariff','calculated_amount','month','notes','production_type','recorded_by','recorded_at','kirimchi_notes','created_at','updated_at'];
+      const common = targetCols.filter(c => existingCols.includes(c));
+      const colList = common.join(',');
+      _db.run(`INSERT INTO employee_production_new (${colList}) SELECT ${colList} FROM employee_production`);
+      _db.run('DROP TABLE employee_production');
+      _db.run('ALTER TABLE employee_production_new RENAME TO employee_production');
+
+      _db.run('COMMIT');
+      _db.run('PRAGMA foreign_keys = ON');
+      console.log('✅ employee_production cheklovi olib tashlandi — bir kunda ko\'p mahsulot kiritish mumkin');
+    } catch (e) {
+      try { _db.run('ROLLBACK'); } catch {}
+      try { _db.run('PRAGMA foreign_keys = ON'); } catch {}
+      console.error('❌ relaxProductionUniqueConstraint xato:', e.message);
     }
   }
 
@@ -616,8 +671,7 @@ if (USE_PG) {
       month TEXT NOT NULL,
       notes TEXT,
       created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now')),
-      UNIQUE(employee_id, production_date)
+      updated_at TEXT DEFAULT (datetime('now'))
     )`);
 
     _db.run(`CREATE TABLE IF NOT EXISTS salaries (

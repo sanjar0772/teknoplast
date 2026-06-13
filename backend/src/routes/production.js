@@ -9,52 +9,49 @@ const router = express.Router();
 router.use(authenticate);
 
 /**
- * Ishlab chiqarish yozuvini saqlash + tayyor mahsulot omborini DELTA bilan yangilash.
- * Eski yozuv bo'lsa: eski mahsulot omborini qaytaramiz, yangi mahsulotga qo'shamiz.
- * Shunday qilib qayta tahrirlanganda ikki marta sanalmaydi.
+ * Bir xodimning bir kungi BARCHA yozuvlarini o'chiradi va ombordagi mahsulotni qaytaradi.
+ * Qayta kiritishdan oldin chaqiriladi — shunda eski yozuvlar ikki marta sanalmaydi.
+ * Bir kunda bir nechta mahsulot bo'lishi mumkin (4 tagacha), shuning uchun hammasini tozalaymiz.
  */
-async function saveProductionWithStock(client, {
-  employee_id, product_id, machine_id, production_date,
-  quantity_produced, daily_tariff, calculated_amount, month, notes,
-}) {
-  // Eski yozuvni topamiz (delta uchun)
+async function clearEmployeeDay(client, employee_id, production_date) {
   const existing = await client.query(
     'SELECT product_id, quantity_produced FROM employee_production WHERE employee_id=$1 AND production_date=$2',
     [employee_id, production_date]
   );
-  const old = existing.rows[0];
-
-  // Upsert
-  await client.query(
-    `INSERT INTO employee_production
-      (employee_id, product_id, machine_id, production_date, quantity_produced, daily_tariff, calculated_amount, month, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-     ON CONFLICT (employee_id, production_date)
-     DO UPDATE SET product_id=$2, machine_id=$3, quantity_produced=$5, daily_tariff=$6, calculated_amount=$7, notes=$9, updated_at=NOW()`,
-    [employee_id, product_id || null, machine_id || null, production_date,
-     quantity_produced, daily_tariff, calculated_amount, month, notes || null]
-  );
-
-  // Eski mahsulot omborini qaytaramiz (agar bor bo'lsa)
-  if (old && old.product_id) {
-    await client.query(
-      'UPDATE products SET stock_quantity = stock_quantity - $1, updated_at=NOW() WHERE id=$2',
-      [old.quantity_produced, old.product_id]
-    );
+  for (const row of existing.rows) {
+    if (row.product_id) {
+      await client.query(
+        'UPDATE products SET stock_quantity = stock_quantity - $1, updated_at=NOW() WHERE id=$2',
+        [row.quantity_produced, row.product_id]
+      );
+    }
   }
-  // Yangi ishlab chiqarilgan mahsulotni omborga qo'shamiz
+  await client.query(
+    'DELETE FROM employee_production WHERE employee_id=$1 AND production_date=$2',
+    [employee_id, production_date]
+  );
+}
+
+/**
+ * Bitta ishlab chiqarish yozuvini qo'shadi + tayyor mahsulotni omborga qo'shadi.
+ */
+async function insertProductionRow(client, {
+  employee_id, product_id, machine_id, production_date,
+  quantity_produced, daily_tariff, calculated_amount, month, notes, production_type,
+}) {
+  const r = await client.query(
+    `INSERT INTO employee_production
+      (employee_id, product_id, machine_id, production_date, quantity_produced, daily_tariff, calculated_amount, month, notes, production_type)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [employee_id, product_id || null, machine_id || null, production_date,
+     quantity_produced, daily_tariff, calculated_amount, month, notes || null, production_type || 'FINISHED']
+  );
   if (product_id) {
     await client.query(
       'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at=NOW() WHERE id=$2',
       [quantity_produced, product_id]
     );
   }
-
-  // Ishonchli qaytarish — yozuvni qayta o'qiymiz
-  const r = await client.query(
-    'SELECT * FROM employee_production WHERE employee_id=$1 AND production_date=$2',
-    [employee_id, production_date]
-  );
   return r.rows[0];
 }
 
@@ -91,7 +88,7 @@ router.get('/summary', async (req, res, next) => {
       SELECT e.name, e.type, ep.month,
              SUM(ep.quantity_produced) as total_produced,
              SUM(ep.calculated_amount) as total_earned,
-             COUNT(ep.production_date) as work_days
+             COUNT(DISTINCT ep.production_date) as work_days
       FROM employee_production ep JOIN employees e ON ep.employee_id = e.id
       WHERE ep.month = $1
       GROUP BY e.name, e.type, ep.month
@@ -221,17 +218,12 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
     const client = await require('../db').getClient();
     try {
       await client.query('BEGIN');
-      const production = await saveProductionWithStock(client, {
+      // Yakka kiritish: shu xodimning shu kungi yozuvini almashtiramiz
+      await clearEmployeeDay(client, employee_id, production_date);
+      const production = await insertProductionRow(client, {
         employee_id, product_id, machine_id, production_date,
-        quantity_produced, daily_tariff, calculated_amount, month, notes,
+        quantity_produced, daily_tariff, calculated_amount, month, notes, production_type: ptype,
       });
-
-      // Ishlab chiqarish turini saqlaymiz va javobda ham yangilaymiz
-      await client.query(
-        'UPDATE employee_production SET production_type=$1 WHERE id=$2',
-        [ptype, production.id]
-      );
-      production.production_type = ptype;
 
       await client.query('COMMIT');
       logAudit(req, {
@@ -259,56 +251,66 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async 
     const month = production_date.slice(0, 7);
     const results = [];
 
+    // Bir xodimga bir nechta mahsulot bo'lishi mumkin — xodim bo'yicha guruhlaymiz.
+    // Har bir xodim uchun avval shu kungi eski yozuvlarni bir marta tozalaymiz,
+    // keyin barcha mahsulotlarini alohida qator qilib qo'shamiz (4 tagacha).
+    const byEmployee = new Map();
+    for (const entry of entries) {
+      if (!entry.employee_id) continue;
+      if (!byEmployee.has(entry.employee_id)) byEmployee.set(entry.employee_id, []);
+      byEmployee.get(entry.employee_id).push(entry);
+    }
+
     const client = await require('../db').getClient();
     try {
       await client.query('BEGIN');
-      for (const entry of entries) {
-        const emp = await query('SELECT type, daily_tariff FROM employees WHERE id=$1 AND is_active=true', [entry.employee_id]);
+      for (const [employee_id, items] of byEmployee) {
+        const emp = await query('SELECT type, daily_tariff FROM employees WHERE id=$1 AND is_active=true', [employee_id]);
         if (!emp.rows.length) continue;
 
         const employee_type = emp.rows[0].type;
-        let daily_tariff = emp.rows[0].daily_tariff;
-        let calculated_amount = 0;
+        const empDailyTariff = emp.rows[0].daily_tariff;
 
-        // Ishlab chiqarish turi: STANOKCHI tayyor/yarim; DETALCHI doim yarim tayyor
-        let ptype = entry.production_type || 'FINISHED';
-        if (employee_type === 'DETALCHI') ptype = 'SEMI_FINISHED';
+        // Shu xodimning shu kungi barcha eski yozuvlarini tozalaymiz (ombor qaytadi)
+        await clearEmployeeDay(client, employee_id, production_date);
 
-        // Agar Kirimchi maxsus tarif bergan bo'lsa — uni ishlatamiz
-        if (entry.daily_tariff && parseFloat(entry.daily_tariff) > 0) {
-          daily_tariff = parseFloat(entry.daily_tariff);
-          calculated_amount = entry.quantity_produced * daily_tariff;
-        } else if (entry.product_id) {
-          const prod = await query('SELECT stanokchi_rate, stanokchi_semi_rate, detalchi_rate FROM products WHERE id=$1', [entry.product_id]);
-          const product = prod.rows[0] || {};
-          if (employee_type === 'STANOKCHI') {
-            const rate = ptype === 'SEMI_FINISHED' ? product.stanokchi_semi_rate : product.stanokchi_rate;
-            daily_tariff = rate || 0;
+        for (const entry of items) {
+          let daily_tariff = empDailyTariff;
+          let calculated_amount = 0;
+
+          // Ishlab chiqarish turi: STANOKCHI tayyor/yarim; DETALCHI doim yarim tayyor
+          let ptype = entry.production_type || 'FINISHED';
+          if (employee_type === 'DETALCHI') ptype = 'SEMI_FINISHED';
+
+          // Agar Kirimchi maxsus tarif bergan bo'lsa — uni ishlatamiz
+          if (entry.daily_tariff && parseFloat(entry.daily_tariff) > 0) {
+            daily_tariff = parseFloat(entry.daily_tariff);
             calculated_amount = entry.quantity_produced * daily_tariff;
-          } else if (employee_type === 'DETALCHI') {
-            daily_tariff = product.detalchi_rate || 0;
-            calculated_amount = entry.quantity_produced * daily_tariff;
+          } else if (entry.product_id) {
+            const prod = await query('SELECT stanokchi_rate, stanokchi_semi_rate, detalchi_rate FROM products WHERE id=$1', [entry.product_id]);
+            const product = prod.rows[0] || {};
+            if (employee_type === 'STANOKCHI') {
+              const rate = ptype === 'SEMI_FINISHED' ? product.stanokchi_semi_rate : product.stanokchi_rate;
+              daily_tariff = rate || 0;
+              calculated_amount = entry.quantity_produced * daily_tariff;
+            } else if (employee_type === 'DETALCHI') {
+              daily_tariff = product.detalchi_rate || 0;
+              calculated_amount = entry.quantity_produced * daily_tariff;
+            } else {
+              calculated_amount = entry.quantity_produced * daily_tariff;
+            }
           } else {
             calculated_amount = entry.quantity_produced * daily_tariff;
           }
-        } else {
-          calculated_amount = entry.quantity_produced * daily_tariff;
+
+          const production = await insertProductionRow(client, {
+            employee_id, product_id: entry.product_id,
+            machine_id: entry.machine_id, production_date,
+            quantity_produced: entry.quantity_produced, daily_tariff,
+            calculated_amount, month, notes: entry.notes, production_type: ptype,
+          });
+          results.push(production);
         }
-
-        const production = await saveProductionWithStock(client, {
-          employee_id: entry.employee_id, product_id: entry.product_id,
-          machine_id: entry.machine_id, production_date,
-          quantity_produced: entry.quantity_produced, daily_tariff,
-          calculated_amount, month, notes: entry.notes,
-        });
-
-        await client.query(
-          'UPDATE employee_production SET production_type=$1 WHERE id=$2',
-          [ptype, production.id]
-        );
-        production.production_type = ptype;
-
-        results.push(production);
       }
       await client.query('COMMIT');
       logAudit(req, {

@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { QRCodeSVG } from 'qrcode.react';
-import { Plus, Download, Search, X, CheckCircle, Clock, AlertCircle, FileText, Printer, Pencil } from 'lucide-react';
+import { Plus, Download, Search, X, CheckCircle, Clock, AlertCircle, FileText, Printer, Pencil, ChevronDown, ChevronRight } from 'lucide-react';
 import { salesAPI, productsAPI, reportsAPI, customersAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -41,6 +41,12 @@ export default function SalesPage() {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [chekSaleId, setChekSaleId] = useState(null);
   const [editForm, setEditForm] = useState(null); // tahrirlanayotgan savdo
+  const [expanded, setExpanded] = useState(() => new Set()); // ochilgan cheklar (order_ref)
+  const toggleExpand = (key) => setExpanded(prev => {
+    const next = new Set(prev);
+    next.has(key) ? next.delete(key) : next.add(key);
+    return next;
+  });
 
   const { data: chekData, isLoading: chekLoading } = useQuery({
     queryKey: ['invoice', chekSaleId],
@@ -108,6 +114,19 @@ export default function SalesPage() {
     },
   });
 
+  // Bitta chekdagi barcha to'lanmagan mahsulotlarni "To'langan" qilish
+  const markCheckPaid = (sales) => {
+    const unpaid = sales.filter(s => s.status !== 'PAID');
+    if (!unpaid.length) return;
+    Promise.all(unpaid.map(s => salesAPI.updateStatus(s.id, { status: 'PAID' })))
+      .then(() => {
+        toast.success('Chek to\'landi');
+        qc.invalidateQueries({ queryKey: ['sales'] });
+        qc.invalidateQueries({ queryKey: ['sales-summary'] });
+      })
+      .catch(() => toast.error('Xato'));
+  };
+
   const openEdit = (sale) => {
     setEditForm({
       id: sale.id,
@@ -160,6 +179,31 @@ export default function SalesPage() {
   };
 
   const canCreate = isOwner() || isSalesHead() || isAccountant();
+
+  // Bitta chek (order_ref) ichidagi mahsulotlarni bitta guruhga yig'amiz —
+  // sotuv tarixida har bir chek bitta qator bo'lib ko'rinadi (qatorlar ko'payib ketmaydi).
+  const groups = useMemo(() => {
+    const map = new Map();
+    (data?.sales || []).forEach(s => {
+      const key = s.order_ref || s.id;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(s);
+    });
+    return Array.from(map.entries()).map(([key, sales]) => {
+      const total = sales.reduce((sum, x) => sum + parseFloat(x.total_amount || 0), 0);
+      const totalQty = sales.reduce((sum, x) => sum + parseFloat(x.quantity || 0), 0);
+      const statuses = new Set(sales.map(x => x.status));
+      return {
+        key,
+        sales,
+        first: sales[0],
+        multi: sales.length > 1,
+        total,
+        totalQty,
+        status: statuses.size === 1 ? sales[0].status : null, // null = aralash
+      };
+    });
+  }, [data]);
 
   return (
     <div className="space-y-6">
@@ -228,49 +272,79 @@ export default function SalesPage() {
           <tbody>
             {isLoading ? (
               <tr><td colSpan={8} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
-            ) : !data?.sales?.length ? (
+            ) : !groups.length ? (
               <tr><td colSpan={8} className="text-center py-8 text-gray-400">Sotuv topilmadi</td></tr>
-            ) : data.sales.map(sale => (
-              <tr key={sale.id}>
-                <td className="whitespace-nowrap">{new Date(sale.sale_date).toLocaleDateString('uz-UZ')}</td>
-                <td className="font-medium">{sale.product_name}</td>
-                <td>{sale.quantity} {sale.unit}</td>
-                <td>{fmt(sale.unit_price)} so'm</td>
-                <td className="font-semibold text-blue-700">{fmt(sale.total_amount)} so'm</td>
-                <td>{sale.customer_name || <span className="text-gray-400">—</span>}</td>
-                <td><span className={STATUS_MAP[sale.status]?.cls || 'badge-gray'}>
-                  {STATUS_MAP[sale.status]?.label}
-                </span></td>
-                <td>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setChekSaleId(sale.id)}
-                      className="btn-secondary btn-sm"
-                      title="Chekni ko'rish"
-                    >
-                      <FileText size={12} /> Chek
-                    </button>
-                    {canCreate && (
-                      <button
-                        onClick={() => openEdit(sale)}
-                        className="btn-secondary btn-sm"
-                        title="Tahrirlash"
-                      >
-                        <Pencil size={12} /> Tahrir
-                      </button>
-                    )}
-                    {sale.status !== 'PAID' && canCreate && (
-                      <button
-                        onClick={() => statusMutation.mutate({ id: sale.id, status: 'PAID' })}
-                        className="btn-success btn-sm"
-                      >
-                        <CheckCircle size={12} /> To'landi
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
+            ) : groups.map(g => {
+              const { first, multi, sales } = g;
+              const isOpen = expanded.has(g.key);
+              return (
+                <Fragment key={g.key}>
+                  <tr className={multi ? 'bg-blue-50/30' : ''}>
+                    <td className="whitespace-nowrap">{new Date(first.sale_date).toLocaleDateString('uz-UZ')}</td>
+                    <td className="font-medium">
+                      {multi ? (
+                        <button onClick={() => toggleExpand(g.key)} className="flex items-center gap-1 text-left hover:text-blue-700">
+                          {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          <span>{first.product_name}</span>
+                          <span className="badge-blue ml-1">+{sales.length - 1} mahsulot</span>
+                        </button>
+                      ) : first.product_name}
+                    </td>
+                    <td>{multi ? `${g.totalQty} dona` : `${first.quantity} ${first.unit}`}</td>
+                    <td>{multi ? <span className="text-gray-400">—</span> : `${fmt(first.unit_price)} so'm`}</td>
+                    <td className="font-semibold text-blue-700">{fmt(g.total)} so'm</td>
+                    <td>{first.customer_name || <span className="text-gray-400">—</span>}</td>
+                    <td>
+                      {g.status ? (
+                        <span className={STATUS_MAP[g.status]?.cls || 'badge-gray'}>{STATUS_MAP[g.status]?.label}</span>
+                      ) : (
+                        <span className="badge-gray">Aralash</span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="flex gap-2">
+                        <button onClick={() => setChekSaleId(first.id)} className="btn-secondary btn-sm" title="Chekni ko'rish">
+                          <FileText size={12} /> Chek
+                        </button>
+                        {!multi && canCreate && (
+                          <button onClick={() => openEdit(first)} className="btn-secondary btn-sm" title="Tahrirlash">
+                            <Pencil size={12} /> Tahrir
+                          </button>
+                        )}
+                        {g.status !== 'PAID' && canCreate && (
+                          <button
+                            onClick={() => multi ? markCheckPaid(sales) : statusMutation.mutate({ id: first.id, status: 'PAID' })}
+                            className="btn-success btn-sm"
+                          >
+                            <CheckCircle size={12} /> To'landi
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* Chek ichidagi mahsulotlar (kengaytirilganda) */}
+                  {multi && isOpen && sales.map(s => (
+                    <tr key={s.id} className="bg-gray-50/60 text-sm">
+                      <td></td>
+                      <td className="pl-8 text-gray-700">{s.product_name}</td>
+                      <td>{s.quantity} {s.unit}</td>
+                      <td>{fmt(s.unit_price)} so'm</td>
+                      <td className="font-medium">{fmt(s.total_amount)} so'm</td>
+                      <td></td>
+                      <td><span className={STATUS_MAP[s.status]?.cls || 'badge-gray'}>{STATUS_MAP[s.status]?.label}</span></td>
+                      <td>
+                        {canCreate && (
+                          <button onClick={() => openEdit(s)} className="btn-secondary btn-sm" title="Tahrirlash">
+                            <Pencil size={12} /> Tahrir
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>

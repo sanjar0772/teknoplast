@@ -107,9 +107,9 @@ router.get('/:id', async (req, res, next) => {
        LEFT JOIN users u ON s.created_by = u.id
        LEFT JOIN customers c ON s.customer_id = c.id
        LEFT JOIN discounts d ON s.discount_id = d.id
-       WHERE s.id = $1 OR s.order_ref = $1
+       WHERE s.id = $1 OR s.order_ref = $2
        ORDER BY s.created_at LIMIT 1`,
-      [idParam]
+      [idParam, idParam]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Sotuv topilmadi' });
 
@@ -142,9 +142,9 @@ router.get('/:id/invoice-pdf', async (req, res, next) => {
        FROM sales s
        LEFT JOIN products p ON s.product_id = p.id
        LEFT JOIN customers c ON s.customer_id = c.id
-       WHERE s.id = $1 OR s.order_ref = $1
+       WHERE s.id = $1 OR s.order_ref = $2
        ORDER BY s.created_at LIMIT 1`,
-      [idParam]
+      [idParam, idParam]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Sotuv topilmadi' });
     const sale = result.rows[0];

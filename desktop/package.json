@@ -16,11 +16,9 @@
     "appId": "uz.teknoplast.app",
     "productName": "TEKNOPLAST",
     "asar": true,
-    "compression": "normal",
     "publish": null,
     "directories": {
-      "output": "dist",
-      "buildResources": "build"
+      "output": "dist"
     },
     "files": [
       "main.js",
@@ -41,10 +39,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "TEKNOPLAST",
-      "installerLanguages": ["uz", "ru"],
-      "language": "1090",
-      "deleteAppDataOnUninstall": false
+      "shortcutName": "TEKNOPLAST"
     }
   }
 }

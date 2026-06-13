@@ -61,6 +61,11 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString(), env: process.env.NODE_ENV });
 });
 
+// Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
+app.get('/api/version', (req, res) => {
+  res.json({ version: 'sales-id-or-orderref-lookup', commit: '8933791' });
+});
+
 // Frontend static files (Railway uchun - Nginx yo'q)
 const frontendDist = path.join(__dirname, '../../frontend/dist');
 // Hashli fayllar (assets/) abadiy keshlanadi, index.html esa HECH QACHON keshlanmaydi

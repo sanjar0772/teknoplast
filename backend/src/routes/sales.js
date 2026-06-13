@@ -141,11 +141,11 @@ router.get('/:id/invoice-pdf', async (req, res, next) => {
     const idParam = req.params.id;
     const lookupCol = UUID_RE.test(idParam) ? 's.id' : 's.order_ref';
     const result = await query(
-      `SELECT s.*, p.name as product_name, p.unit,
+      `SELECT s.*, COALESCE(p.name, '[O''chirilgan mahsulot]') as product_name, COALESCE(p.unit, 'dona') as unit,
               c.name as customer_full_name, c.phone as customer_full_phone,
               c.company_name as customer_company, c.address as customer_address
        FROM sales s
-       JOIN products p ON s.product_id = p.id
+       LEFT JOIN products p ON s.product_id = p.id
        LEFT JOIN customers c ON s.customer_id = c.id
        WHERE ${lookupCol} = $1
        ORDER BY s.created_at LIMIT 1`,
@@ -157,8 +157,8 @@ router.get('/:id/invoice-pdf', async (req, res, next) => {
     let items = [sale];
     if (sale.order_ref) {
       const itemsR = await query(
-        `SELECT s.*, p.name as product_name, p.unit
-         FROM sales s JOIN products p ON s.product_id = p.id
+        `SELECT s.*, COALESCE(p.name, '[O''chirilgan mahsulot]') as product_name, COALESCE(p.unit, 'dona') as unit
+         FROM sales s LEFT JOIN products p ON s.product_id = p.id
          WHERE s.order_ref = $1 ORDER BY s.created_at`,
         [sale.order_ref]
       );

@@ -40,8 +40,13 @@ export default function SalesPage() {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
 
   const { data, isLoading } = useQuery({
-    queryKey: ['sales', filter],
-    queryFn: () => salesAPI.getAll({ ...filter, limit: 50 }).then(r => r.data),
+    queryKey: ['sales', filter, month],
+    queryFn: () => salesAPI.getAll({
+      ...filter,
+      start_date: `${month}-01`,
+      end_date: new Date(new Date(`${month}-01`).getFullYear(), new Date(`${month}-01`).getMonth() + 1, 0).toISOString().slice(0, 10),
+      limit: 200,
+    }).then(r => r.data),
   });
 
   const { data: summary } = useQuery({

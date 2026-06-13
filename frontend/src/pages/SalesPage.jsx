@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, Download, Search, X, CheckCircle, Clock, AlertCircle, FileText } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import { Plus, Download, Search, X, CheckCircle, Clock, AlertCircle, FileText, Printer } from 'lucide-react';
 import { salesAPI, productsAPI, reportsAPI, customersAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -38,6 +39,14 @@ export default function SalesPage() {
   const [filter, setFilter] = useState({ status: '', search: '' });
   const [showModal, setShowModal] = useState(false);
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [chekSaleId, setChekSaleId] = useState(null);
+
+  const { data: chekData, isLoading: chekLoading } = useQuery({
+    queryKey: ['invoice', chekSaleId],
+    queryFn: () => salesAPI.getById(chekSaleId).then(r => r.data),
+    enabled: !!chekSaleId,
+    retry: false,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['sales', filter, month],
@@ -190,9 +199,9 @@ export default function SalesPage() {
                 <td>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => navigate(`/invoice/${sale.id}`)}
+                      onClick={() => setChekSaleId(sale.id)}
                       className="btn-secondary btn-sm"
-                      title="Schyot-faktura ko'rish"
+                      title="Chekni ko'rish"
                     >
                       <FileText size={12} /> Chek
                     </button>
@@ -280,6 +289,72 @@ export default function SalesPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Chek modal */}
+      {chekSaleId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setChekSaleId(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <button onClick={() => setChekSaleId(null)}
+              className="absolute top-3 right-3 z-10 text-gray-400 hover:text-gray-700 bg-white rounded-full p-1 shadow">
+              <X size={18} />
+            </button>
+
+            {chekLoading ? (
+              <div className="py-16 text-center text-gray-400">Yuklanmoqda...</div>
+            ) : !chekData?.sale ? (
+              <div className="py-16 text-center text-gray-400">Chek topilmadi</div>
+            ) : (() => {
+              const { sale, items } = chekData;
+              const rows = items?.length ? items : [sale];
+              const total = rows.reduce((s, it) => s + parseFloat(it.total_amount || 0), 0);
+              const invoiceUrl = `${window.location.origin}/invoice/${sale.order_ref || sale.id}`;
+              return (
+                <>
+                  <div id="chek-print" className="px-5 py-5 font-mono text-[13px] leading-tight text-gray-900">
+                    <div className="text-center border-b border-dashed border-gray-300 pb-2 mb-2">
+                      <div className="text-lg font-bold tracking-wide">TEKNOPLAST</div>
+                      <div className="text-[11px] text-gray-500">Plastik mahsulotlar zavodi</div>
+                    </div>
+                    <div className="text-[11px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-2">
+                      <div className="flex justify-between"><span>Chek:</span><span className="font-bold">{sale.order_ref || sale.id?.slice(0,8)}</span></div>
+                      <div className="flex justify-between"><span>Sana:</span><span>{new Date(sale.sale_date).toLocaleDateString('uz-UZ')}</span></div>
+                      <div className="flex justify-between"><span>Mijoz:</span><span>{sale.customer_full_name || sale.customer_name || 'Tasodifiy'}</span></div>
+                      {sale.customer_full_phone && <div className="flex justify-between"><span>Tel:</span><span>{sale.customer_full_phone}</span></div>}
+                    </div>
+                    <div className="border-b border-dashed border-gray-300 pb-2 mb-2">
+                      {rows.map((it, i) => (
+                        <div key={i} className="mb-1">
+                          <div className="font-medium truncate">{it.product_name}</div>
+                          <div className="flex justify-between text-gray-600">
+                            <span>{it.quantity} x {fmt(it.unit_price)}</span>
+                            <span className="font-bold text-gray-900">{fmt(it.total_amount)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex justify-between font-bold text-[15px] border-b border-dashed border-gray-300 pb-2 mb-3">
+                      <span>JAMI:</span><span>{fmt(total)} so'm</span>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <QRCodeSVG value={invoiceUrl} size={110} />
+                      <div className="text-[10px] text-gray-500 mt-1">Xaridingiz uchun rahmat!</div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 px-4 pb-4">
+                    <button onClick={() => window.print()} className="btn-secondary flex-1 text-sm">
+                      <Printer size={13} /> Chop etish
+                    </button>
+                    <button onClick={() => navigate(`/invoice/${sale.order_ref || sale.id}`)} className="btn-primary flex-1 text-sm">
+                      <FileText size={13} /> Schyot-faktura
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

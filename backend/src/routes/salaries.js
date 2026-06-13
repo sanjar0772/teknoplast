@@ -201,11 +201,15 @@ router.put('/:id/adjust', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, n
 // PUT /api/salaries/:id/approve — OWNER tasdiqlaydi
 router.put('/:id/approve', requireRole('OWNER'), async (req, res, next) => {
   try {
+    // Holatni avval tekshiramiz (SQLite adapteri RETURNING'da faqat id bo'yicha qaytaradi,
+    // shuning uchun WHERE'dagi status shartiga tayanib bo'lmaydi)
+    const cur = await query('SELECT status FROM salaries WHERE id=$1', [req.params.id]);
+    if (!cur.rows.length) return res.status(404).json({ error: 'Oylik topilmadi' });
+    if (cur.rows[0].status !== 'CALCULATED') return res.status(400).json({ error: 'Oylik allaqachon tasdiqlangan' });
     const result = await query(
-      'UPDATE salaries SET status=\'APPROVED\', approved_by=$1, updated_at=NOW() WHERE id=$2 AND status=\'CALCULATED\' RETURNING *',
+      'UPDATE salaries SET status=\'APPROVED\', approved_by=$1, updated_at=NOW() WHERE id=$2 RETURNING *',
       [req.user.id, req.params.id]
     );
-    if (!result.rows.length) return res.status(404).json({ error: 'Oylik topilmadi yoki allaqachon tasdiqlangan' });
     res.json({ salary: result.rows[0] });
   } catch (err) { next(err); }
 });
@@ -213,11 +217,14 @@ router.put('/:id/approve', requireRole('OWNER'), async (req, res, next) => {
 // PUT /api/salaries/:id/pay — To'landi
 router.put('/:id/pay', requireRole('OWNER'), async (req, res, next) => {
   try {
+    // Holatni avval tekshiramiz (RETURNING faqat id bo'yicha qaytadi — WHERE status shartiga tayanmaymiz)
+    const cur = await query('SELECT status FROM salaries WHERE id=$1', [req.params.id]);
+    if (!cur.rows.length) return res.status(404).json({ error: 'Oylik topilmadi' });
+    if (cur.rows[0].status !== 'APPROVED') return res.status(400).json({ error: 'Oylik tasdiqlangan emas yoki allaqachon to\'langan' });
     const result = await query(
-      'UPDATE salaries SET status=\'PAID\', paid_date=CURRENT_DATE, updated_at=NOW() WHERE id=$1 AND status=\'APPROVED\' RETURNING *',
+      'UPDATE salaries SET status=\'PAID\', paid_date=CURRENT_DATE, updated_at=NOW() WHERE id=$1 RETURNING *',
       [req.params.id]
     );
-    if (!result.rows.length) return res.status(404).json({ error: 'Oylik topilmadi yoki tasdiqlangan emas' });
     logAudit(req, {
       action: 'SALARY_PAID', table: 'salaries', recordId: req.params.id,
       newValues: { net_amount: result.rows[0].net_amount, employee_id: result.rows[0].employee_id },

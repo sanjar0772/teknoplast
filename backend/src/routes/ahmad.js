@@ -1378,22 +1378,24 @@ async function confirmActionHandler(req, res) {
       const client = await getClient();
       try {
         await client.query('BEGIN');
+        // Shu xodimning shu kungi eski yozuvlarini tozalaymiz (ombor qaytadi) — keyin yangisini qo'shamiz.
+        // (employee_production endi bir kunda ko'p mahsulotni qo'llab-quvvatlaydi, UNIQUE cheklov yo'q.)
         const existing = await client.query(
           'SELECT product_id, quantity_produced FROM employee_production WHERE employee_id=$1 AND production_date=$2',
           [d.employee_id, d.production_date]
         );
-        const old = existing.rows[0];
+        for (const row of existing.rows) {
+          if (row.product_id) {
+            await client.query('UPDATE products SET stock_quantity = stock_quantity - $1, updated_at=NOW() WHERE id=$2', [row.quantity_produced, row.product_id]);
+          }
+        }
+        await client.query('DELETE FROM employee_production WHERE employee_id=$1 AND production_date=$2', [d.employee_id, d.production_date]);
         await client.query(
           `INSERT INTO employee_production
             (employee_id, product_id, production_date, quantity_produced, daily_tariff, calculated_amount, month, notes, production_type)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-           ON CONFLICT (employee_id, production_date)
-           DO UPDATE SET product_id=$2, quantity_produced=$4, daily_tariff=$5, calculated_amount=$6, notes=$8, production_type=$9, updated_at=NOW()`,
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
           [d.employee_id, d.product_id || null, d.production_date, d.quantity, d.daily_tariff, d.calculated_amount, d.month, 'Ahmad orqali', d.production_type || 'FINISHED']
         );
-        if (old && old.product_id) {
-          await client.query('UPDATE products SET stock_quantity = stock_quantity - $1, updated_at=NOW() WHERE id=$2', [old.quantity_produced, old.product_id]);
-        }
         if (d.product_id) {
           await client.query('UPDATE products SET stock_quantity = stock_quantity + $1, updated_at=NOW() WHERE id=$2', [d.quantity, d.product_id]);
         }

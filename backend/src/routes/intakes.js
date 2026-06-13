@@ -137,12 +137,15 @@ router.put('/:id/approve', requireRole('OWNER', 'SALES_HEAD'), async (req, res, 
 // PUT /api/intakes/:id/reject — rad etish
 router.put('/:id/reject', requireRole('OWNER', 'SALES_HEAD'), async (req, res, next) => {
   try {
-    const result = await query(
+    // Holatni avval tekshiramiz (RETURNING faqat id bo'yicha qaytadi — WHERE status shartiga tayanmaymiz)
+    const cur = await query('SELECT status FROM product_intakes WHERE id=$1', [req.params.id]);
+    if (!cur.rows.length) return res.status(404).json({ error: 'Kirim topilmadi' });
+    if (cur.rows[0].status !== 'PENDING') return res.status(400).json({ error: 'Kirim allaqachon ko\'rib chiqilgan' });
+    await query(
       `UPDATE product_intakes SET status='REJECTED', approved_by=$1, approved_at=NOW(), updated_at=NOW()
-       WHERE id=$2 AND status='PENDING' RETURNING *`,
+       WHERE id=$2`,
       [req.user.id, req.params.id]
     );
-    if (!result.rows.length) return res.status(404).json({ error: 'Kirim topilmadi yoki allaqachon ko\'rib chiqilgan' });
     logAudit(req, { action: 'INTAKE_REJECT', table: 'product_intakes', recordId: req.params.id });
     res.json({ message: 'Kirim rad etildi' });
   } catch (err) { next(err); }

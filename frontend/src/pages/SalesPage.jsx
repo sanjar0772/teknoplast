@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { QRCodeSVG } from 'qrcode.react';
-import { Plus, Download, Search, X, CheckCircle, Clock, AlertCircle, FileText, Printer } from 'lucide-react';
+import { Plus, Download, Search, X, CheckCircle, Clock, AlertCircle, FileText, Printer, Pencil } from 'lucide-react';
 import { salesAPI, productsAPI, reportsAPI, customersAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -40,6 +40,7 @@ export default function SalesPage() {
   const [showModal, setShowModal] = useState(false);
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [chekSaleId, setChekSaleId] = useState(null);
+  const [editForm, setEditForm] = useState(null); // tahrirlanayotgan savdo
 
   const { data: chekData, isLoading: chekLoading } = useQuery({
     queryKey: ['invoice', chekSaleId],
@@ -91,6 +92,49 @@ export default function SalesPage() {
       qc.invalidateQueries({ queryKey: ['sales'] });
     },
   });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }) => salesAPI.update(id, data),
+    onSuccess: () => {
+      toast.success('Savdo yangilandi');
+      qc.invalidateQueries({ queryKey: ['sales'] });
+      qc.invalidateQueries({ queryKey: ['sales-summary'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      setEditForm(null);
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.error || 'Saqlashda xato');
+    },
+  });
+
+  const openEdit = (sale) => {
+    setEditForm({
+      id: sale.id,
+      product_id: sale.product_id || '',
+      customer_id: sale.customer_id || '',
+      quantity: sale.quantity,
+      unit_price: parseFloat(sale.unit_price),
+      sale_date: sale.sale_date ? String(sale.sale_date).slice(0, 10) : new Date().toISOString().slice(0, 10),
+      status: sale.status,
+    });
+  };
+
+  const submitEdit = () => {
+    if (!editForm.product_id) return toast.error('Mahsulotni tanlang');
+    if (!editForm.quantity || editForm.quantity < 1) return toast.error('Miqdor noto\'g\'ri');
+    updateMutation.mutate({
+      id: editForm.id,
+      data: {
+        product_id: editForm.product_id,
+        customer_id: editForm.customer_id || null,
+        quantity: parseInt(editForm.quantity),
+        unit_price: parseFloat(editForm.unit_price),
+        sale_date: editForm.sale_date,
+        status: editForm.status,
+      },
+    });
+  };
 
   const { register, handleSubmit, watch, reset, formState: { errors } } = useForm();
   const qty = watch('quantity', 0);
@@ -205,6 +249,15 @@ export default function SalesPage() {
                     >
                       <FileText size={12} /> Chek
                     </button>
+                    {canCreate && (
+                      <button
+                        onClick={() => openEdit(sale)}
+                        className="btn-secondary btn-sm"
+                        title="Tahrirlash"
+                      >
+                        <Pencil size={12} /> Tahrir
+                      </button>
+                    )}
                     {sale.status !== 'PAID' && canCreate && (
                       <button
                         onClick={() => statusMutation.mutate({ id: sale.id, status: 'PAID' })}
@@ -288,6 +341,91 @@ export default function SalesPage() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Tahrirlash modal */}
+      <Modal open={!!editForm} onClose={() => setEditForm(null)} title="Savdoni tahrirlash">
+        {editForm && (
+          <div className="space-y-4">
+            <div>
+              <label className="label">Mahsulot *</label>
+              <select
+                value={editForm.product_id}
+                onChange={e => setEditForm(f => ({ ...f, product_id: e.target.value }))}
+                className="select"
+              >
+                <option value="">Tanlang...</option>
+                {products?.products?.map(p => (
+                  <option key={p.id} value={p.id}>{p.name} (Ombor: {p.stock_quantity})</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Miqdor *</label>
+                <input
+                  type="number" min="1" value={editForm.quantity}
+                  onChange={e => setEditForm(f => ({ ...f, quantity: e.target.value }))}
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="label">Birlik narxi *</label>
+                <input
+                  type="number" min="0" value={editForm.unit_price}
+                  onChange={e => setEditForm(f => ({ ...f, unit_price: e.target.value }))}
+                  className="input"
+                />
+              </div>
+            </div>
+            {editForm.quantity > 0 && editForm.unit_price > 0 && (
+              <div className="bg-blue-50 rounded-lg p-3 text-sm text-blue-700 font-semibold">
+                Jami: {fmt(parseFloat(editForm.quantity) * parseFloat(editForm.unit_price))} so'm
+              </div>
+            )}
+            <div>
+              <label className="label">Mijoz</label>
+              <select
+                value={editForm.customer_id}
+                onChange={e => setEditForm(f => ({ ...f, customer_id: e.target.value }))}
+                className="select"
+              >
+                <option value="">— Tanlanmagan —</option>
+                {customers?.customers?.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ''}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Sana</label>
+                <input
+                  type="date" value={editForm.sale_date}
+                  onChange={e => setEditForm(f => ({ ...f, sale_date: e.target.value }))}
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="label">Status</label>
+                <select
+                  value={editForm.status}
+                  onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
+                  className="select"
+                >
+                  <option value="PENDING">Kutilmoqda</option>
+                  <option value="PAID">To'langan</option>
+                  <option value="PARTIALLY_PAID">Qisman to'langan</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={() => setEditForm(null)} className="btn-secondary flex-1">Bekor</button>
+              <button type="button" onClick={submitEdit} disabled={updateMutation.isPending} className="btn-primary flex-1">
+                {updateMutation.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Chek modal */}

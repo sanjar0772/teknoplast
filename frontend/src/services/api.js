@@ -52,6 +52,7 @@ export const salesAPI = {
   getSummary: (params) => api.get('/sales/summary', { params }),
   create: (data) => api.post('/sales', data),
   createBulk: (data) => api.post('/sales/bulk', data),
+  update: (id, data) => api.put(`/sales/${id}`, data),
   updateStatus: (id, data) => api.put(`/sales/${id}/status`, data),
   getPayments: (id) => api.get(`/sales/${id}/payments`),
   addPayment: (id, data) => api.post(`/sales/${id}/payments`, data),

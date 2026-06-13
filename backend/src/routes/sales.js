@@ -322,6 +322,109 @@ router.put('/:id/status', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asyn
   } catch (err) { next(err); }
 });
 
+// PUT /api/sales/:id — savdoni to'liq tahrirlash (mahsulot, miqdor, narx, mijoz, sana, status)
+// Ombor miqdori avtomatik to'g'rilanadi (eski miqdor qaytariladi, yangi miqdor ayriladi)
+router.put('/:id', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
+  try {
+    const old = await query('SELECT * FROM sales WHERE id = $1', [req.params.id]);
+    if (!old.rows.length) return res.status(404).json({ error: 'Sotuv topilmadi' });
+    const prev = old.rows[0];
+
+    // Yangi qiymatlar (berilmasa — eski qiymat qoladi)
+    const product_id = req.body.product_id || prev.product_id;
+    const quantity = req.body.quantity != null ? parseInt(req.body.quantity) : prev.quantity;
+    const unit_price = req.body.unit_price != null ? parseFloat(req.body.unit_price) : parseFloat(prev.unit_price);
+    const sale_date = req.body.sale_date || prev.sale_date;
+    const status = req.body.status || prev.status;
+    const customer_id = req.body.customer_id !== undefined ? req.body.customer_id : prev.customer_id;
+
+    if (!quantity || quantity < 1) return res.status(400).json({ error: 'Miqdor noto\'g\'ri' });
+    if (unit_price < 0) return res.status(400).json({ error: 'Narx noto\'g\'ri' });
+    if (!['PENDING', 'PAID', 'PARTIALLY_PAID'].includes(status)) {
+      return res.status(400).json({ error: 'Noto\'g\'ri status' });
+    }
+
+    // Mijoz ism/telefonni avtomatik to'ldirish
+    let custName = req.body.customer_name ?? prev.customer_name;
+    let custPhone = req.body.customer_phone ?? prev.customer_phone;
+    if (customer_id) {
+      const c = await query('SELECT name, phone FROM customers WHERE id = $1', [customer_id]);
+      if (c.rows.length) {
+        custName = c.rows[0].name;
+        custPhone = c.rows[0].phone;
+      }
+    }
+
+    const sameProduct = String(product_id) === String(prev.product_id);
+    // Yangi mahsulot omborini tekshirish
+    if (sameProduct) {
+      // Joriy ombor + eski miqdor = mavjud sig'im
+      const p = await query('SELECT name, stock_quantity FROM products WHERE id = $1', [product_id]);
+      if (!p.rows.length) return res.status(404).json({ error: 'Mahsulot topilmadi' });
+      const available = parseFloat(p.rows[0].stock_quantity) + parseFloat(prev.quantity);
+      if (quantity > available) {
+        return res.status(400).json({ error: `"${p.rows[0].name}" omborida yetarli emas. Mavjud: ${available}` });
+      }
+    } else {
+      const p = await query('SELECT name, stock_quantity FROM products WHERE id = $1', [product_id]);
+      if (!p.rows.length) return res.status(404).json({ error: 'Mahsulot topilmadi' });
+      if (parseFloat(p.rows[0].stock_quantity) < quantity) {
+        return res.status(400).json({ error: `"${p.rows[0].name}" omborida yetarli emas. Mavjud: ${p.rows[0].stock_quantity}` });
+      }
+    }
+
+    const total_amount = quantity * unit_price;
+    // To'lov: PAID bo'lsa to'liq, PENDING bo'lsa 0, aks holda eski qiymat (qisman to'langan saqlanadi)
+    let payment_amount = parseFloat(prev.payment_amount) || 0;
+    if (status === 'PAID') payment_amount = total_amount;
+    else if (status === 'PENDING') payment_amount = 0;
+
+    const client = await require('../db').getClient();
+    try {
+      await client.query('BEGIN');
+      // Ombor to'g'rilash
+      if (sameProduct) {
+        // eski miqdorni qaytarib, yangisini ayiramiz: net = old - new
+        const diff = parseFloat(prev.quantity) - quantity; // musbat bo'lsa omborga qaytadi
+        await client.query(
+          'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at = NOW() WHERE id = $2',
+          [diff, product_id]
+        );
+      } else {
+        // eski mahsulotga miqdorni qaytaramiz
+        await client.query(
+          'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at = NOW() WHERE id = $2',
+          [prev.quantity, prev.product_id]
+        );
+        // yangi mahsulotdan ayiramiz
+        await client.query(
+          'UPDATE products SET stock_quantity = stock_quantity - $1, updated_at = NOW() WHERE id = $2',
+          [quantity, product_id]
+        );
+      }
+      const upd = await client.query(
+        `UPDATE sales SET product_id=$1, customer_id=$2, quantity=$3, unit_price=$4, total_amount=$5,
+           customer_name=$6, customer_phone=$7, sale_date=$8, status=$9, payment_amount=$10, updated_at=NOW()
+         WHERE id=$11 RETURNING *`,
+        [product_id, customer_id || null, quantity, unit_price, total_amount,
+         custName, custPhone, sale_date, status, payment_amount, req.params.id]
+      );
+      await client.query('COMMIT');
+      logAudit(req, {
+        action: 'SALE_UPDATE', table: 'sales', recordId: req.params.id,
+        oldValues: { product_id: prev.product_id, quantity: prev.quantity, unit_price: prev.unit_price, total_amount: prev.total_amount, status: prev.status },
+        newValues: { product_id, quantity, unit_price, total_amount, status },
+      });
+      res.json({ sale: upd.rows[0] });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (err) { next(err); }
+});
+
 // GET /api/sales/:id/payments — sotuv to'lovlari tarixi
 router.get('/:id/payments', async (req, res, next) => {
   try {

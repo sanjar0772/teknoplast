@@ -157,6 +157,34 @@ router.post('/bulk-delete', requireRole('OWNER'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/products/reset-all — barcha mahsulot VA sotuvlarni to'liq o'chirish (OWNER only)
+router.post('/reset-all', requireRole('OWNER'), async (req, res, next) => {
+  try {
+    const client = await require('../db').getClient();
+    try {
+      await client.query('BEGIN');
+      // 1. To'lovlarni o'chirish
+      const pRes = await client.query('DELETE FROM payments');
+      // 2. Barcha sotuvlarni o'chirish
+      const sRes = await client.query('DELETE FROM sales');
+      // 3. Barcha mahsulotlarni o'chirish
+      const prRes = await client.query('DELETE FROM products');
+      await client.query('COMMIT');
+      logAudit(req, { action: 'RESET_ALL_PRODUCTS_AND_SALES', table: 'products', recordId: 'ALL', newValues: {} });
+      res.json({
+        payments: pRes.rowCount ?? 0,
+        sales: sRes.rowCount ?? 0,
+        products: prRes.rowCount ?? 0,
+      });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (err) { next(err); }
+});
+
 // PUT /api/products/:id — yagona mahsulotni yangilash
 router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, next) => {
   try {

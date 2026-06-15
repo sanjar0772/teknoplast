@@ -72,10 +72,13 @@ export default function ProductsPage() {
   });
 
   const deleteAllMutation = useMutation({
-    mutationFn: (ids) => productsAPI.bulkDelete(ids),
+    mutationFn: () => productsAPI.resetAll(),
     onSuccess: (res) => {
-      toast.success(`${res.data.count} ta mahsulot o'chirildi`);
+      const d = res.data;
+      toast.success(`${d.products} ta mahsulot va ${d.sales} ta sotuv o'chirildi`);
       qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['sales'] });
+      qc.invalidateQueries({ queryKey: ['customers'] });
     },
     onError: (e) => toast.error(e?.response?.data?.error || 'O\'chirishda xato'),
   });
@@ -84,12 +87,12 @@ export default function ProductsPage() {
     const ids = (data?.products || []).map(p => p.id);
     if (!ids.length) return toast.error('O\'chiriladigan mahsulot yo\'q');
     const ok = confirm(
-      `DIQQAT! Barcha ${ids.length} ta mahsulot o'chiriladi.\n\n` +
-      `• Sotuvi BO'LMAGAN mahsulotlar butunlay o'chadi\n` +
-      `• Sotuvi BOR mahsulotlar nofaol qilinadi (sotuv tarixi buzilmasligi uchun)\n\n` +
+      `DIQQAT! Barcha ${ids.length} ta mahsulot VA barcha sotuvlar o'chiriladi.\n\n` +
+      `• Barcha mahsulotlar butunlay o'chadi\n` +
+      `• Barcha sotuv cheklari ham o'chadi\n\n` +
       `Bu amalni ORQAGA QAYTARIB BO'LMAYDI! Davom etilsinmi?`
     );
-    if (ok) deleteAllMutation.mutate(ids);
+    if (ok) deleteAllMutation.mutate();
   };
 
   const { register, handleSubmit, reset, setValue } = useForm();

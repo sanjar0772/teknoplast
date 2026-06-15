@@ -108,10 +108,9 @@ function ProductIntakeTab({ canCreate, canApprove }) {
   const submit = () => {
     if (!cart.length) return toast.error('Mahsulot qo\'shing');
     for (const r of cart) {
-      if (!r.rang) return toast.error(`"${r.name}" uchun rang tanlang`);
       if (!r.qty || parseInt(r.qty) < 1) return toast.error(`"${r.name}" miqdori noto'g'ri`);
     }
-    createMutation.mutate({ items: cart.map(r => ({ product_id: r.product_id, quantity: parseInt(r.qty), rang: r.rang })), notes });
+    createMutation.mutate({ items: cart.map(r => ({ product_id: r.product_id, quantity: parseInt(r.qty), rang: r.rang || null })), notes });
   };
 
   return (
@@ -187,7 +186,7 @@ function ProductIntakeTab({ canCreate, canApprove }) {
               <thead>
                 <tr>
                   <th>Mahsulot</th>
-                  <th className="w-36">Rang <span className="text-red-400">*</span></th>
+                  <th className="w-36">Rang</th>
                   <th className="w-28">Miqdor</th>
                   <th className="w-16"></th>
                 </tr>
@@ -215,9 +214,9 @@ function ProductIntakeTab({ canCreate, canApprove }) {
                           <select
                             value={x.rang}
                             onChange={e => updateRow(x.rowId, 'rang', e.target.value)}
-                            className={`select py-1 px-2 text-sm w-32 ${!x.rang ? 'border-red-300' : ''}`}
+                            className="select py-1 px-2 text-sm w-32"
                           >
-                            <option value="">— Rang —</option>
+                            <option value="">Rangsiz</option>
                             {RANGLAR.map(r => (
                               <option key={r} value={r}>{r}</option>
                             ))}
@@ -421,9 +420,6 @@ function WorkerOutputTab({ canApprove }) {
   const save = () => {
     const valid = entries.filter(e => e.employee_id && parseFloat(e.quantity_produced) > 0);
     if (!valid.length) return toast.error('Kamida bitta ishchi miqdori kiritilsin');
-    for (const e of valid) {
-      if (!e.rang) return toast.error(`"${empMap[e.employee_id]?.name || 'Ishchi'}" uchun rang tanlang`);
-    }
     bulkMutation.mutate({
       production_date: date,
       entries: valid.map(e => ({
@@ -432,7 +428,7 @@ function WorkerOutputTab({ canApprove }) {
         quantity_produced: parseFloat(e.quantity_produced),
         production_type: empMap[e.employee_id]?.type === 'DETALCHI' ? 'SEMI_FINISHED' : (e.production_type || 'FINISHED'),
         daily_tariff: e.tarif !== '' ? parseFloat(e.tarif) : undefined,
-        rang: e.rang,
+        rang: e.rang || null,
       })),
     });
   };
@@ -528,7 +524,7 @@ function WorkerOutputTab({ canApprove }) {
             <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-400 px-1 mb-2 hidden sm:grid">
               <span className="col-span-2">Xodim</span>
               <span className="col-span-2">Mahsulot</span>
-              <span className="col-span-2">Rang <span className="text-red-400">*</span></span>
+              <span className="col-span-2">Rang</span>
               <span className="col-span-1">Turi</span>
               <span className="col-span-2 text-blue-500">Tarif</span>
               <span className="col-span-1">Dona</span>
@@ -581,9 +577,9 @@ function WorkerOutputTab({ canApprove }) {
                       <select
                         value={entry.rang}
                         onChange={e => updateEntry(i, 'rang', e.target.value)}
-                        className={`select text-sm w-full ${!entry.rang ? 'border-red-300' : ''}`}
+                        className="select text-sm w-full"
                       >
-                        <option value="">— Rang —</option>
+                        <option value="">Rangsiz</option>
                         {RANGLAR.map(r => (
                           <option key={r} value={r}>{r}</option>
                         ))}

@@ -9,7 +9,7 @@ import useAuthStore from '../store/authStore';
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
 const RANGLAR = ['Қора', 'Оқ', 'Қизил', 'Кўк', 'Яшил', 'Сариқ', 'Тўқ сариқ'];
-const RANG_COLORS = { 'Қора': '#1a1a1a', 'Оқ': '#e5e5e5', 'Қизил': '#ef4444', 'Кўк': '#3b82f6', 'Яшил': '#22c55e', 'Сариқ': '#eab308', 'Тўқ сариқ': '#f97316' };
+const RANG_COLORS = { 'Қора': '#1a1a1a', 'Оқ': '#d1d5db', 'Қизил': '#ef4444', 'Кўк': '#3b82f6', 'Яшил': '#22c55e', 'Сариқ': '#eab308', 'Тўқ сариқ': '#f97316' };
 
 function Modal({ open, onClose, title, children }) {
   if (!open) return null;

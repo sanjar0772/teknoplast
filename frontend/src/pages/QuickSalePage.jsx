@@ -80,7 +80,7 @@ export default function QuickSalePage() {
       setCart(c => [...c, {
         id: p.id, name: p.name, unit: p.unit || 'dona',
         price: parseFloat(p.price) || 0, qty: 1, stock: p.stock_quantity,
-        rang: p.rang || '',
+        rang: '',
       }]);
     }
   };
@@ -132,7 +132,6 @@ export default function QuickSalePage() {
     for (const x of cart) {
       if (!x.qty || x.qty < 1) return toast.error(`"${x.name}" miqdori noto'g'ri`);
       if (x.qty > x.stock) return toast.error(`"${x.name}" omborida yetarli emas (${x.stock})`);
-      if (!x.rang) return toast.error(`"${x.name}" uchun rang tanlang`);
     }
     // Chek uchun savat nusxasi (nomlar bilan)
     lastCartRef.current = cart.map(x => ({ name: x.name, qty: parseInt(x.qty), price: parseFloat(x.price), unit: x.unit, rang: x.rang }));
@@ -342,7 +341,7 @@ export default function QuickSalePage() {
                   <tr>
                     <th className="w-8">#</th>
                     <th>Mahsulot</th>
-                    <th className="w-28">Rang <span className="text-red-400">*</span></th>
+                    <th className="w-28">Rang</th>
                     <th className="w-28">Narx</th>
                     <th className="w-24">Miqdor</th>
                     <th className="w-28">Jami</th>
@@ -368,9 +367,9 @@ export default function QuickSalePage() {
                         <select
                           value={x.rang || ''}
                           onChange={e => updateRow(x.id, 'rang', e.target.value)}
-                          className={`select py-1 px-2 text-sm w-32 ${!x.rang ? 'border-red-300' : ''}`}
+                          className="select py-1 px-2 text-sm w-32"
                         >
-                          <option value="">— Rang —</option>
+                          <option value="">Rangsiz</option>
                           {RANGLAR.map(r => (
                             <option key={r} value={r}>{r}</option>
                           ))}

@@ -80,7 +80,7 @@ export default function QuickSalePage() {
       setCart(c => [...c, {
         id: p.id, name: p.name, unit: p.unit || 'dona',
         price: parseFloat(p.price) || 0, qty: 1, stock: p.stock_quantity,
-        rang: '',
+        rang: p.rang || '',
       }]);
     }
   };
@@ -364,18 +364,13 @@ export default function QuickSalePage() {
                         <div className="text-xs text-gray-400">Ombor: {x.stock} {x.unit}</div>
                       </td>
                       <td>
-                        <select
-                          value={x.rang || ''}
-                          onChange={e => updateRow(x.id, 'rang', e.target.value)}
-                          className="select py-1 px-2 text-sm w-32"
-                        >
-                          <option value="">Rangsiz</option>
-                          {RANGLAR.map(r => (
-                            <option key={r} value={r}>{r}</option>
-                          ))}
-                        </select>
-                        {x.rang && (
-                          <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background: RANG_COLORS[x.rang] || '#999', marginLeft:4, verticalAlign:'middle' }} />
+                        {x.rang ? (
+                          <span className="inline-flex items-center gap-1 text-sm text-gray-700">
+                            <span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background: RANG_COLORS[x.rang] || '#999', border:'1px solid #ccc' }} />
+                            {x.rang}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-sm">Rangsiz</span>
                         )}
                       </td>
                       <td>

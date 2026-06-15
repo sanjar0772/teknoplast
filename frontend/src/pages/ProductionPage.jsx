@@ -166,6 +166,7 @@ export default function ProductionPage() {
         if (field === 'prodSearch') {
           const match = (products?.products || []).find(p => p.name === value);
           next.product_id = match ? match.id : '';
+          next.rang = match ? (match.rang || '') : '';
           if (match) next.tarif = autoTarif(e.employee_id, match.id, next.production_type);
         }
         if (field === 'production_type') {
@@ -554,21 +555,16 @@ export default function ProductionPage() {
                               ))}
                             </datalist>
                           </div>
-                          {/* Rang */}
+                          {/* Rang — mahsulotdan avtomatik (o'zgartirib bo'lmaydi) */}
                           <div className="col-span-2">
-                            <div className="flex items-center gap-1">
-                              <select
-                                value={item.rang}
-                                onChange={e => updateItem(i, j, 'rang', e.target.value)}
-                                className="select text-sm w-full"
-                              >
-                                <option value="">Rangsiz</option>
-                                {RANGLAR.map(r => (
-                                  <option key={r} value={r}>{r}</option>
-                                ))}
-                              </select>
-                              {item.rang && <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', flexShrink:0, background: RANG_COLORS[item.rang] || '#999' }} />}
-                            </div>
+                            {item.rang ? (
+                              <span className="inline-flex items-center gap-1 text-sm text-gray-700">
+                                <span style={{ display:'inline-block', width:9, height:9, borderRadius:'50%', flexShrink:0, background: RANG_COLORS[item.rang] || '#999', border:'1px solid #ccc' }} />
+                                {item.rang}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-sm">Rangsiz</span>
+                            )}
                           </div>
                           {/* Tur */}
                           <div className="col-span-2">

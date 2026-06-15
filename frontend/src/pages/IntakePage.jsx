@@ -94,11 +94,10 @@ function ProductIntakeTab({ canCreate, canApprove }) {
 
   // cart row: { rowId, product_id, name, stock, rang, qty }
   const addToCart = (p) => {
-    setCart(c => [...c, { rowId: newRowId(), product_id: p.id, name: p.name, stock: p.stock_quantity, rang: p.rang || '', qty: 1 }]);
+    setCart(c => c.find(x => x.product_id === p.id)
+      ? c.map(x => x.product_id === p.id ? { ...x, qty: parseInt(x.qty || 0) + 1 } : x)
+      : [...c, { rowId: newRowId(), product_id: p.id, name: p.name, stock: p.stock_quantity, rang: p.rang || '', qty: 1 }]);
     setSearch('');
-  };
-  const addColorRow = (product_id, name, stock) => {
-    setCart(c => [...c, { rowId: newRowId(), product_id, name, stock, rang: '', qty: 1 }]);
   };
   const updateRow = (rowId, field, value) => {
     setCart(c => c.map(r => r.rowId === rowId ? { ...r, [field]: value } : r));
@@ -194,60 +193,35 @@ function ProductIntakeTab({ canCreate, canApprove }) {
               <tbody>
                 {!cart.length ? (
                   <tr><td colSpan={4} className="text-center py-6 text-gray-400">Mahsulot qo'shing</td></tr>
-                ) : cart.map((x, i) => {
-                  const isFirstOfProduct = i === 0 || cart[i - 1].product_id !== x.product_id;
-                  const isLastOfProduct = i === cart.length - 1 || cart[i + 1].product_id !== x.product_id;
-                  return (
-                    <tr key={x.rowId} className={i > 0 && cart[i-1].product_id === x.product_id ? 'bg-blue-50/30' : ''}>
-                      <td>
-                        {isFirstOfProduct ? (
-                          <div>
-                            <div className="font-medium text-gray-900">{x.name}</div>
-                            <div className="text-xs text-gray-400">ombor: {x.stock}</div>
-                          </div>
-                        ) : (
-                          <div className="text-xs text-gray-400 pl-2">↳ {x.name}</div>
-                        )}
-                      </td>
-                      <td>
-                        <div className="flex items-center gap-1">
-                          <select
-                            value={x.rang}
-                            onChange={e => updateRow(x.rowId, 'rang', e.target.value)}
-                            className="select py-1 px-2 text-sm w-32"
-                          >
-                            <option value="">Rangsiz</option>
-                            {RANGLAR.map(r => (
-                              <option key={r} value={r}>{r}</option>
-                            ))}
-                          </select>
-                          {x.rang && <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background: RANG_COLORS[x.rang] || '#999', flexShrink:0 }} />}
-                        </div>
-                      </td>
-                      <td>
-                        <input type="number" min="1" value={x.qty}
-                          onChange={e => updateRow(x.rowId, 'qty', e.target.value)}
-                          onFocus={e => e.target.select()}
-                          className="input py-1 px-2 w-24" />
-                      </td>
-                      <td>
-                        <div className="flex items-center gap-1">
-                          {isLastOfProduct && (
-                            <button
-                              onClick={() => addColorRow(x.product_id, x.name, x.stock)}
-                              className="text-blue-400 hover:text-blue-600" title="Yana rang qo'shish"
-                            >
-                              <Plus size={14} />
-                            </button>
-                          )}
-                          <button onClick={() => removeRow(x.rowId)} className="text-gray-300 hover:text-red-500">
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                ) : cart.map((x) => (
+                  <tr key={x.rowId}>
+                    <td>
+                      <div className="font-medium text-gray-900">{x.name}</div>
+                      <div className="text-xs text-gray-400">ombor: {x.stock}</div>
+                    </td>
+                    <td>
+                      {x.rang ? (
+                        <span className="inline-flex items-center gap-1 text-sm text-gray-700">
+                          <span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background: RANG_COLORS[x.rang] || '#999', border:'1px solid #ccc' }} />
+                          {x.rang}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 text-sm">Rangsiz</span>
+                      )}
+                    </td>
+                    <td>
+                      <input type="number" min="1" value={x.qty}
+                        onChange={e => updateRow(x.rowId, 'qty', e.target.value)}
+                        onFocus={e => e.target.select()}
+                        className="input py-1 px-2 w-24" />
+                    </td>
+                    <td>
+                      <button onClick={() => removeRow(x.rowId)} className="text-gray-300 hover:text-red-500">
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -400,6 +374,9 @@ function WorkerOutputTab({ canApprove }) {
       }
       if (field === 'product_id' || field === 'production_type') {
         next.tarif = autoTarif(next.employee_id, field === 'product_id' ? value : next.product_id, field === 'production_type' ? value : next.production_type);
+      }
+      if (field === 'product_id') {
+        next.rang = prodMap[value]?.rang || '';
       }
       return next;
     }));
@@ -572,18 +549,16 @@ function WorkerOutputTab({ canApprove }) {
                       </select>
                     </div>
 
-                    {/* Rang */}
+                    {/* Rang — mahsulotdan avtomatik */}
                     <div className="col-span-12 sm:col-span-2">
-                      <select
-                        value={entry.rang}
-                        onChange={e => updateEntry(i, 'rang', e.target.value)}
-                        className="select text-sm w-full"
-                      >
-                        <option value="">Rangsiz</option>
-                        {RANGLAR.map(r => (
-                          <option key={r} value={r}>{r}</option>
-                        ))}
-                      </select>
+                      {entry.rang ? (
+                        <span className="inline-flex items-center gap-1 text-sm text-gray-700">
+                          <span style={{ display:'inline-block', width:9, height:9, borderRadius:'50%', flexShrink:0, background: RANG_COLORS[entry.rang] || '#999', border:'1px solid #ccc' }} />
+                          {entry.rang}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 text-sm">Rangsiz</span>
+                      )}
                     </div>
 
                     {/* Tur */}

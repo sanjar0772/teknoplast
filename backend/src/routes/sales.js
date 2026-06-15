@@ -5,8 +5,11 @@ const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
 const { logAudit } = require('../services/auditService');
 const reportService = require('../services/reportService');
+const { getColorStock, addColorStock } = require('../utils/colorStock');
 
 const router = express.Router();
+
+const rangLabel = (r) => (r && r.trim()) ? r : 'Rangsiz';
 router.use(authenticate);
 
 // Buyurtma kodi (QR uchun): ORD-YYYYMMDD-XXXX
@@ -179,7 +182,7 @@ router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), [
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { product_id, customer_id, quantity, unit_price, customer_name, customer_phone, sale_date, status, payment_amount, discount_id, notes } = req.body;
+    const { product_id, customer_id, quantity, unit_price, customer_name, customer_phone, sale_date, status, payment_amount, discount_id, notes, rang } = req.body;
     if (!customer_id) return res.status(400).json({ error: 'Mijozni tanlang — savdo faqat mijozga qilinadi' });
     const total_amount = quantity * unit_price;
 
@@ -193,10 +196,11 @@ router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), [
       }
     }
 
-    const product = await query('SELECT stock_quantity FROM products WHERE id = $1', [product_id]);
+    const product = await query('SELECT name FROM products WHERE id = $1', [product_id]);
     if (!product.rows.length) return res.status(404).json({ error: 'Mahsulot topilmadi' });
-    if (product.rows[0].stock_quantity < quantity) {
-      return res.status(400).json({ error: `Omborida yetarli mahsulot yo'q. Mavjud: ${product.rows[0].stock_quantity}` });
+    const availColor = await getColorStock(query, product_id, rang);
+    if (availColor < quantity) {
+      return res.status(400).json({ error: `"${product.rows[0].name}" — ${rangLabel(rang)} rangidan faqat ${availColor} dona bor (so'ralgan: ${quantity})` });
     }
 
     const order_ref = genOrderRef();
@@ -205,15 +209,16 @@ router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), [
       await client.query('BEGIN');
       const saleResult = await client.query(
         `INSERT INTO sales (product_id, customer_id, quantity, unit_price, total_amount, customer_name, customer_phone,
-          sale_date, status, payment_amount, discount_id, notes, created_by, order_ref)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+          sale_date, status, payment_amount, discount_id, notes, created_by, order_ref, rang)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
         [product_id, customer_id || null, quantity, unit_price, total_amount, custName, custPhone,
-         sale_date || new Date().toISOString().slice(0,10), status || 'PENDING', payment_amount || 0, discount_id || null, notes, req.user.id, order_ref]
+         sale_date || new Date().toISOString().slice(0,10), status || 'PENDING', payment_amount || 0, discount_id || null, notes, req.user.id, order_ref, rang || null]
       );
       await client.query(
         'UPDATE products SET stock_quantity = stock_quantity - $1, updated_at = NOW() WHERE id = $2',
         [quantity, product_id]
       );
+      await addColorStock(client.query, product_id, rang, -quantity);
       await client.query('COMMIT');
       const sale = saleResult.rows[0];
       logAudit(req, {
@@ -251,13 +256,14 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (re
       }
     }
 
-    // Ombor yetarliligini tekshirish
+    // Ombor yetarliligini tekshirish — RANG bo'yicha
     for (const it of items) {
-      const p = await query('SELECT name, stock_quantity FROM products WHERE id = $1', [it.product_id]);
+      const p = await query('SELECT name FROM products WHERE id = $1', [it.product_id]);
       if (!p.rows.length) return res.status(404).json({ error: `Mahsulot topilmadi: ${it.product_id}` });
-      if (p.rows[0].stock_quantity < it.quantity) {
+      const avail = await getColorStock(query, it.product_id, it.rang);
+      if (avail < it.quantity) {
         return res.status(400).json({
-          error: `"${p.rows[0].name}" omborida yetarli emas. Mavjud: ${p.rows[0].stock_quantity}, so'ralgan: ${it.quantity}`
+          error: `"${p.rows[0].name}" — ${rangLabel(it.rang)} rangidan faqat ${avail} dona bor (so'ralgan: ${it.quantity})`
         });
       }
     }
@@ -286,6 +292,7 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (re
           'UPDATE products SET stock_quantity = stock_quantity - $1, updated_at = NOW() WHERE id = $2',
           [qty, it.product_id]
         );
+        await addColorStock(client.query, it.product_id, it.rang, -qty);
         created.push(r.rows[0]);
       }
       await client.query('COMMIT');
@@ -338,6 +345,7 @@ router.put('/:id', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req,
     const sale_date = req.body.sale_date || prev.sale_date;
     const status = req.body.status || prev.status;
     const customer_id = req.body.customer_id !== undefined ? req.body.customer_id : prev.customer_id;
+    const rang = req.body.rang !== undefined ? req.body.rang : prev.rang;
 
     if (!customer_id) return res.status(400).json({ error: 'Mijozni tanlang — savdo faqat mijozga qilinadi' });
     if (!quantity || quantity < 1) return res.status(400).json({ error: 'Miqdor noto\'g\'ri' });
@@ -358,21 +366,14 @@ router.put('/:id', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req,
     }
 
     const sameProduct = String(product_id) === String(prev.product_id);
-    // Yangi mahsulot omborini tekshirish
-    if (sameProduct) {
-      // Joriy ombor + eski miqdor = mavjud sig'im
-      const p = await query('SELECT name, stock_quantity FROM products WHERE id = $1', [product_id]);
-      if (!p.rows.length) return res.status(404).json({ error: 'Mahsulot topilmadi' });
-      const available = parseFloat(p.rows[0].stock_quantity) + parseFloat(prev.quantity);
-      if (quantity > available) {
-        return res.status(400).json({ error: `"${p.rows[0].name}" omborida yetarli emas. Mavjud: ${available}` });
-      }
-    } else {
-      const p = await query('SELECT name, stock_quantity FROM products WHERE id = $1', [product_id]);
-      if (!p.rows.length) return res.status(404).json({ error: 'Mahsulot topilmadi' });
-      if (parseFloat(p.rows[0].stock_quantity) < quantity) {
-        return res.status(400).json({ error: `"${p.rows[0].name}" omborida yetarli emas. Mavjud: ${p.rows[0].stock_quantity}` });
-      }
+    const sameColor = sameProduct && (rang || '') === (prev.rang || '');
+    // Yangi mahsulot + rang omborini tekshirish (RANG bo'yicha)
+    const p = await query('SELECT name FROM products WHERE id = $1', [product_id]);
+    if (!p.rows.length) return res.status(404).json({ error: 'Mahsulot topilmadi' });
+    // Bir xil mahsulot+rang bo'lsa eski miqdor qaytariladi -> mavjud sig'imga qo'shamiz
+    const availColor = await getColorStock(query, product_id, rang) + (sameColor ? parseFloat(prev.quantity) : 0);
+    if (quantity > availColor) {
+      return res.status(400).json({ error: `"${p.rows[0].name}" — ${rangLabel(rang)} rangidan faqat ${availColor} dona bor (so'ralgan: ${quantity})` });
     }
 
     const total_amount = quantity * unit_price;
@@ -404,12 +405,15 @@ router.put('/:id', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req,
           [quantity, product_id]
         );
       }
+      // Rang bo'yicha ombor: eski rangni qaytaramiz, yangisidan ayiramiz
+      await addColorStock(client.query, prev.product_id, prev.rang, parseFloat(prev.quantity));
+      await addColorStock(client.query, product_id, rang, -quantity);
       const upd = await client.query(
         `UPDATE sales SET product_id=$1, customer_id=$2, quantity=$3, unit_price=$4, total_amount=$5,
-           customer_name=$6, customer_phone=$7, sale_date=$8, status=$9, payment_amount=$10, updated_at=NOW()
-         WHERE id=$11 RETURNING *`,
+           customer_name=$6, customer_phone=$7, sale_date=$8, status=$9, payment_amount=$10, rang=$11, updated_at=NOW()
+         WHERE id=$12 RETURNING *`,
         [product_id, customer_id || null, quantity, unit_price, total_amount,
-         custName, custPhone, sale_date, status, payment_amount, req.params.id]
+         custName, custPhone, sale_date, status, payment_amount, rang || null, req.params.id]
       );
       await client.query('COMMIT');
       logAudit(req, {
@@ -505,6 +509,7 @@ router.delete('/:id', requireRole('OWNER'), async (req, res, next) => {
         'UPDATE products SET stock_quantity = stock_quantity + $1 WHERE id = $2',
         [sale.rows[0].quantity, sale.rows[0].product_id]
       );
+      await addColorStock(client.query, sale.rows[0].product_id, sale.rows[0].rang, parseFloat(sale.rows[0].quantity));
       await client.query('DELETE FROM sales WHERE id = $1', [req.params.id]);
       await client.query('COMMIT');
       logAudit(req, {

@@ -3,6 +3,7 @@ const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
 const { logAudit } = require('../services/auditService');
+const { addColorStock } = require('../utils/colorStock');
 
 const router = express.Router();
 router.use(authenticate);
@@ -109,12 +110,13 @@ router.put('/:id/approve', requireRole('OWNER', 'SALES_HEAD'), async (req, res, 
     const client = await require('../db').getClient();
     try {
       await client.query('BEGIN');
-      // Har bir mahsulot omboriga qo'shamiz
+      // Har bir mahsulot omboriga qo'shamiz (umumiy + rang bo'yicha)
       for (const it of items) {
         await client.query(
           'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at = NOW() WHERE id = $2',
           [it.quantity, it.product_id]
         );
+        await addColorStock(client.query, it.product_id, it.rang, it.quantity);
       }
       await client.query(
         `UPDATE product_intakes SET status='APPROVED', approved_by=$1, approved_at=NOW(), updated_at=NOW() WHERE id=$2`,

@@ -12,6 +12,12 @@ const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n
 
 const RANGLAR = ['Қора', 'Оқ', 'Қизил', 'Кўк', 'Яшил', 'Сариқ', 'Тўқ сариқ'];
 const RANG_COLORS = { 'Қора': '#1a1a1a', 'Оқ': '#d1d5db', 'Қизил': '#ef4444', 'Кўк': '#3b82f6', 'Яшил': '#22c55e', 'Сариқ': '#eab308', 'Тўқ сариқ': '#f97316' };
+const rangLabel = (r) => (r && r.trim()) ? r : 'Rangsiz';
+// Tanlangan rang bo'yicha ombordagi son
+const rowAvail = (x) => {
+  const cs = (x.color_stock || []).find(c => (c.rang || '') === (x.rang || ''));
+  return cs ? cs.quantity : 0;
+};
 
 export default function QuickSalePage() {
   const qc = useQueryClient();
@@ -77,10 +83,12 @@ export default function QuickSalePage() {
     if (cartIds.has(p.id)) {
       setCart(c => c.map(x => x.id === p.id ? { ...x, qty: x.qty + 1 } : x));
     } else {
+      const cs = p.color_stock || [];
       setCart(c => [...c, {
         id: p.id, name: p.name, unit: p.unit || 'dona',
         price: parseFloat(p.price) || 0, qty: 1, stock: p.stock_quantity,
-        rang: p.rang || '',
+        color_stock: cs,
+        rang: cs.length === 1 ? cs[0].rang : '',
       }]);
     }
   };
@@ -128,10 +136,15 @@ export default function QuickSalePage() {
   const checkout = () => {
     if (!cart.length) return toast.error('Savat bo\'sh');
     if (!customerId) return toast.error('Mijozni tanlang — savdo faqat mijozga qilinadi');
-    // Validatsiya
+    // Validatsiya — RANG bo'yicha
     for (const x of cart) {
       if (!x.qty || x.qty < 1) return toast.error(`"${x.name}" miqdori noto'g'ri`);
-      if (x.qty > x.stock) return toast.error(`"${x.name}" omborida yetarli emas (${x.stock})`);
+      if (!(x.color_stock || []).length) return toast.error(`"${x.name}" omborda yo'q`);
+      if (!x.rang) return toast.error(`"${x.name}" uchun rang tanlang`);
+      const avail = rowAvail(x);
+      if (parseFloat(x.qty) > avail) {
+        return toast.error(`"${x.name}" — ${rangLabel(x.rang)} rangidan faqat ${avail} dona bor`);
+      }
     }
     // Chek uchun savat nusxasi (nomlar bilan)
     lastCartRef.current = cart.map(x => ({ name: x.name, qty: parseInt(x.qty), price: parseFloat(x.price), unit: x.unit, rang: x.rang }));
@@ -361,22 +374,28 @@ export default function QuickSalePage() {
                       <td className="text-gray-400">{i + 1}</td>
                       <td>
                         <div className="font-medium text-gray-900">{x.name}</div>
-                        <div className="text-xs text-gray-400">Ombor: {x.stock} {x.unit}</div>
+                        <div className="text-xs text-gray-400">
+                          {x.rang ? `${rangLabel(x.rang)}: ${rowAvail(x)} ${x.unit}` : `Jami ombor: ${x.stock} ${x.unit}`}
+                        </div>
                       </td>
                       <td>
-                        <div className="flex items-center gap-1">
-                          <select
-                            value={x.rang || ''}
-                            onChange={e => updateRow(x.id, 'rang', e.target.value)}
-                            className="select py-1 px-2 text-sm w-32"
-                          >
-                            <option value="">Rangsiz</option>
-                            {RANGLAR.map(r => (
-                              <option key={r} value={r}>{r}</option>
-                            ))}
-                          </select>
-                          {x.rang && <span style={{ display:'inline-block', width:9, height:9, borderRadius:'50%', flexShrink:0, background: RANG_COLORS[x.rang] || '#999', border:'1px solid #ccc' }} />}
-                        </div>
+                        {(x.color_stock || []).length === 0 ? (
+                          <span className="text-xs text-red-500">Omborda yo'q</span>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <select
+                              value={x.rang || ''}
+                              onChange={e => updateRow(x.id, 'rang', e.target.value)}
+                              className={`select py-1 px-2 text-sm w-36 ${!x.rang ? 'border-red-300' : ''}`}
+                            >
+                              <option value="">— Rang tanlang —</option>
+                              {(x.color_stock || []).map(c => (
+                                <option key={c.rang || 'none'} value={c.rang}>{rangLabel(c.rang)} ({c.quantity})</option>
+                              ))}
+                            </select>
+                            {x.rang && <span style={{ display:'inline-block', width:9, height:9, borderRadius:'50%', flexShrink:0, background: RANG_COLORS[x.rang] || '#999', border:'1px solid #ccc' }} />}
+                          </div>
+                        )}
                       </td>
                       <td>
                         <input
@@ -388,10 +407,10 @@ export default function QuickSalePage() {
                       </td>
                       <td>
                         <input
-                          type="number" min="1" max={x.stock} value={x.qty}
+                          type="number" min="1" max={rowAvail(x)} value={x.qty}
                           onChange={e => updateRow(x.id, 'qty', e.target.value)}
                           onFocus={e => e.target.select()}
-                          className={`input py-1 px-2 text-sm w-20 ${x.qty > x.stock ? 'border-red-400 text-red-600' : ''}`}
+                          className={`input py-1 px-2 text-sm w-20 ${x.rang && parseFloat(x.qty) > rowAvail(x) ? 'border-red-400 text-red-600' : ''}`}
                         />
                       </td>
                       <td className="font-semibold text-blue-700 whitespace-nowrap">

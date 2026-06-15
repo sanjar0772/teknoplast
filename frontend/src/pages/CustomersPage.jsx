@@ -97,17 +97,20 @@ export default function CustomersPage() {
   });
 
   const openAddSale = () => setSaleForm({
-    product_id: '', quantity: 1, unit_price: '',
+    product_id: '', quantity: 1, unit_price: '', rang: '',
     sale_date: new Date().toISOString().slice(0, 10), status: 'PAID',
   });
   const openEditSale = (s) => setSaleForm({
     id: s.id, product_id: s.product_id || '', quantity: s.quantity,
-    unit_price: parseFloat(s.unit_price),
+    unit_price: parseFloat(s.unit_price), rang: s.rang || '',
     sale_date: s.sale_date ? String(s.sale_date).slice(0, 10) : new Date().toISOString().slice(0, 10),
     status: s.status,
   });
+  // Tanlangan mahsulotning rang bo'yicha ombori
+  const saleProductColors = (productsData?.products?.find(p => p.id === saleForm?.product_id)?.color_stock) || [];
   const submitSale = () => {
     if (!saleForm.product_id) return toast.error('Mahsulotni tanlang');
+    if (saleProductColors.length && !saleForm.rang) return toast.error('Rangni tanlang');
     if (!saleForm.quantity || saleForm.quantity < 1) return toast.error('Miqdor noto\'g\'ri');
     const total = (parseFloat(saleForm.quantity) || 0) * (parseFloat(saleForm.unit_price) || 0);
     saveSaleMutation.mutate({
@@ -116,6 +119,7 @@ export default function CustomersPage() {
       product_id: saleForm.product_id,
       quantity: parseInt(saleForm.quantity),
       unit_price: parseFloat(saleForm.unit_price),
+      rang: saleForm.rang || null,
       sale_date: saleForm.sale_date,
       status: saleForm.status,
       payment_amount: saleForm.status === 'PAID' ? total : 0,
@@ -376,6 +380,21 @@ export default function CustomersPage() {
                       ))}
                     </select>
                   </div>
+                  {saleProductColors.length > 0 && (
+                    <div>
+                      <label className="label text-xs">Rang *</label>
+                      <select
+                        value={saleForm.rang || ''}
+                        onChange={e => setSaleForm(f => ({ ...f, rang: e.target.value }))}
+                        className="select text-sm"
+                      >
+                        <option value="">— Rang tanlang —</option>
+                        {saleProductColors.map(c => (
+                          <option key={c.rang || 'none'} value={c.rang}>{(c.rang && c.rang.trim()) ? c.rang : 'Rangsiz'} ({c.quantity})</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="label text-xs">Miqdor *</label>

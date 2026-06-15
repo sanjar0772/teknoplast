@@ -784,6 +784,7 @@ if (USE_PG) {
       `ALTER TABLE employee_production ADD COLUMN approval_status TEXT DEFAULT 'APPROVED'`,
       `ALTER TABLE employee_production ADD COLUMN approved_by TEXT`,
       `ALTER TABLE employee_production ADD COLUMN approved_at TEXT`,
+      `CREATE TABLE IF NOT EXISTS product_color_stock (product_id TEXT NOT NULL, rang TEXT NOT NULL DEFAULT '', quantity REAL NOT NULL DEFAULT 0, PRIMARY KEY (product_id, rang))`,
     ];
     for (const m of migrations) {
       try {

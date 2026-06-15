@@ -93,10 +93,9 @@ function ProductIntakeTab({ canCreate, canApprove }) {
   });
 
   // cart row: { rowId, product_id, name, stock, rang, qty }
+  // Har safar yangi qator — bitta mahsulotni bir necha rangda kiritish mumkin
   const addToCart = (p) => {
-    setCart(c => c.find(x => x.product_id === p.id)
-      ? c.map(x => x.product_id === p.id ? { ...x, qty: parseInt(x.qty || 0) + 1 } : x)
-      : [...c, { rowId: newRowId(), product_id: p.id, name: p.name, stock: p.stock_quantity, rang: p.rang || '', qty: 1 }]);
+    setCart(c => [...c, { rowId: newRowId(), product_id: p.id, name: p.name, stock: p.stock_quantity, rang: '', qty: 1 }]);
     setSearch('');
   };
   const updateRow = (rowId, field, value) => {
@@ -107,9 +106,10 @@ function ProductIntakeTab({ canCreate, canApprove }) {
   const submit = () => {
     if (!cart.length) return toast.error('Mahsulot qo\'shing');
     for (const r of cart) {
+      if (!r.rang) return toast.error(`"${r.name}" uchun rang tanlang`);
       if (!r.qty || parseInt(r.qty) < 1) return toast.error(`"${r.name}" miqdori noto'g'ri`);
     }
-    createMutation.mutate({ items: cart.map(r => ({ product_id: r.product_id, quantity: parseInt(r.qty), rang: r.rang || null })), notes });
+    createMutation.mutate({ items: cart.map(r => ({ product_id: r.product_id, quantity: parseInt(r.qty), rang: r.rang })), notes });
   };
 
   return (
@@ -200,14 +200,19 @@ function ProductIntakeTab({ canCreate, canApprove }) {
                       <div className="text-xs text-gray-400">ombor: {x.stock}</div>
                     </td>
                     <td>
-                      {x.rang ? (
-                        <span className="inline-flex items-center gap-1 text-sm text-gray-700">
-                          <span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background: RANG_COLORS[x.rang] || '#999', border:'1px solid #ccc' }} />
-                          {x.rang}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400 text-sm">Rangsiz</span>
-                      )}
+                      <div className="flex items-center gap-1">
+                        <select
+                          value={x.rang}
+                          onChange={e => updateRow(x.rowId, 'rang', e.target.value)}
+                          className={`select py-1 px-2 text-sm w-32 ${!x.rang ? 'border-red-300' : ''}`}
+                        >
+                          <option value="">— Rang —</option>
+                          {RANGLAR.map(r => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
+                        {x.rang && <span style={{ display:'inline-block', width:9, height:9, borderRadius:'50%', flexShrink:0, background: RANG_COLORS[x.rang] || '#999', border:'1px solid #ccc' }} />}
+                      </div>
                     </td>
                     <td>
                       <input type="number" min="1" value={x.qty}

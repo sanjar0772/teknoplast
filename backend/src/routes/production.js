@@ -4,6 +4,7 @@ const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
 const { logAudit } = require('../services/auditService');
+const { addColorStock } = require('../utils/colorStock');
 
 const router = express.Router();
 router.use(authenticate);
@@ -11,7 +12,7 @@ router.use(authenticate);
 // Faqat APPROVED yozuvlar uchun ombor qaytariladi, keyin o'chiriladi
 async function clearEmployeeDay(client, employee_id, production_date) {
   const existing = await client.query(
-    'SELECT product_id, quantity_produced, approval_status FROM employee_production WHERE employee_id=$1 AND production_date=$2',
+    'SELECT product_id, quantity_produced, approval_status, rang FROM employee_production WHERE employee_id=$1 AND production_date=$2',
     [employee_id, production_date]
   );
   for (const row of existing.rows) {
@@ -20,6 +21,7 @@ async function clearEmployeeDay(client, employee_id, production_date) {
         'UPDATE products SET stock_quantity = stock_quantity - $1, updated_at=NOW() WHERE id=$2',
         [row.quantity_produced, row.product_id]
       );
+      await addColorStock(client.query, row.product_id, row.rang, -row.quantity_produced);
     }
   }
   await client.query(
@@ -358,6 +360,7 @@ router.put('/approve-day', requireRole('OWNER', 'SALES_HEAD'), async (req, res, 
             'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at=NOW() WHERE id=$2',
             [row.quantity_produced, row.product_id]
           );
+          await addColorStock(client.query, row.product_id, row.rang, row.quantity_produced);
         }
         await client.query(
           `UPDATE employee_production SET approval_status='APPROVED', approved_by=$1, approved_at=NOW() WHERE id=$2`,
@@ -397,6 +400,7 @@ router.delete('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async
           'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at=NOW() WHERE id=$2',
           [row.quantity_produced, row.product_id]
         );
+        await addColorStock(client.query, row.product_id, row.rang, -row.quantity_produced);
       }
       await client.query('DELETE FROM employee_production WHERE id=$1', [req.params.id]);
       await client.query('COMMIT');

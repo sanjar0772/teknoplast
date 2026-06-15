@@ -33,7 +33,14 @@ router.get('/', async (req, res, next) => {
     if (type)   { sql += ` AND p.type = $${idx++}`; params.push(type); }
     sql += ' ORDER BY p.name';
     const result = await query(sql, params);
-    res.json({ products: result.rows });
+    // Rang bo'yicha ombor — har bir mahsulotga biriktiramiz
+    const cs = await query('SELECT product_id, rang, quantity FROM product_color_stock WHERE quantity > 0', []);
+    const byProduct = {};
+    for (const row of cs.rows) {
+      (byProduct[row.product_id] = byProduct[row.product_id] || []).push({ rang: row.rang || '', quantity: parseFloat(row.quantity) });
+    }
+    const products = result.rows.map(p => ({ ...p, color_stock: byProduct[p.id] || [] }));
+    res.json({ products });
   } catch (err) { next(err); }
 });
 
@@ -163,6 +170,7 @@ router.post('/reset-stock', requireRole('OWNER'), async (req, res, next) => {
     const c = await query('SELECT COUNT(*) as count FROM products', []);
     const count = parseInt(c.rows[0]?.count ?? c.rows[0]?.['COUNT(*)'] ?? 0);
     await query('UPDATE products SET stock_quantity = 0, updated_at = NOW()', []);
+    await query('DELETE FROM product_color_stock', []);
     logAudit(req, { action: 'RESET_ALL_STOCK', table: 'products', recordId: 'ALL', newValues: { stock_quantity: 0 } });
     res.json({ count });
   } catch (err) { next(err); }
@@ -178,7 +186,9 @@ router.post('/reset-all', requireRole('OWNER'), async (req, res, next) => {
       const pRes = await client.query('DELETE FROM payments');
       // 2. Barcha sotuvlarni o'chirish
       const sRes = await client.query('DELETE FROM sales');
-      // 3. Barcha mahsulotlarni o'chirish
+      // 3. Rang bo'yicha ombor
+      await client.query('DELETE FROM product_color_stock');
+      // 4. Barcha mahsulotlarni o'chirish
       const prRes = await client.query('DELETE FROM products');
       await client.query('COMMIT');
       logAudit(req, { action: 'RESET_ALL_PRODUCTS_AND_SALES', table: 'products', recordId: 'ALL', newValues: {} });

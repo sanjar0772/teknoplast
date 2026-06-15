@@ -8,18 +8,14 @@ const { logAudit } = require('../services/auditService');
 const router = express.Router();
 router.use(authenticate);
 
-/**
- * Bir xodimning bir kungi BARCHA yozuvlarini o'chiradi va ombordagi mahsulotni qaytaradi.
- * Qayta kiritishdan oldin chaqiriladi — shunda eski yozuvlar ikki marta sanalmaydi.
- * Bir kunda bir nechta mahsulot bo'lishi mumkin (4 tagacha), shuning uchun hammasini tozalaymiz.
- */
+// Faqat APPROVED yozuvlar uchun ombor qaytariladi, keyin o'chiriladi
 async function clearEmployeeDay(client, employee_id, production_date) {
   const existing = await client.query(
-    'SELECT product_id, quantity_produced FROM employee_production WHERE employee_id=$1 AND production_date=$2',
+    'SELECT product_id, quantity_produced, approval_status FROM employee_production WHERE employee_id=$1 AND production_date=$2',
     [employee_id, production_date]
   );
   for (const row of existing.rows) {
-    if (row.product_id) {
+    if (row.product_id && row.approval_status === 'APPROVED') {
       await client.query(
         'UPDATE products SET stock_quantity = stock_quantity - $1, updated_at=NOW() WHERE id=$2',
         [row.quantity_produced, row.product_id]
@@ -32,26 +28,21 @@ async function clearEmployeeDay(client, employee_id, production_date) {
   );
 }
 
-/**
- * Bitta ishlab chiqarish yozuvini qo'shadi + tayyor mahsulotni omborga qo'shadi.
- */
+// PENDING sifatida saqlaydi — omborga qo'SHILMAYDI (tasdiqlashdan keyin qo'shiladi)
 async function insertProductionRow(client, {
   employee_id, product_id, machine_id, production_date,
-  quantity_produced, daily_tariff, calculated_amount, month, notes, production_type,
+  quantity_produced, daily_tariff, calculated_amount, month, notes, production_type, rang,
 }) {
   const r = await client.query(
     `INSERT INTO employee_production
-      (employee_id, product_id, machine_id, production_date, quantity_produced, daily_tariff, calculated_amount, month, notes, production_type)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      (employee_id, product_id, machine_id, production_date, quantity_produced, daily_tariff,
+       calculated_amount, month, notes, production_type, rang, approval_status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'PENDING') RETURNING *`,
     [employee_id, product_id || null, machine_id || null, production_date,
-     quantity_produced, daily_tariff, calculated_amount, month, notes || null, production_type || 'FINISHED']
+     quantity_produced, daily_tariff, calculated_amount, month, notes || null,
+     production_type || 'FINISHED', rang || null]
   );
-  if (product_id) {
-    await client.query(
-      'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at=NOW() WHERE id=$2',
-      [quantity_produced, product_id]
-    );
-  }
+  // Stock PENDING da qo'SHILMAYDI — faqat tasdiqlangandan keyin qo'shiladi
   return r.rows[0];
 }
 
@@ -179,7 +170,7 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { employee_id, product_id, machine_id, production_date, quantity_produced, notes, production_type, daily_tariff: custom_tariff } = req.body;
+    const { employee_id, product_id, machine_id, production_date, quantity_produced, notes, production_type, daily_tariff: custom_tariff, rang } = req.body;
 
     const emp = await query('SELECT type, daily_tariff FROM employees WHERE id=$1 AND is_active=true', [employee_id]);
     if (!emp.rows.length) return res.status(404).json({ error: 'Xodim topilmadi' });
@@ -222,7 +213,7 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
       await clearEmployeeDay(client, employee_id, production_date);
       const production = await insertProductionRow(client, {
         employee_id, product_id, machine_id, production_date,
-        quantity_produced, daily_tariff, calculated_amount, month, notes, production_type: ptype,
+        quantity_produced, daily_tariff, calculated_amount, month, notes, production_type: ptype, rang,
       });
 
       await client.query('COMMIT');
@@ -307,7 +298,7 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async 
             employee_id, product_id: entry.product_id,
             machine_id: entry.machine_id, production_date,
             quantity_produced: entry.quantity_produced, daily_tariff,
-            calculated_amount, month, notes: entry.notes, production_type: ptype,
+            calculated_amount, month, notes: entry.notes, production_type: ptype, rang: entry.rang,
           });
           results.push(production);
         }
@@ -328,6 +319,67 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async 
   } catch (err) { next(err); }
 });
 
+// GET /api/production/pending — tasdiqlash kutayotgan yozuvlar (SALES_HEAD/OWNER ko'radi)
+router.get('/pending', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
+  try {
+    const result = await query(`
+      SELECT ep.*, e.name as employee_name, e.type as employee_type,
+             p.name as product_name
+      FROM employee_production ep
+      JOIN employees e ON ep.employee_id = e.id
+      LEFT JOIN products p ON ep.product_id = p.id
+      WHERE ep.approval_status = 'PENDING'
+      ORDER BY ep.production_date DESC, e.name
+    `, []);
+    res.json({ production: result.rows });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/production/approve-day — bir xodimning bir kunini tasdiqlash → ombor yangilanadi
+router.put('/approve-day', requireRole('OWNER', 'SALES_HEAD'), async (req, res, next) => {
+  try {
+    const { employee_id, production_date } = req.body;
+    if (!employee_id || !production_date) {
+      return res.status(400).json({ error: 'employee_id va production_date kerak' });
+    }
+    const pending = await query(
+      `SELECT * FROM employee_production WHERE employee_id=$1 AND production_date=$2 AND approval_status='PENDING'`,
+      [employee_id, production_date]
+    );
+    if (!pending.rows.length) {
+      return res.status(400).json({ error: 'Tasdiqlash kerak yozuv topilmadi' });
+    }
+    const client = await require('../db').getClient();
+    try {
+      await client.query('BEGIN');
+      for (const row of pending.rows) {
+        if (row.product_id) {
+          await client.query(
+            'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at=NOW() WHERE id=$2',
+            [row.quantity_produced, row.product_id]
+          );
+        }
+        await client.query(
+          `UPDATE employee_production SET approval_status='APPROVED', approved_by=$1, approved_at=NOW() WHERE id=$2`,
+          [req.user.id, row.id]
+        );
+      }
+      await client.query('COMMIT');
+      logAudit(req, {
+        action: 'PRODUCTION_APPROVE', table: 'employee_production',
+        recordId: pending.rows.map(r => r.id).join(','),
+        newValues: { employee_id, production_date, count: pending.rows.length },
+      });
+      res.json({ count: pending.rows.length, message: `${pending.rows.length} ta yozuv tasdiqlandi, mahsulot omborga qo'shildi` });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (err) { next(err); }
+});
+
 // DELETE /api/production/:id — yagona yozuvni o'chirish (OWNER yoki PRODUCTION_HEAD)
 router.delete('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async (req, res, next) => {
   try {
@@ -339,8 +391,8 @@ router.delete('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async
     const client = await require('../db').getClient();
     try {
       await client.query('BEGIN');
-      // Mahsulot omborini orqaga qaytaramiz (agar bog'langan mahsulot bo'lsa)
-      if (row.product_id && row.quantity_produced > 0) {
+      // Faqat APPROVED yozuvlar uchun ombor qaytariladi
+      if (row.product_id && row.quantity_produced > 0 && row.approval_status === 'APPROVED') {
         await client.query(
           'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at=NOW() WHERE id=$2',
           [row.quantity_produced, row.product_id]

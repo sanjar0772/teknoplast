@@ -780,6 +780,10 @@ if (USE_PG) {
       `ALTER TABLE salaries ADD COLUMN total_produced INTEGER DEFAULT 0`,
       `ALTER TABLE sales ADD COLUMN rang TEXT`,
       `ALTER TABLE intake_items ADD COLUMN rang TEXT`,
+      `ALTER TABLE employee_production ADD COLUMN rang TEXT`,
+      `ALTER TABLE employee_production ADD COLUMN approval_status TEXT DEFAULT 'APPROVED'`,
+      `ALTER TABLE employee_production ADD COLUMN approved_by TEXT`,
+      `ALTER TABLE employee_production ADD COLUMN approved_at TEXT`,
     ];
     for (const m of migrations) {
       try {

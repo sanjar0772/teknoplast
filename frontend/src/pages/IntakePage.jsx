@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { PackagePlus, X, Search, Plus, Trash2, Check, Ban, Eye, Save, Users, ChevronDown } from 'lucide-react';
+import { PackagePlus, X, Search, Plus, Trash2, Check, Ban, Eye, Save, Users, ChevronDown, Clock } from 'lucide-react';
 import { intakesAPI, productsAPI, productionAPI, employeesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import clsx from 'clsx';
@@ -308,14 +308,14 @@ function ProductIntakeTab({ canCreate, canApprove }) {
 }
 
 // ─── Ishchilar ishi tab ───────────────────────────────────────────────────────
-function WorkerOutputTab() {
+function WorkerOutputTab({ canApprove }) {
   const qc = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
   const [entries, setEntries] = useState([newEntry()]);
 
   function newEntry() {
-    return { employee_id: '', product_id: '', quantity_produced: '', production_type: 'FINISHED', tarif: '' };
+    return { employee_id: '', product_id: '', quantity_produced: '', production_type: 'FINISHED', tarif: '', rang: '' };
   }
 
   // Faqat STANOKCHI va DETALCHI ishchilarni yuklaymiz
@@ -330,6 +330,25 @@ function WorkerOutputTab() {
   const { data: dailyData, refetch: refetchDaily } = useQuery({
     queryKey: ['production-daily', date],
     queryFn: () => productionAPI.getAll({ date }).then(r => r.data),
+  });
+
+  const { data: pendingData, refetch: refetchPending } = useQuery({
+    queryKey: ['production-pending'],
+    queryFn: () => productionAPI.getPending().then(r => r.data),
+    enabled: canApprove,
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: ({ employee_id, production_date }) => productionAPI.approveDay(employee_id, production_date),
+    onSuccess: (res) => {
+      toast.success(res.data.message);
+      qc.invalidateQueries({ queryKey: ['production-pending'] });
+      qc.invalidateQueries({ queryKey: ['production-daily', date] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      refetchPending();
+      refetchDaily();
+    },
+    onError: (e) => toast.error(e?.response?.data?.error || 'Xato'),
   });
 
   const workers = (empData?.employees || []).filter(e => e.type === 'STANOKCHI' || e.type === 'DETALCHI');
@@ -402,6 +421,9 @@ function WorkerOutputTab() {
   const save = () => {
     const valid = entries.filter(e => e.employee_id && parseFloat(e.quantity_produced) > 0);
     if (!valid.length) return toast.error('Kamida bitta ishchi miqdori kiritilsin');
+    for (const e of valid) {
+      if (!e.rang) return toast.error(`"${empMap[e.employee_id]?.name || 'Ishchi'}" uchun rang tanlang`);
+    }
     bulkMutation.mutate({
       production_date: date,
       entries: valid.map(e => ({
@@ -410,16 +432,81 @@ function WorkerOutputTab() {
         quantity_produced: parseFloat(e.quantity_produced),
         production_type: empMap[e.employee_id]?.type === 'DETALCHI' ? 'SEMI_FINISHED' : (e.production_type || 'FINISHED'),
         daily_tariff: e.tarif !== '' ? parseFloat(e.tarif) : undefined,
+        rang: e.rang,
       })),
     });
   };
 
   const todayRows = (dailyData?.production || []).filter(r =>
-    r.employee_type === 'STANOKCHI' || r.employee_type === 'DETALCHI'
+    (r.employee_type === 'STANOKCHI' || r.employee_type === 'DETALCHI') && r.approval_status === 'APPROVED'
   );
+  const pendingRows = (dailyData?.production || []).filter(r =>
+    (r.employee_type === 'STANOKCHI' || r.employee_type === 'DETALCHI') && r.approval_status !== 'APPROVED'
+  );
+  // Tasdiqlash kutayotganlar (barcha sanalar) — faqat sales head/owner ko'radi
+  const allPending = (pendingData?.production || []);
+  // Xodim+sana bo'yicha guruhlaymiz
+  const pendingGroups = [];
+  const seen = new Set();
+  for (const r of allPending) {
+    const key = `${r.employee_id}|${r.production_date}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      pendingGroups.push({
+        employee_id: r.employee_id,
+        employee_name: r.employee_name,
+        production_date: r.production_date,
+        rows: allPending.filter(x => x.employee_id === r.employee_id && x.production_date === r.production_date),
+      });
+    }
+  }
 
   return (
     <div className="space-y-6">
+
+      {/* TASDIQLASH BO'LIMI — faqat sales head/owner ko'radi */}
+      {canApprove && pendingGroups.length > 0 && (
+        <div className="card border-l-4 border-yellow-400">
+          <div className="flex items-center gap-2 mb-3">
+            <Clock size={16} className="text-yellow-500" />
+            <h2 className="font-semibold text-gray-800">Tasdiqlash kutilmoqda — {pendingGroups.length} ta guruh</h2>
+          </div>
+          <div className="space-y-3">
+            {pendingGroups.map(g => (
+              <div key={`${g.employee_id}|${g.production_date}`} className="bg-yellow-50 border border-yellow-100 rounded-xl p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <span className="font-semibold text-gray-900">{g.employee_name}</span>
+                    <span className="text-sm text-gray-500 ml-2">{new Date(g.production_date + 'T12:00:00').toLocaleDateString('uz-UZ')}</span>
+                  </div>
+                  <button
+                    onClick={() => approveMutation.mutate({ employee_id: g.employee_id, production_date: g.production_date })}
+                    disabled={approveMutation.isPending}
+                    className="btn-success btn-sm"
+                  >
+                    <Check size={13} /> Tasdiqlash
+                  </button>
+                </div>
+                <div className="space-y-1">
+                  {g.rows.map(r => (
+                    <div key={r.id} className="flex items-center gap-3 text-sm text-gray-700">
+                      <span className="font-medium">{r.product_name || '—'}</span>
+                      {r.rang && (
+                        <span className="flex items-center gap-1">
+                          <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background: RANG_COLORS[r.rang] || '#999' }} />
+                          {r.rang}
+                        </span>
+                      )}
+                      <span className="text-gray-500">{fmt(r.quantity_produced)} dona · {fmt(r.calculated_amount)} so'm</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Sana */}
       <div className="flex items-center gap-3">
         <label className="label mb-0 whitespace-nowrap">Sana:</label>
@@ -439,12 +526,13 @@ function WorkerOutputTab() {
           <>
             {/* Ustun sarlavhalari */}
             <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-400 px-1 mb-2 hidden sm:grid">
-              <span className="col-span-3">Xodim</span>
-              <span className="col-span-3">Mahsulot</span>
+              <span className="col-span-2">Xodim</span>
+              <span className="col-span-2">Mahsulot</span>
+              <span className="col-span-2">Rang <span className="text-red-400">*</span></span>
               <span className="col-span-1">Turi</span>
-              <span className="col-span-2 text-blue-500">Tarif (so'm/dona)</span>
+              <span className="col-span-2 text-blue-500">Tarif</span>
               <span className="col-span-1">Dona</span>
-              <span className="col-span-2 text-right text-green-600">Hisoblangan haq</span>
+              <span className="col-span-2 text-right text-green-600">Haq</span>
             </div>
 
             <div className="space-y-2">
@@ -459,13 +547,13 @@ function WorkerOutputTab() {
                     isDetalchi ? 'bg-orange-50 border-orange-100' : 'bg-gray-50 border-gray-100'
                   )}>
                     {/* Xodim */}
-                    <div className="col-span-12 sm:col-span-3">
+                    <div className="col-span-12 sm:col-span-2">
                       <select
                         value={entry.employee_id}
                         onChange={e => updateEntry(i, 'employee_id', e.target.value)}
                         className="select text-sm w-full"
                       >
-                        <option value="">— Xodim tanlang —</option>
+                        <option value="">— Xodim —</option>
                         {workers.map(w => (
                           <option key={w.id} value={w.id}>
                             {w.name} ({w.type === 'DETALCHI' ? 'D' : 'S'})
@@ -475,7 +563,7 @@ function WorkerOutputTab() {
                     </div>
 
                     {/* Mahsulot */}
-                    <div className="col-span-12 sm:col-span-3">
+                    <div className="col-span-12 sm:col-span-2">
                       <select
                         value={entry.product_id}
                         onChange={e => updateEntry(i, 'product_id', e.target.value)}
@@ -484,6 +572,20 @@ function WorkerOutputTab() {
                         <option value="">— Mahsulot —</option>
                         {products.map(p => (
                           <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Rang */}
+                    <div className="col-span-12 sm:col-span-2">
+                      <select
+                        value={entry.rang}
+                        onChange={e => updateEntry(i, 'rang', e.target.value)}
+                        className={`select text-sm w-full ${!entry.rang ? 'border-red-300' : ''}`}
+                      >
+                        <option value="">— Rang —</option>
+                        {RANGLAR.map(r => (
+                          <option key={r} value={r}>{r}</option>
                         ))}
                       </select>
                     </div>
@@ -574,45 +676,50 @@ function WorkerOutputTab() {
         )}
       </div>
 
-      {/* Shu kun uchun saqlangan yozuvlar */}
-      {todayRows.length > 0 && (
+      {/* Shu kun uchun saqlangan + kutilayotgan yozuvlar */}
+      {(todayRows.length > 0 || pendingRows.length > 0) && (
         <div className="card">
           <h2 className="text-sm font-semibold text-gray-700 mb-4">
-            {new Date(date + 'T12:00:00').toLocaleDateString('uz-UZ', { day: 'numeric', month: 'long' })} — Saqlangan natijalar
+            {new Date(date + 'T12:00:00').toLocaleDateString('uz-UZ', { day: 'numeric', month: 'long' })} — Natijalar
           </h2>
           <div className="table-container">
             <table className="table text-sm">
               <thead>
                 <tr>
                   <th>Xodim</th>
-                  <th>Turi</th>
                   <th>Mahsulot</th>
-                  <th>Tarif (so'm/dona)</th>
+                  <th>Rang</th>
                   <th>Miqdor</th>
-                  <th>Hisoblangan haq</th>
+                  <th>Haq</th>
+                  <th>Holat</th>
                 </tr>
               </thead>
               <tbody>
-                {todayRows.map(row => (
-                  <tr key={row.id}>
+                {[...pendingRows, ...todayRows].map(row => (
+                  <tr key={row.id} className={row.approval_status !== 'APPROVED' ? 'bg-yellow-50' : ''}>
                     <td className="font-medium">{row.employee_name}</td>
-                    <td>
-                      <span className={clsx(
-                        'text-xs font-medium px-2 py-0.5 rounded-full',
-                        row.employee_type === 'DETALCHI' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
-                      )}>
-                        {row.employee_type}
-                      </span>
-                    </td>
                     <td>{row.product_name || '—'}</td>
-                    <td className="text-gray-500">{fmt(row.daily_tariff)} so'm</td>
+                    <td>
+                      {row.rang ? (
+                        <span className="flex items-center gap-1">
+                          <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background: RANG_COLORS[row.rang] || '#999' }} />
+                          {row.rang}
+                        </span>
+                      ) : '—'}
+                    </td>
                     <td className="font-semibold">{fmt(row.quantity_produced)} dona</td>
                     <td className="font-bold text-green-700">{fmt(row.calculated_amount)} so'm</td>
+                    <td>
+                      {row.approval_status === 'APPROVED'
+                        ? <span className="badge-green">Tasdiqlangan</span>
+                        : <span className="badge-yellow">Kutilmoqda</span>
+                      }
+                    </td>
                   </tr>
                 ))}
                 <tr className="bg-green-50">
-                  <td colSpan={5} className="text-right text-sm font-semibold text-gray-700 pr-2">Jami:</td>
-                  <td className="font-bold text-green-800 text-base">
+                  <td colSpan={4} className="text-right text-sm font-semibold text-gray-700 pr-2">Jami (tasdiqlangan):</td>
+                  <td className="font-bold text-green-800 text-base" colSpan={2}>
                     {fmt(todayRows.reduce((s, r) => s + parseFloat(r.calculated_amount || 0), 0))} so'm
                   </td>
                 </tr>
@@ -627,7 +734,7 @@ function WorkerOutputTab() {
 
 // ─── Asosiy sahifa ────────────────────────────────────────────────────────────
 export default function IntakePage() {
-  const { isOwner, isSalesHead, isKirimchi, isProductionHead } = useAuthStore();
+  const { isOwner, isSalesHead, isKirimchi, isProductionHead, user } = useAuthStore();
   const [tab, setTab] = useState('intake');
 
   const canCreate = isOwner() || isKirimchi() || isProductionHead();
@@ -670,7 +777,7 @@ export default function IntakePage() {
         <ProductIntakeTab canCreate={canCreate} canApprove={canApprove} />
       )}
       {tab === 'workers' && (
-        <WorkerOutputTab />
+        <WorkerOutputTab canApprove={canApprove} />
       )}
     </div>
   );

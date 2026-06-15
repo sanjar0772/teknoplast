@@ -114,6 +114,8 @@ export const productionAPI = {
   create: (data) => api.post('/production', data),
   bulk: (data) => api.post('/production/bulk', data),
   remove: (id) => api.delete(`/production/${id}`),
+  getPending: () => api.get('/production/pending'),
+  approveDay: (employee_id, production_date) => api.put('/production/approve-day', { employee_id, production_date }),
 };
 
 // Salaries

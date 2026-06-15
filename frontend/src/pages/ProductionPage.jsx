@@ -17,6 +17,7 @@ export default function ProductionPage() {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [showBulk, setShowBulk] = useState(false);
+  const [historyEmpId, setHistoryEmpId] = useState('');
 
   // Davr bo'yicha statistika (Stanokchi/Detalchi)
   const [rangeStart, setRangeStart] = useState(() => {
@@ -36,6 +37,12 @@ export default function ProductionPage() {
   const { data: daily } = useQuery({
     queryKey: ['production-daily', date],
     queryFn: () => productionAPI.getAll({ date }).then(r => r.data),
+  });
+
+  const { data: empHistory } = useQuery({
+    queryKey: ['production-history', historyEmpId],
+    queryFn: () => productionAPI.getAll({ employee_id: historyEmpId }).then(r => r.data),
+    enabled: !!historyEmpId,
   });
 
   const { data: employees } = useQuery({
@@ -280,6 +287,66 @@ export default function ProductionPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Xodim tarixi — bitta xodimning barcha kiritilgan ishlari */}
+      <div className="card">
+        <div className="flex flex-wrap items-end gap-3 mb-4">
+          <div>
+            <label className="label">Xodim tarixi</label>
+            <select value={historyEmpId} onChange={e => setHistoryEmpId(e.target.value)} className="select w-64">
+              <option value="">— Xodimni tanlang —</option>
+              {(employees?.employees || []).map(e => (
+                <option key={e.id} value={e.id}>
+                  {e.name}{e.type === 'DETALCHI' ? ' (Detalchi)' : e.type === 'STANOKCHI' ? ' (Stanokchi)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          {historyEmpId && (
+            <span className="text-sm text-gray-500">
+              {empHistory?.production?.length || 0} ta yozuv ·
+              Jami: <strong className="text-green-700">{fmt((empHistory?.production || []).reduce((s, r) => s + parseFloat(r.calculated_amount || 0), 0))} so'm</strong>
+            </span>
+          )}
+        </div>
+
+        {historyEmpId && (
+          <div className="table-container">
+            <table className="table text-sm">
+              <thead>
+                <tr><th>Sana</th><th>Mahsulot</th><th>Rang</th><th>Turi</th><th>Miqdor</th><th>Tarif</th><th>Haq</th><th>Holat</th></tr>
+              </thead>
+              <tbody>
+                {!empHistory?.production?.length ? (
+                  <tr><td colSpan={8} className="text-center py-6 text-gray-400">Yozuv yo'q</td></tr>
+                ) : empHistory.production.map(row => (
+                  <tr key={row.id}>
+                    <td className="whitespace-nowrap">{new Date(row.production_date + 'T12:00:00').toLocaleDateString('uz-UZ')}</td>
+                    <td>{row.product_name || '—'}</td>
+                    <td>
+                      {row.rang ? (
+                        <span className="inline-flex items-center gap-1">
+                          <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background: RANG_COLORS[row.rang] || '#999' }} />
+                          {row.rang}
+                        </span>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td>{row.production_type === 'SEMI_FINISHED' ? 'Yarim' : row.production_type === 'FINISHED' ? 'Tayyor' : '—'}</td>
+                    <td className="font-semibold">{fmt(row.quantity_produced)} dona</td>
+                    <td className="text-gray-500">{fmt(row.daily_tariff)} so'm</td>
+                    <td className="font-bold text-green-700">{fmt(row.calculated_amount)} so'm</td>
+                    <td>
+                      {row.approval_status === 'APPROVED'
+                        ? <span className="badge-green">Tasdiqlangan</span>
+                        : <span className="badge-yellow">Kutilmoqda</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Davr bo'yicha statistika — Stanokchi/Detalchi */}

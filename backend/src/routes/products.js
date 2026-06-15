@@ -67,10 +67,10 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { name, type, description, price, daily_production, stock_quantity, raw_material_id, unit } = req.body;
+    const { name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, rang } = req.body;
     const result = await query(
-      'INSERT INTO products (name, type, description, price, daily_production, stock_quantity, raw_material_id, unit) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-      [name, type, description, price, daily_production || 0, stock_quantity || 0, raw_material_id || null, unit || 'dona']
+      'INSERT INTO products (name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, rang) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+      [name, type, description, price, daily_production || 0, stock_quantity || 0, raw_material_id || null, unit || 'dona', rang || null]
     );
     res.status(201).json({ product: result.rows[0] });
   } catch (err) { next(err); }
@@ -188,10 +188,10 @@ router.post('/reset-all', requireRole('OWNER'), async (req, res, next) => {
 // PUT /api/products/:id — yagona mahsulotni yangilash
 router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, next) => {
   try {
-    const { name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, is_active } = req.body;
+    const { name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, is_active, rang } = req.body;
     const result = await query(
-      'UPDATE products SET name=$1,type=$2,description=$3,price=$4,daily_production=$5,stock_quantity=$6,raw_material_id=$7,unit=$8,is_active=$9,updated_at=NOW() WHERE id=$10 RETURNING *',
-      [name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, is_active, req.params.id]
+      'UPDATE products SET name=$1,type=$2,description=$3,price=$4,daily_production=$5,stock_quantity=$6,raw_material_id=$7,unit=$8,is_active=$9,rang=$10,updated_at=NOW() WHERE id=$11 RETURNING *',
+      [name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, is_active, rang || null, req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Mahsulot topilmadi' });
     res.json({ product: result.rows[0] });

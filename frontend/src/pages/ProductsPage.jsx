@@ -8,6 +8,9 @@ import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
+const RANGLAR = ['Қора', 'Оқ', 'Қизил', 'Кўк', 'Яшил', 'Сариқ', 'Тўқ сариқ'];
+const RANG_COLORS = { 'Қора': '#1a1a1a', 'Оқ': '#e5e5e5', 'Қизил': '#ef4444', 'Кўк': '#3b82f6', 'Яшил': '#22c55e', 'Сариқ': '#eab308', 'Тўқ сариқ': '#f97316' };
+
 function Modal({ open, onClose, title, children }) {
   if (!open) return null;
   return (
@@ -149,6 +152,12 @@ export default function ProductsPage() {
               <div>
                 <h3 className="font-semibold text-gray-900">{p.name}</h3>
                 <p className="text-xs text-gray-500">{p.type} · {p.unit}</p>
+                {p.rang && (
+                  <span className="inline-flex items-center gap-1 mt-1 text-xs text-gray-600">
+                    <span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background: RANG_COLORS[p.rang] || '#999', border:'1px solid #ccc' }} />
+                    {p.rang}
+                  </span>
+                )}
               </div>
               <span className={p.is_active ? 'badge-green' : 'badge-gray'}>
                 {p.is_active ? 'Faol' : 'Nofaol'}
@@ -248,6 +257,15 @@ export default function ProductsPage() {
               <option value="">Tanlang (ixtiyoriy)</option>
               {rawMats?.raw_materials?.map(rm => (
                 <option key={rm.id} value={rm.id}>{rm.name} ({rm.stock_balance} {rm.unit})</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">Rangi</label>
+            <select {...register('rang')} className="select">
+              <option value="">— Rangsiz —</option>
+              {RANGLAR.map(r => (
+                <option key={r} value={r}>{r}</option>
               ))}
             </select>
           </div>

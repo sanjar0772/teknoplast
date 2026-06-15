@@ -8,6 +8,9 @@ import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
+const RANGLAR = ['Қора', 'Оқ', 'Қизил', 'Кўк', 'Яшил', 'Сариқ', 'Тўқ сариқ'];
+const RANG_COLORS = { 'Қора': '#1a1a1a', 'Оқ': '#d1d5db', 'Қизил': '#ef4444', 'Кўк': '#3b82f6', 'Яшил': '#22c55e', 'Сариқ': '#eab308', 'Тўқ сариқ': '#f97316' };
+
 export default function ProductionPage() {
   const { isOwner, isProductionHead, isKirimchi } = useAuthStore();
   const qc = useQueryClient();
@@ -122,7 +125,7 @@ export default function ProductionPage() {
   const prodMap = {};
   (products?.products || []).forEach(p => { prodMap[p.id] = p; });
 
-  const newItem = () => ({ prodSearch: '', product_id: '', production_type: 'FINISHED', tarif: '', quantity_produced: '' });
+  const newItem = () => ({ prodSearch: '', product_id: '', production_type: 'FINISHED', tarif: '', quantity_produced: '', rang: '' });
 
   const addEntry = () => {
     setEntries(prev => [...prev, { employee_id: '', items: [newItem()] }]);
@@ -219,6 +222,7 @@ export default function ProductionPage() {
             production_type,
             quantity_produced: parseFloat(item.quantity_produced),
             daily_tariff: item.tarif !== '' ? parseFloat(item.tarif) : undefined,
+            rang: item.rang || null,
           };
         })
     );
@@ -438,15 +442,23 @@ export default function ProductionPage() {
         <div className="table-container">
           <table className="table">
             <thead>
-              <tr><th>Xodim</th><th>Mahsulot</th><th>Tur</th><th>Miqdor</th><th>Tarif</th><th>Hisoblangan</th>{canWrite && <th></th>}</tr>
+              <tr><th>Xodim</th><th>Mahsulot</th><th>Rang</th><th>Tur</th><th>Miqdor</th><th>Tarif</th><th>Hisoblangan</th>{canWrite && <th></th>}</tr>
             </thead>
             <tbody>
               {!daily?.production?.length ? (
-                <tr><td colSpan={canWrite ? 7 : 6} className="text-center py-6 text-gray-400">Bu kun uchun ma'lumot yo'q</td></tr>
+                <tr><td colSpan={canWrite ? 8 : 7} className="text-center py-6 text-gray-400">Bu kun uchun ma'lumot yo'q</td></tr>
               ) : daily.production.map(row => (
                 <tr key={row.id}>
                   <td className="font-medium">{row.employee_name}</td>
                   <td>{row.product_name || '—'}</td>
+                  <td>
+                    {row.rang ? (
+                      <span className="flex items-center gap-1 text-sm">
+                        <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background: RANG_COLORS[row.rang] || '#999' }} />
+                        {row.rang}
+                      </span>
+                    ) : <span className="text-gray-300">—</span>}
+                  </td>
                   <td>{row.production_type === 'SEMI_FINISHED' ? 'Yarim tayyor' : row.production_type === 'FINISHED' ? 'Tayyor' : '—'}</td>
                   <td>{fmt(row.quantity_produced)} dona</td>
                   <td>{fmt(row.daily_tariff)} so'm/dona</td>
@@ -484,9 +496,10 @@ export default function ProductionPage() {
               <div className="flex gap-2 text-xs text-gray-400 font-medium px-1 ml-2">
                 <span className="w-48 shrink-0">Xodim</span>
                 <div className="grid grid-cols-12 gap-2 flex-1">
-                  <span className="col-span-4">Mahsulot</span>
+                  <span className="col-span-3">Mahsulot</span>
+                  <span className="col-span-2">Rang</span>
                   <span className="col-span-2">Tur</span>
-                  <span className="col-span-3 text-blue-500">Tarif so'm/dona</span>
+                  <span className="col-span-2 text-blue-500">Tarif</span>
                   <span className="col-span-2">Dona</span>
                   <span className="col-span-1"></span>
                 </div>
@@ -526,13 +539,13 @@ export default function ProductionPage() {
                       {entry.items.map((item, j) => (
                         <div key={j} className="grid grid-cols-12 gap-2 items-center">
                           {/* Mahsulot */}
-                          <div className="col-span-4">
+                          <div className="col-span-3">
                             <input
                               type="text"
                               list={`prod-list-${i}-${j}`}
                               value={item.prodSearch}
                               onChange={e => updateItem(i, j, 'prodSearch', e.target.value)}
-                              placeholder="Mahsulot qidirir..."
+                              placeholder="Mahsulot..."
                               className="input text-sm w-full"
                             />
                             <datalist id={`prod-list-${i}-${j}`}>
@@ -540,6 +553,22 @@ export default function ProductionPage() {
                                 <option key={p.id} value={p.name} />
                               ))}
                             </datalist>
+                          </div>
+                          {/* Rang */}
+                          <div className="col-span-2">
+                            <div className="flex items-center gap-1">
+                              <select
+                                value={item.rang}
+                                onChange={e => updateItem(i, j, 'rang', e.target.value)}
+                                className="select text-sm w-full"
+                              >
+                                <option value="">Rangsiz</option>
+                                {RANGLAR.map(r => (
+                                  <option key={r} value={r}>{r}</option>
+                                ))}
+                              </select>
+                              {item.rang && <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', flexShrink:0, background: RANG_COLORS[item.rang] || '#999' }} />}
+                            </div>
                           </div>
                           {/* Tur */}
                           <div className="col-span-2">
@@ -555,7 +584,7 @@ export default function ProductionPage() {
                             )}
                           </div>
                           {/* Tarif */}
-                          <div className="col-span-3">
+                          <div className="col-span-2">
                             <input
                               type="number" min="0" placeholder="so'm"
                               value={item.tarif}
@@ -574,7 +603,7 @@ export default function ProductionPage() {
                               className="input text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
                             />
                           </div>
-                          {/* Mahsulot o'chirish */}
+                          {/* O'chirish */}
                           <div className="col-span-1 flex justify-end">
                             {entry.items.length > 1 && (
                               <button onClick={() => removeItem(i, j)} className="text-red-300 hover:text-red-500 p-1"><X size={14} /></button>

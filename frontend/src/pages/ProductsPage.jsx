@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Package, DollarSign } from 'lucide-react';
+import { Plus, X, Package, DollarSign, Trash2 } from 'lucide-react';
 import { productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -71,6 +71,27 @@ export default function ProductsPage() {
     },
   });
 
+  const deleteAllMutation = useMutation({
+    mutationFn: (ids) => productsAPI.bulkDelete(ids),
+    onSuccess: (res) => {
+      toast.success(`${res.data.count} ta mahsulot o'chirildi`);
+      qc.invalidateQueries({ queryKey: ['products'] });
+    },
+    onError: (e) => toast.error(e?.response?.data?.error || 'O\'chirishda xato'),
+  });
+
+  const deleteAll = () => {
+    const ids = (data?.products || []).map(p => p.id);
+    if (!ids.length) return toast.error('O\'chiriladigan mahsulot yo\'q');
+    const ok = confirm(
+      `DIQQAT! Barcha ${ids.length} ta mahsulot o'chiriladi.\n\n` +
+      `• Sotuvi BO'LMAGAN mahsulotlar butunlay o'chadi\n` +
+      `• Sotuvi BOR mahsulotlar nofaol qilinadi (sotuv tarixi buzilmasligi uchun)\n\n` +
+      `Bu amalni ORQAGA QAYTARIB BO'LMAYDI! Davom etilsinmi?`
+    );
+    if (ok) deleteAllMutation.mutate(ids);
+  };
+
   const { register, handleSubmit, reset, setValue } = useForm();
 
   const openEdit = (p) => {
@@ -97,11 +118,18 @@ export default function ProductsPage() {
     <div className="space-y-6">
       <div className="page-header">
         <h1 className="page-title">Mahsulotlar</h1>
-        {canAdd && (
-          <button onClick={() => { reset(); setEditProduct(null); setShowModal(true); }} className="btn-primary btn-sm">
-            <Plus size={14} /> Mahsulot qo'shish
-          </button>
-        )}
+        <div className="flex gap-2">
+          {isOwner() && data?.products?.length > 0 && (
+            <button onClick={deleteAll} disabled={deleteAllMutation.isPending} className="btn-danger btn-sm">
+              <Trash2 size={14} /> {deleteAllMutation.isPending ? 'O\'chirilmoqda...' : 'Hammasini o\'chirish'}
+            </button>
+          )}
+          {canAdd && (
+            <button onClick={() => { reset(); setEditProduct(null); setShowModal(true); }} className="btn-primary btn-sm">
+              <Plus size={14} /> Mahsulot qo'shish
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

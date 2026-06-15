@@ -364,14 +364,19 @@ export default function QuickSalePage() {
                         <div className="text-xs text-gray-400">Ombor: {x.stock} {x.unit}</div>
                       </td>
                       <td>
-                        {x.rang ? (
-                          <span className="inline-flex items-center gap-1 text-sm text-gray-700">
-                            <span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background: RANG_COLORS[x.rang] || '#999', border:'1px solid #ccc' }} />
-                            {x.rang}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400 text-sm">Rangsiz</span>
-                        )}
+                        <div className="flex items-center gap-1">
+                          <select
+                            value={x.rang || ''}
+                            onChange={e => updateRow(x.id, 'rang', e.target.value)}
+                            className="select py-1 px-2 text-sm w-32"
+                          >
+                            <option value="">Rangsiz</option>
+                            {RANGLAR.map(r => (
+                              <option key={r} value={r}>{r}</option>
+                            ))}
+                          </select>
+                          {x.rang && <span style={{ display:'inline-block', width:9, height:9, borderRadius:'50%', flexShrink:0, background: RANG_COLORS[x.rang] || '#999', border:'1px solid #ccc' }} />}
+                        </div>
                       </td>
                       <td>
                         <input

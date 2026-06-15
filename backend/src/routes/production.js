@@ -18,7 +18,7 @@ async function clearEmployeeDay(client, employee_id, production_date) {
   for (const row of existing.rows) {
     if (row.product_id && row.approval_status === 'APPROVED') {
       await client.query(
-        'UPDATE products SET stock_quantity = stock_quantity - $1, updated_at=NOW() WHERE id=$2',
+        'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at=NOW() WHERE id=$2',
         [row.quantity_produced, row.product_id]
       );
       await addColorStock(client.query, row.product_id, row.rang, -row.quantity_produced);

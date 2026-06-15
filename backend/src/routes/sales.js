@@ -215,7 +215,7 @@ router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), [
          sale_date || new Date().toISOString().slice(0,10), status || 'PENDING', payment_amount || 0, discount_id || null, notes, req.user.id, order_ref, rang || null]
       );
       await client.query(
-        'UPDATE products SET stock_quantity = stock_quantity - $1, updated_at = NOW() WHERE id = $2',
+        'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW() WHERE id = $2',
         [quantity, product_id]
       );
       await addColorStock(client.query, product_id, rang, -quantity);
@@ -289,7 +289,7 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (re
            saleDate, saleStatus, saleStatus === 'PAID' ? total : 0, notes || null, req.user.id, order_ref, it.rang || null]
         );
         await client.query(
-          'UPDATE products SET stock_quantity = stock_quantity - $1, updated_at = NOW() WHERE id = $2',
+          'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW() WHERE id = $2',
           [qty, it.product_id]
         );
         await addColorStock(client.query, it.product_id, it.rang, -qty);
@@ -390,7 +390,7 @@ router.put('/:id', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req,
         // eski miqdorni qaytarib, yangisini ayiramiz: net = old - new
         const diff = parseFloat(prev.quantity) - quantity; // musbat bo'lsa omborga qaytadi
         await client.query(
-          'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at = NOW() WHERE id = $2',
+          'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity + $1), updated_at = NOW() WHERE id = $2',
           [diff, product_id]
         );
       } else {
@@ -401,7 +401,7 @@ router.put('/:id', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req,
         );
         // yangi mahsulotdan ayiramiz
         await client.query(
-          'UPDATE products SET stock_quantity = stock_quantity - $1, updated_at = NOW() WHERE id = $2',
+          'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW() WHERE id = $2',
           [quantity, product_id]
         );
       }

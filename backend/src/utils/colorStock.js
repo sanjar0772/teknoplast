@@ -14,7 +14,8 @@ async function getColorStock(q, product_id, rang) {
   return r.rows.length ? parseFloat(r.rows[0].quantity || 0) : 0;
 }
 
-// Rang bo'yicha ombordagi sonni delta ga o'zgartiradi (delta manfiy bo'lishi mumkin)
+// Rang bo'yicha ombordagi sonni delta ga o'zgartiradi (delta manfiy bo'lishi mumkin).
+// Ombor HECH QACHON 0 dan past tushmaydi (manfiy qoldiqdan himoya).
 async function addColorStock(q, product_id, rang, delta) {
   if (!product_id || !delta) return;
   const key = rang || '';
@@ -23,14 +24,17 @@ async function addColorStock(q, product_id, rang, delta) {
     [product_id, key]
   );
   if (ex.rows.length) {
+    const cur = parseFloat(ex.rows[0].quantity || 0);
+    const next = Math.max(0, cur + delta);
     await q(
-      'UPDATE product_color_stock SET quantity = quantity + $1 WHERE product_id=$2 AND rang=$3',
-      [delta, product_id, key]
+      'UPDATE product_color_stock SET quantity = $1 WHERE product_id=$2 AND rang=$3',
+      [next, product_id, key]
     );
   } else {
+    // Yangi bucket — manfiy delta bo'lsa 0 dan boshlaymiz
     await q(
       'INSERT INTO product_color_stock (product_id, rang, quantity) VALUES ($1,$2,$3)',
-      [product_id, key, delta]
+      [product_id, key, Math.max(0, delta)]
     );
   }
 }

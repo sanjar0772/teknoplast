@@ -157,6 +157,17 @@ router.post('/bulk-delete', requireRole('OWNER'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/products/reset-stock — barcha mahsulotlarning ombor sonini 0 ga tushirish (OWNER only)
+router.post('/reset-stock', requireRole('OWNER'), async (req, res, next) => {
+  try {
+    const c = await query('SELECT COUNT(*) as count FROM products', []);
+    const count = parseInt(c.rows[0]?.count ?? c.rows[0]?.['COUNT(*)'] ?? 0);
+    await query('UPDATE products SET stock_quantity = 0, updated_at = NOW()', []);
+    logAudit(req, { action: 'RESET_ALL_STOCK', table: 'products', recordId: 'ALL', newValues: { stock_quantity: 0 } });
+    res.json({ count });
+  } catch (err) { next(err); }
+});
+
 // POST /api/products/reset-all — barcha mahsulot VA sotuvlarni to'liq o'chirish (OWNER only)
 router.post('/reset-all', requireRole('OWNER'), async (req, res, next) => {
   try {

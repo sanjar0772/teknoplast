@@ -86,6 +86,26 @@ export default function ProductsPage() {
     onError: (e) => toast.error(e?.response?.data?.error || 'O\'chirishda xato'),
   });
 
+  const resetStockMutation = useMutation({
+    mutationFn: () => productsAPI.resetStock(),
+    onSuccess: (res) => {
+      toast.success(`${res.data.count} ta mahsulot ombori 0 ga tushirildi`);
+      qc.invalidateQueries({ queryKey: ['products'] });
+    },
+    onError: (e) => toast.error(e?.response?.data?.error || 'Xato'),
+  });
+
+  const resetStock = () => {
+    const n = (data?.products || []).length;
+    if (!n) return toast.error('Mahsulot yo\'q');
+    const ok = confirm(
+      `DIQQAT! Barcha ${n} ta mahsulotning ombordagi soni 0 ga tushiriladi.\n\n` +
+      `Mahsulotlar o'chmaydi — faqat ombor soni 0 bo'ladi.\n\n` +
+      `Davom etilsinmi?`
+    );
+    if (ok) resetStockMutation.mutate();
+  };
+
   const deleteAll = () => {
     const ids = (data?.products || []).map(p => p.id);
     if (!ids.length) return toast.error('O\'chiriladigan mahsulot yo\'q');
@@ -125,6 +145,12 @@ export default function ProductsPage() {
       <div className="page-header">
         <h1 className="page-title">Mahsulotlar</h1>
         <div className="flex gap-2">
+          {isOwner() && data?.products?.length > 0 && (
+            <button onClick={resetStock} disabled={resetStockMutation.isPending}
+              className="btn-sm border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 rounded-lg px-3 flex items-center gap-1">
+              {resetStockMutation.isPending ? 'Tushirilmoqda...' : 'Omborni 0 ga tushirish'}
+            </button>
+          )}
           {isOwner() && data?.products?.length > 0 && (
             <button onClick={deleteAll} disabled={deleteAllMutation.isPending} className="btn-danger btn-sm">
               <Trash2 size={14} /> {deleteAllMutation.isPending ? 'O\'chirilmoqda...' : 'Hammasini o\'chirish'}

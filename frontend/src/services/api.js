@@ -138,6 +138,7 @@ export const productsAPI = {
   updateBulk: (updates) => api.put('/products/bulk', { updates }),
   bulkDelete: (ids) => api.post('/products/bulk-delete', { ids }),
   resetAll: () => api.post('/products/reset-all'),
+  resetStock: () => api.post('/products/reset-stock'),
   updateStock: (id, data) => api.put(`/products/${id}/stock`, data),
   setPricing: (id, data) => api.put(`/products/${id}/pricing`, data),
   getRawMaterials: () => api.get('/products/raw-materials/list'),

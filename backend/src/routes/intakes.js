@@ -43,7 +43,8 @@ router.get('/:id', async (req, res, next) => {
     if (!intake.rows.length) return res.status(404).json({ error: 'Kirim topilmadi' });
 
     const items = await query(`
-      SELECT it.*, p.name as product_name, p.razmer, p.rang, p.unit, p.stock_quantity
+      SELECT it.*, p.name as product_name, p.razmer, p.unit, p.stock_quantity,
+             COALESCE(it.rang, p.rang) as rang
       FROM intake_items it JOIN products p ON it.product_id = p.id
       WHERE it.intake_id = $1`, [req.params.id]);
 
@@ -75,8 +76,8 @@ router.post('/', requireRole('OWNER', 'KIRIMCHI', 'PRODUCTION_HEAD'), async (req
       const intake = intakeR.rows[0];
       for (const it of items) {
         await client.query(
-          `INSERT INTO intake_items (intake_id, product_id, quantity) VALUES ($1, $2, $3)`,
-          [intake.id, it.product_id, parseInt(it.quantity)]
+          `INSERT INTO intake_items (intake_id, product_id, quantity, rang) VALUES ($1, $2, $3, $4)`,
+          [intake.id, it.product_id, parseInt(it.quantity), it.rang || null]
         );
       }
       await client.query('COMMIT');

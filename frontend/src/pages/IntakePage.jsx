@@ -8,6 +8,11 @@ import clsx from 'clsx';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
+const RANGLAR = ['Қора', 'Оқ', 'Қизил', 'Кўк', 'Яшил', 'Сариқ', 'Тўқ сариқ'];
+const RANG_COLORS = { 'Қора': '#1a1a1a', 'Оқ': '#d1d5db', 'Қизил': '#ef4444', 'Кўк': '#3b82f6', 'Яшил': '#22c55e', 'Сариқ': '#eab308', 'Тўқ сариқ': '#f97316' };
+let _rowId = 0;
+const newRowId = () => ++_rowId;
+
 const STATUS = {
   PENDING:  { label: 'Kutilmoqda', cls: 'badge-yellow' },
   APPROVED: { label: 'Tasdiqlangan', cls: 'badge-green' },
@@ -87,14 +92,26 @@ function ProductIntakeTab({ canCreate, canApprove }) {
     },
   });
 
+  // cart row: { rowId, product_id, name, stock, rang, qty }
   const addToCart = (p) => {
-    setCart(c => c.find(x => x.id === p.id)
-      ? c.map(x => x.id === p.id ? { ...x, qty: x.qty + 1 } : x)
-      : [...c, { id: p.id, name: p.name, qty: 1, stock: p.stock_quantity }]);
+    setCart(c => [...c, { rowId: newRowId(), product_id: p.id, name: p.name, stock: p.stock_quantity, rang: p.rang || '', qty: 1 }]);
+    setSearch('');
   };
+  const addColorRow = (product_id, name, stock) => {
+    setCart(c => [...c, { rowId: newRowId(), product_id, name, stock, rang: '', qty: 1 }]);
+  };
+  const updateRow = (rowId, field, value) => {
+    setCart(c => c.map(r => r.rowId === rowId ? { ...r, [field]: value } : r));
+  };
+  const removeRow = (rowId) => setCart(c => c.filter(r => r.rowId !== rowId));
+
   const submit = () => {
     if (!cart.length) return toast.error('Mahsulot qo\'shing');
-    createMutation.mutate({ items: cart.map(x => ({ product_id: x.id, quantity: parseInt(x.qty) })), notes });
+    for (const r of cart) {
+      if (!r.rang) return toast.error(`"${r.name}" uchun rang tanlang`);
+      if (!r.qty || parseInt(r.qty) < 1) return toast.error(`"${r.name}" miqdori noto'g'ri`);
+    }
+    createMutation.mutate({ items: cart.map(r => ({ product_id: r.product_id, quantity: parseInt(r.qty), rang: r.rang })), notes });
   };
 
   return (
@@ -167,17 +184,71 @@ function ProductIntakeTab({ canCreate, canApprove }) {
           )}
           <div className="border border-gray-100 rounded-xl overflow-hidden">
             <table className="table text-sm">
-              <thead><tr><th>Mahsulot</th><th className="w-28">Kirim miqdori</th><th className="w-10"></th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Mahsulot</th>
+                  <th className="w-36">Rang <span className="text-red-400">*</span></th>
+                  <th className="w-28">Miqdor</th>
+                  <th className="w-16"></th>
+                </tr>
+              </thead>
               <tbody>
                 {!cart.length ? (
-                  <tr><td colSpan={3} className="text-center py-6 text-gray-400">Mahsulot qo'shing</td></tr>
-                ) : cart.map(x => (
-                  <tr key={x.id}>
-                    <td>{x.name}<div className="text-xs text-gray-400">ombor: {x.stock}</div></td>
-                    <td><input type="number" min="1" value={x.qty} onChange={e => setCart(c => c.map(y => y.id === x.id ? { ...y, qty: e.target.value } : y))} onFocus={e => e.target.select()} className="input py-1 px-2 w-24" /></td>
-                    <td><button onClick={() => setCart(c => c.filter(y => y.id !== x.id))} className="text-gray-300 hover:text-red-500"><Trash2 size={15} /></button></td>
-                  </tr>
-                ))}
+                  <tr><td colSpan={4} className="text-center py-6 text-gray-400">Mahsulot qo'shing</td></tr>
+                ) : cart.map((x, i) => {
+                  const isFirstOfProduct = i === 0 || cart[i - 1].product_id !== x.product_id;
+                  const isLastOfProduct = i === cart.length - 1 || cart[i + 1].product_id !== x.product_id;
+                  return (
+                    <tr key={x.rowId} className={i > 0 && cart[i-1].product_id === x.product_id ? 'bg-blue-50/30' : ''}>
+                      <td>
+                        {isFirstOfProduct ? (
+                          <div>
+                            <div className="font-medium text-gray-900">{x.name}</div>
+                            <div className="text-xs text-gray-400">ombor: {x.stock}</div>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-400 pl-2">↳ {x.name}</div>
+                        )}
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-1">
+                          <select
+                            value={x.rang}
+                            onChange={e => updateRow(x.rowId, 'rang', e.target.value)}
+                            className={`select py-1 px-2 text-sm w-32 ${!x.rang ? 'border-red-300' : ''}`}
+                          >
+                            <option value="">— Rang —</option>
+                            {RANGLAR.map(r => (
+                              <option key={r} value={r}>{r}</option>
+                            ))}
+                          </select>
+                          {x.rang && <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background: RANG_COLORS[x.rang] || '#999', flexShrink:0 }} />}
+                        </div>
+                      </td>
+                      <td>
+                        <input type="number" min="1" value={x.qty}
+                          onChange={e => updateRow(x.rowId, 'qty', e.target.value)}
+                          onFocus={e => e.target.select()}
+                          className="input py-1 px-2 w-24" />
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-1">
+                          {isLastOfProduct && (
+                            <button
+                              onClick={() => addColorRow(x.product_id, x.name, x.stock)}
+                              className="text-blue-400 hover:text-blue-600" title="Yana rang qo'shish"
+                            >
+                              <Plus size={14} />
+                            </button>
+                          )}
+                          <button onClick={() => removeRow(x.rowId)} className="text-gray-300 hover:text-red-500">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -203,11 +274,19 @@ function ProductIntakeTab({ canCreate, canApprove }) {
             {detail.intake.notes && <p className="text-sm text-gray-600">Izoh: {detail.intake.notes}</p>}
             <div className="border border-gray-100 rounded-xl overflow-hidden">
               <table className="table text-sm">
-                <thead><tr><th>Mahsulot</th><th>Kirim miqdori</th><th>Hozirgi ombor</th></tr></thead>
+                <thead><tr><th>Mahsulot</th><th>Rang</th><th>Kirim miqdori</th><th>Hozirgi ombor</th></tr></thead>
                 <tbody>
                   {detail.items.map(it => (
                     <tr key={it.id}>
                       <td>{it.product_name}</td>
+                      <td>
+                        {it.rang ? (
+                          <span className="flex items-center gap-1">
+                            <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background: RANG_COLORS[it.rang] || '#999' }} />
+                            {it.rang}
+                          </span>
+                        ) : '—'}
+                      </td>
                       <td className="font-semibold text-green-600">+{fmt(it.quantity)} {it.unit}</td>
                       <td>{fmt(it.stock_quantity)} {it.unit}</td>
                     </tr>

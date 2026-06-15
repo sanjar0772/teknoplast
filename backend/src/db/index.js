@@ -778,6 +778,7 @@ if (USE_PG) {
       `ALTER TABLE salaries ADD COLUMN social_security REAL DEFAULT 0`,
       `ALTER TABLE salaries ADD COLUMN work_days INTEGER DEFAULT 0`,
       `ALTER TABLE salaries ADD COLUMN total_produced INTEGER DEFAULT 0`,
+      `ALTER TABLE sales ADD COLUMN rang TEXT`,
     ];
     for (const m of migrations) {
       try {

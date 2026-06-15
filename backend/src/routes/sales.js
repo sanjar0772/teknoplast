@@ -277,10 +277,10 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (re
         grandTotal += total;
         const r = await client.query(
           `INSERT INTO sales (product_id, customer_id, quantity, unit_price, total_amount,
-            customer_name, customer_phone, sale_date, status, payment_amount, notes, created_by, order_ref)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+            customer_name, customer_phone, sale_date, status, payment_amount, notes, created_by, order_ref, rang)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
           [it.product_id, customer_id || null, qty, price, total, custName, custPhone,
-           saleDate, saleStatus, saleStatus === 'PAID' ? total : 0, notes || null, req.user.id, order_ref]
+           saleDate, saleStatus, saleStatus === 'PAID' ? total : 0, notes || null, req.user.id, order_ref, it.rang || null]
         );
         await client.query(
           'UPDATE products SET stock_quantity = stock_quantity - $1, updated_at = NOW() WHERE id = $2',

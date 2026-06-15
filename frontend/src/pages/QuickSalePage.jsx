@@ -10,6 +10,9 @@ import { productsAPI, customersAPI, salesAPI, fulfillmentAPI } from '../services
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
+const RANGLAR = ['Қора', 'Оқ', 'Қизил', 'Кўк', 'Яшил', 'Сариқ', 'Тўқ сариқ'];
+const RANG_COLORS = { 'Қора': '#1a1a1a', 'Оқ': '#d1d5db', 'Қизил': '#ef4444', 'Кўк': '#3b82f6', 'Яшил': '#22c55e', 'Сариқ': '#eab308', 'Тўқ сариқ': '#f97316' };
+
 export default function QuickSalePage() {
   const qc = useQueryClient();
   const location = useLocation();
@@ -72,12 +75,12 @@ export default function QuickSalePage() {
 
   const addToCart = (p) => {
     if (cartIds.has(p.id)) {
-      // Allaqachon savatda — miqdorini oshiramiz
       setCart(c => c.map(x => x.id === p.id ? { ...x, qty: x.qty + 1 } : x));
     } else {
       setCart(c => [...c, {
         id: p.id, name: p.name, unit: p.unit || 'dona',
         price: parseFloat(p.price) || 0, qty: 1, stock: p.stock_quantity,
+        rang: p.rang || '',
       }]);
     }
   };
@@ -129,9 +132,10 @@ export default function QuickSalePage() {
     for (const x of cart) {
       if (!x.qty || x.qty < 1) return toast.error(`"${x.name}" miqdori noto'g'ri`);
       if (x.qty > x.stock) return toast.error(`"${x.name}" omborida yetarli emas (${x.stock})`);
+      if (!x.rang) return toast.error(`"${x.name}" uchun rang tanlang`);
     }
     // Chek uchun savat nusxasi (nomlar bilan)
-    lastCartRef.current = cart.map(x => ({ name: x.name, qty: parseInt(x.qty), price: parseFloat(x.price), unit: x.unit }));
+    lastCartRef.current = cart.map(x => ({ name: x.name, qty: parseInt(x.qty), price: parseFloat(x.price), unit: x.unit, rang: x.rang }));
     // To'lov turini backend statusiga moslash
     const status = paymentType === 'DEBT' ? 'PENDING' : 'PAID';
     const paymentLabel = paymentType === 'CASH' ? 'Naqd'
@@ -145,6 +149,7 @@ export default function QuickSalePage() {
         product_id: x.id,
         quantity: parseInt(x.qty),
         unit_price: parseFloat(x.price),
+        rang: x.rang,
       })),
     });
   };
@@ -337,6 +342,7 @@ export default function QuickSalePage() {
                   <tr>
                     <th className="w-8">#</th>
                     <th>Mahsulot</th>
+                    <th className="w-28">Rang <span className="text-red-400">*</span></th>
                     <th className="w-28">Narx</th>
                     <th className="w-24">Miqdor</th>
                     <th className="w-28">Jami</th>
@@ -346,7 +352,7 @@ export default function QuickSalePage() {
                 <tbody>
                   {!cart.length ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-12 text-gray-400">
+                      <td colSpan={7} className="text-center py-12 text-gray-400">
                         <Package size={28} className="mx-auto mb-2 opacity-30" />
                         Chapdan mahsulot qo'shing
                       </td>
@@ -357,6 +363,21 @@ export default function QuickSalePage() {
                       <td>
                         <div className="font-medium text-gray-900">{x.name}</div>
                         <div className="text-xs text-gray-400">Ombor: {x.stock} {x.unit}</div>
+                      </td>
+                      <td>
+                        <select
+                          value={x.rang || ''}
+                          onChange={e => updateRow(x.id, 'rang', e.target.value)}
+                          className={`select py-1 px-2 text-sm w-32 ${!x.rang ? 'border-red-300' : ''}`}
+                        >
+                          <option value="">— Rang —</option>
+                          {RANGLAR.map(r => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
+                        {x.rang && (
+                          <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background: RANG_COLORS[x.rang] || '#999', marginLeft:4, verticalAlign:'middle' }} />
+                        )}
                       </td>
                       <td>
                         <input

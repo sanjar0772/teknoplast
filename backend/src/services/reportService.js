@@ -243,47 +243,103 @@ async function generateProductionRangeExcel(rows, startDate, endDate) {
   return buffer;
 }
 
-// Xom ashyo — tanlangan davr uchun Kirim/Harajat/Qoldiq hisoboti
+// Хом ашё — танланган давр учун Бошланғич/Кирим/Сарф/Якуний қолдиқ ҳисоботи (профессионал Excel)
 async function generateRawMaterialRangeExcel(rows, startDate, endDate) {
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet(`${startDate}_${endDate}`.slice(0, 31));
+  workbook.creator = 'TEKNOPLAST';
+  const sheet = workbook.addWorksheet('Хом ашё ҳисоботи');
 
-  sheet.columns = [
-    { header: '№', key: 'num', width: 5 },
-    { header: 'Xom ashyo', key: 'name', width: 25 },
-    { header: 'Birlik', key: 'unit', width: 10 },
-    { header: 'Kirim miqdori', key: 'kirim_qty', width: 15 },
-    { header: "Kirim summasi (so'm)", key: 'kirim_cost', width: 20 },
-    { header: 'Harajat miqdori', key: 'harajat_qty', width: 15 },
-    { header: "Harajat summasi (so'm)", key: 'harajat_cost', width: 20 },
-    { header: 'Qoldiq', key: 'qoldiq', width: 15 },
-  ];
+  const COLS = 9;            // А..И
+  const last = String.fromCharCode(64 + COLS); // 'I'
+  const num = '#,##0';
+  const money = '#,##0';
+  const GREEN = 'FF065F46';
+  const LIGHT = 'FFE8F5EE';
 
-  sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF065F46' } };
+  const thin = { style: 'thin', color: { argb: 'FFBFD8C9' } };
+  const border = { top: thin, left: thin, bottom: thin, right: thin };
 
-  rows.forEach((r, i) => {
-    sheet.addRow({
-      num: i + 1,
-      name: r.name,
-      unit: r.unit || 'kg',
-      kirim_qty: r.kirim_qty,
-      kirim_cost: r.kirim_cost,
-      harajat_qty: r.harajat_qty,
-      harajat_cost: r.harajat_cost,
-      qoldiq: r.qoldiq,
+  // --- Сарлавҳа блоки ---
+  sheet.mergeCells(`A1:${last}1`);
+  const t1 = sheet.getCell('A1');
+  t1.value = 'TEKNOPLAST — Хом ашё ҳисоботи';
+  t1.font = { bold: true, size: 16, color: { argb: GREEN } };
+  t1.alignment = { horizontal: 'center', vertical: 'middle' };
+  sheet.getRow(1).height = 26;
+
+  sheet.mergeCells(`A2:${last}2`);
+  const t2 = sheet.getCell('A2');
+  t2.value = `Давр: ${startDate}  —  ${endDate}`;
+  t2.font = { size: 11, color: { argb: 'FF374151' } };
+  t2.alignment = { horizontal: 'center' };
+
+  sheet.mergeCells(`A3:${last}3`);
+  const t3 = sheet.getCell('A3');
+  t3.value = `Тузилди: ${new Date().toLocaleString('uz-UZ')}`;
+  t3.font = { size: 9, italic: true, color: { argb: 'FF9CA3AF' } };
+  t3.alignment = { horizontal: 'center' };
+
+  // --- Жадвал сарлавҳаси (4-қатор) ---
+  const headerRowIdx = 4;
+  const headers = ['№', 'Хом ашё', 'Бирлик', 'Бошланғич қолдиқ', 'Кирим миқдор', "Кирим сумма (сўм)", 'Сарф миқдор', "Сарф сумма (сўм)", 'Якуний қолдиқ'];
+  const headerRow = sheet.getRow(headerRowIdx);
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = h;
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GREEN } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    cell.border = border;
+  });
+  headerRow.height = 30;
+
+  // Устун кенгликлари
+  const widths = [5, 28, 9, 16, 14, 18, 14, 18, 16];
+  widths.forEach((w, i) => { sheet.getColumn(i + 1).width = w; });
+
+  // --- Маълумот қаторлари ---
+  const num2 = (v) => parseFloat(v) || 0;
+  let r = headerRowIdx;
+  rows.forEach((row, i) => {
+    r++;
+    const dataRow = sheet.getRow(r);
+    const vals = [
+      i + 1, row.name, row.unit || 'kg',
+      num2(row.opening), num2(row.kirim_qty), num2(row.kirim_cost),
+      num2(row.sarf_qty), num2(row.sarf_cost), num2(row.closing),
+    ];
+    vals.forEach((v, c) => {
+      const cell = dataRow.getCell(c + 1);
+      cell.value = v;
+      cell.border = border;
+      if (c === 0) cell.alignment = { horizontal: 'center' };
+      if (c === 2) cell.alignment = { horizontal: 'center' };
+      if (c >= 3) cell.numFmt = (c === 5 || c === 7) ? money : num;
     });
+    if (i % 2 === 1) {
+      for (let c = 1; c <= COLS; c++) dataRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT } };
+    }
+    // Якуний қолдиқ манфий бўлса — қизил
+    if (num2(row.closing) < 0) dataRow.getCell(COLS).font = { color: { argb: 'FFDC2626' }, bold: true };
   });
 
-  const totalRow = sheet.addRow({
-    num: '', name: 'JAMI:',
-    kirim_qty: rows.reduce((a, r) => a + r.kirim_qty, 0),
-    kirim_cost: rows.reduce((a, r) => a + r.kirim_cost, 0),
-    harajat_qty: rows.reduce((a, r) => a + r.harajat_qty, 0),
-    harajat_cost: rows.reduce((a, r) => a + r.harajat_cost, 0),
-    qoldiq: rows.reduce((a, r) => a + r.qoldiq, 0),
+  // --- ЖАМИ қатори ---
+  r++;
+  const totalRow = sheet.getRow(r);
+  const sum = (key) => rows.reduce((a, x) => a + num2(x[key]), 0);
+  const totals = ['', 'ЖАМИ:', '', sum('opening'), sum('kirim_qty'), sum('kirim_cost'), sum('sarf_qty'), sum('sarf_cost'), sum('closing')];
+  totals.forEach((v, c) => {
+    const cell = totalRow.getCell(c + 1);
+    cell.value = v;
+    cell.font = { bold: true, color: { argb: GREEN } };
+    cell.border = border;
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
+    if (c >= 3) cell.numFmt = (c === 5 || c === 7) ? money : num;
   });
-  totalRow.font = { bold: true };
+
+  // Музлатиш + автофильтр
+  sheet.views = [{ state: 'frozen', ySplit: headerRowIdx }];
+  sheet.autoFilter = { from: { row: headerRowIdx, column: 1 }, to: { row: headerRowIdx, column: COLS } };
 
   const buffer = await workbook.xlsx.writeBuffer();
   return buffer;

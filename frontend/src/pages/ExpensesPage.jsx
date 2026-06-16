@@ -199,7 +199,7 @@ export default function ExpensesPage() {
       {canSeeRawMaterialReport && (
         <div className="card">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-            <h2 className="text-sm font-semibold text-gray-700">Hom ashyo hisoboti (Kirim / Harajat / Qoldiq)</h2>
+            <h2 className="text-sm font-semibold text-gray-700">Hom ashyo hisoboti (Boshlang'ich / Kirim / Sarf / Yakuniy qoldiq)</h2>
             <div className="flex gap-2 items-center">
               <input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} className="input w-36" />
               <span className="text-gray-400 text-sm">—</span>
@@ -214,11 +214,11 @@ export default function ExpensesPage() {
               <thead>
                 <tr>
                   <th>Xom ashyo</th>
+                  <th>Boshlang'ich qoldiq</th>
                   <th>Kirim miqdori</th>
                   <th>Kirim summasi</th>
-                  <th>Harajat miqdori</th>
-                  <th>Harajat summasi</th>
-                  <th>Qoldiq</th>
+                  <th>Sarf miqdori</th>
+                  <th>Yakuniy qoldiq</th>
                 </tr>
               </thead>
               <tbody>
@@ -229,11 +229,11 @@ export default function ExpensesPage() {
                 ) : rangeSummary.rows.map(r => (
                   <tr key={r.name}>
                     <td className="font-medium text-gray-900">{r.name}</td>
+                    <td className="text-gray-500">{fmt(r.opening)} {r.unit || 'kg'}</td>
                     <td>{fmt(r.kirim_qty)} {r.unit || 'kg'}</td>
                     <td className="text-green-600">{fmt(r.kirim_cost)} so'm</td>
-                    <td>{fmt(r.harajat_qty)} {r.unit || 'kg'}</td>
-                    <td className="text-red-600">{fmt(r.harajat_cost)} so'm</td>
-                    <td className="font-semibold">{fmt(r.qoldiq)} {r.unit || 'kg'}</td>
+                    <td className="text-red-600">{fmt(r.sarf_qty)} {r.unit || 'kg'}</td>
+                    <td className={`font-semibold ${parseFloat(r.closing) < 0 ? 'text-red-600' : ''}`}>{fmt(r.closing)} {r.unit || 'kg'}</td>
                   </tr>
                 ))}
               </tbody>

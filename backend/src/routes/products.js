@@ -4,6 +4,7 @@ const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
 const { logAudit } = require('../services/auditService');
+const ledger = require('../services/rawMaterialLedger');
 
 const router = express.Router();
 router.use(authenticate);
@@ -293,44 +294,29 @@ router.get('/raw-materials/intake-history', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// Tanlangan davr uchun Kirim/Harajat/Qoldiq ni xom ashyo nomi bo'yicha birlashtiradi
+// Tanlangan davr uchun Boshlang'ich/Kirim/Sarf/Yakuniy qoldiqni
+// xom ashyo aylma daftaridan (movement ledger) hisoblaydi.
+// Daftar bo'sh/xato bo'lsa — joriy snapshot'ga (fallback) tushadi, hech qachon 500 bermaydi.
 async function getRawMaterialRangeSummary(start_date, end_date) {
-  const kirim = await query(`
-    SELECT name, unit,
-           COALESCE(SUM(quantity), 0) as kirim_qty,
-           COALESCE(SUM(quantity * price_per_unit), 0) as kirim_cost
-    FROM raw_materials
-    WHERE received_date >= $1 AND received_date <= $2
-    GROUP BY name, unit
-  `, [start_date, end_date]);
+  try {
+    await ledger.ensureLedger();
+    const rows = await ledger.getLedgerRangeSummary(start_date, end_date);
+    if (rows && rows.length) return rows;
+  } catch (e) {
+    console.error('Ledger summary xato, fallback ishlatiladi:', e.message);
+  }
 
-  const harajat = await query(`
-    SELECT rm.name, rm.unit,
-           COALESCE(SUM(e.quantity), 0) as harajat_qty,
-           COALESCE(SUM(e.amount), 0) as harajat_cost
-    FROM expenses e JOIN raw_materials rm ON rm.id = e.raw_material_id
-    WHERE e.category = 'RAW_MATERIAL' AND e.raw_material_id IS NOT NULL
-      AND e.expense_date >= $1 AND e.expense_date <= $2
-    GROUP BY rm.name, rm.unit
-  `, [start_date, end_date]);
-
-  const qoldiq = await query(`
-    SELECT name, unit, COALESCE(SUM(stock_balance), 0) as qoldiq
-    FROM raw_materials
-    WHERE is_active = true
-    GROUP BY name, unit
+  // FALLBACK: daftar yo'q yoki bo'sh — joriy xom ashyo qoldig'idan oddiy ko'rinish.
+  const snap = await query(`
+    SELECT name, unit, COALESCE(SUM(stock_balance), 0) AS closing
+    FROM raw_materials WHERE is_active = true
+    GROUP BY name, unit ORDER BY name
   `, []);
-
-  const byName = {};
-  const ensure = (name, unit) => {
-    if (!byName[name]) byName[name] = { name, unit, kirim_qty: 0, kirim_cost: 0, harajat_qty: 0, harajat_cost: 0, qoldiq: 0 };
-    return byName[name];
-  };
-  kirim.rows.forEach(r => { const e = ensure(r.name, r.unit); e.kirim_qty = parseFloat(r.kirim_qty); e.kirim_cost = parseFloat(r.kirim_cost); });
-  harajat.rows.forEach(r => { const e = ensure(r.name, r.unit); e.harajat_qty = parseFloat(r.harajat_qty); e.harajat_cost = parseFloat(r.harajat_cost); });
-  qoldiq.rows.forEach(r => { const e = ensure(r.name, r.unit); e.qoldiq = parseFloat(r.qoldiq); });
-
-  return Object.values(byName).sort((a, b) => a.name.localeCompare(b.name));
+  return snap.rows.map(r => ({
+    name: r.name, unit: r.unit || 'kg',
+    opening: 0, kirim_qty: 0, kirim_cost: 0, sarf_qty: 0, sarf_cost: 0,
+    closing: parseFloat(r.closing) || 0,
+  }));
 }
 
 // GET /api/products/raw-materials/range-summary?start_date=&end_date= — Kirim/Harajat/Qoldiq hisoboti
@@ -392,6 +378,17 @@ router.post('/raw-materials', requireRole('OWNER', 'TAMINOTCHI'), async (req, re
         expense = expenseResult.rows[0];
       }
 
+      // Aylma daftariga KIRIM yozamiz (xato bo'lsa ham kirim buzilmaydi)
+      try {
+        await ledger.recordMovement(client, {
+          raw_material_id: raw_material.id, material_name: name, unit: unit || 'kg',
+          type: 'KIRIM', qty: quantity, unit_cost: price_per_unit || 0,
+          supplier_name: supplier_name || null, note: 'Xom ashyo kirimi',
+          moved_at: (received_date && String(received_date).slice(0, 10)) || undefined,
+          created_by: req.user.id,
+        });
+      } catch (e) { console.error('Ledger KIRIM xato:', e.message); }
+
       await client.query('COMMIT');
       logAudit(req, {
         action: 'RAW_MATERIAL_ADDED', table: 'raw_materials', recordId: raw_material.id,
@@ -436,6 +433,21 @@ router.delete('/raw-materials/:id', requireRole('OWNER', 'TAMINOTCHI'), async (r
       [req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Xom ashyo topilmadi' });
+
+    // Daftar muvozanatini saqlash uchun qolgan qoldiqni nolga tushiramiz (KOREKSIYA -qoldiq)
+    try {
+      const rm = result.rows[0];
+      const bal = parseFloat(rm.stock_balance) || 0;
+      if (bal > 0.0000001) {
+        await ledger.recordMovement(query, {
+          raw_material_id: req.params.id, material_name: rm.name, unit: rm.unit,
+          type: 'KOREKSIYA', qty: -bal, unit_cost: rm.price_per_unit || 0,
+          supplier_name: rm.supplier_name || null, note: "O'chirildi (qoldiq nolga)",
+          created_by: req.user.id,
+        });
+      }
+    } catch (e) { console.error('Ledger delete harakat xato:', e.message); }
+
     logAudit(req, { action: 'RAW_MATERIAL_DELETE', table: 'raw_materials', recordId: req.params.id });
     res.json({ ok: true });
   } catch (err) { next(err); }
@@ -451,8 +463,29 @@ router.put('/raw-materials/:id/stock', requireRole('OWNER', 'TAMINOTCHI'), async
     if (operation === 'set')      sql = 'UPDATE raw_materials SET stock_balance = $1, updated_at=NOW() WHERE id=$2 RETURNING *';
 
     if (!sql) return res.status(400).json({ error: 'Noto\'g\'ri operation' });
+
+    // Daftar uchun avvalgi qoldiqni o'qiymiz (delta = yangi - eski)
+    const before = await query('SELECT stock_balance FROM raw_materials WHERE id=$1', [req.params.id]);
+    if (!before.rows.length) return res.status(404).json({ error: 'Xom ashyo topilmadi' });
+
     const result = await query(sql, [quantity, req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Xom ashyo topilmadi' });
+
+    // Aylma daftariga harakat yozamiz (xato bo'lsa ham ombor yangilash buzilmaydi)
+    try {
+      const after = result.rows[0];
+      const delta = (parseFloat(after.stock_balance) || 0) - (parseFloat(before.rows[0].stock_balance) || 0);
+      if (Math.abs(delta) > 0.0000001) {
+        const type = operation === 'add' ? 'KIRIM' : operation === 'subtract' ? 'SARF' : 'KOREKSIYA';
+        await ledger.recordMovement(query, {
+          raw_material_id: req.params.id, material_name: after.name, unit: after.unit,
+          type, qty: type === 'KOREKSIYA' ? delta : Math.abs(delta),
+          unit_cost: after.price_per_unit || 0, supplier_name: after.supplier_name || null,
+          note: `Ombor yangilash (${operation})`, created_by: req.user.id,
+        });
+      }
+    } catch (e) { console.error('Ledger stock harakat xato:', e.message); }
+
     res.json({ raw_material: result.rows[0] });
   } catch (err) { next(err); }
 });

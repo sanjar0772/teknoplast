@@ -123,6 +123,11 @@ cron.schedule('0 * * * *', async () => {
   }
 });
 
+// Xom ashyo aylma daftarini tayyorlash (idempotent, crash-proof)
+require('./services/rawMaterialLedger')
+  .ensureLedger()
+  .catch(e => console.error('Ledger init xato:', e.message));
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Teknoplast Backend: http://localhost:${PORT}`);

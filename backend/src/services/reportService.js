@@ -249,8 +249,8 @@ async function generateRawMaterialRangeExcel(rows, startDate, endDate) {
   workbook.creator = 'TEKNOPLAST';
   const sheet = workbook.addWorksheet('Хом ашё ҳисоботи');
 
-  const COLS = 9;            // А..И
-  const last = String.fromCharCode(64 + COLS); // 'I'
+  const COLS = 10;           // А..Ж (10 устун)
+  const last = String.fromCharCode(64 + COLS); // 'J'
   const num = '#,##0';
   const money = '#,##0';
   const GREEN = 'FF065F46';
@@ -281,7 +281,7 @@ async function generateRawMaterialRangeExcel(rows, startDate, endDate) {
 
   // --- Жадвал сарлавҳаси (4-қатор) ---
   const headerRowIdx = 4;
-  const headers = ['№', 'Хом ашё', 'Бирлик', 'Бошланғич қолдиқ', 'Кирим миқдор', "Кирим сумма (сўм)", 'Сарф миқдор', "Сарф сумма (сўм)", 'Якуний қолдиқ'];
+  const headers = ['№', 'Хом ашё', 'Бирлик', 'Бошланғич қолдиқ', 'Кирим миқдор', "Кирим сумма (сўм)", 'Сарф миқдор', "Сарф сумма (сўм)", 'Якуний қолдиқ', "Якуний сумма (сўм)"];
   const headerRow = sheet.getRow(headerRowIdx);
   headers.forEach((h, i) => {
     const cell = headerRow.getCell(i + 1);
@@ -294,7 +294,7 @@ async function generateRawMaterialRangeExcel(rows, startDate, endDate) {
   headerRow.height = 30;
 
   // Устун кенгликлари
-  const widths = [5, 28, 9, 16, 14, 18, 14, 18, 16];
+  const widths = [5, 28, 9, 16, 14, 18, 14, 18, 16, 20];
   widths.forEach((w, i) => { sheet.getColumn(i + 1).width = w; });
 
   // --- Маълумот қаторлари ---
@@ -306,7 +306,7 @@ async function generateRawMaterialRangeExcel(rows, startDate, endDate) {
     const vals = [
       i + 1, row.name, row.unit || 'kg',
       num2(row.opening), num2(row.kirim_qty), num2(row.kirim_cost),
-      num2(row.sarf_qty), num2(row.sarf_cost), num2(row.closing),
+      num2(row.sarf_qty), num2(row.sarf_cost), num2(row.closing), num2(row.closing_cost),
     ];
     vals.forEach((v, c) => {
       const cell = dataRow.getCell(c + 1);
@@ -314,27 +314,27 @@ async function generateRawMaterialRangeExcel(rows, startDate, endDate) {
       cell.border = border;
       if (c === 0) cell.alignment = { horizontal: 'center' };
       if (c === 2) cell.alignment = { horizontal: 'center' };
-      if (c >= 3) cell.numFmt = (c === 5 || c === 7) ? money : num;
+      if (c >= 3) cell.numFmt = (c === 5 || c === 7 || c === 9) ? money : num;
     });
     if (i % 2 === 1) {
       for (let c = 1; c <= COLS; c++) dataRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT } };
     }
-    // Якуний қолдиқ манфий бўлса — қизил
-    if (num2(row.closing) < 0) dataRow.getCell(COLS).font = { color: { argb: 'FFDC2626' }, bold: true };
+    // Якуний қолдиқ манфий бўлса — қизил (9-устун)
+    if (num2(row.closing) < 0) dataRow.getCell(9).font = { color: { argb: 'FFDC2626' }, bold: true };
   });
 
   // --- ЖАМИ қатори ---
   r++;
   const totalRow = sheet.getRow(r);
   const sum = (key) => rows.reduce((a, x) => a + num2(x[key]), 0);
-  const totals = ['', 'ЖАМИ:', '', sum('opening'), sum('kirim_qty'), sum('kirim_cost'), sum('sarf_qty'), sum('sarf_cost'), sum('closing')];
+  const totals = ['', 'ЖАМИ:', '', sum('opening'), sum('kirim_qty'), sum('kirim_cost'), sum('sarf_qty'), sum('sarf_cost'), sum('closing'), sum('closing_cost')];
   totals.forEach((v, c) => {
     const cell = totalRow.getCell(c + 1);
     cell.value = v;
     cell.font = { bold: true, color: { argb: GREEN } };
     cell.border = border;
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
-    if (c >= 3) cell.numFmt = (c === 5 || c === 7) ? money : num;
+    if (c >= 3) cell.numFmt = (c === 5 || c === 7 || c === 9) ? money : num;
   });
 
   // Музлатиш + автофильтр

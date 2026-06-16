@@ -192,21 +192,24 @@ async function ensureLedger() {
  * xom ashyo nomi bo'yicha birlashtiradi.
  */
 async function getLedgerRangeSummary(start_date, end_date) {
-  // Davr boshigacha bo'lgan harakatlar — boshlang'ich qoldiq
+  // Davr boshigacha bo'lgan harakatlar — boshlang'ich qoldiq (miqdor + pul qiymati)
   const opening = await db.query(
-    `SELECT material_name AS name, unit, COALESCE(SUM(signed_qty),0) AS opening
+    `SELECT material_name AS name, unit,
+            COALESCE(SUM(signed_qty),0) AS opening,
+            COALESCE(SUM(CASE WHEN signed_qty < 0 THEN -total_cost ELSE total_cost END),0) AS opening_cost
        FROM raw_material_movements WHERE moved_at < $1
       GROUP BY material_name, unit`,
     [start_date]
   );
-  // Davr ichidagi kirim/sarf/koreksiya
+  // Davr ichidagi kirim/sarf/koreksiya (miqdor + pul)
   const inRange = await db.query(
     `SELECT material_name AS name, unit,
             COALESCE(SUM(CASE WHEN type='KIRIM' THEN qty ELSE 0 END),0)        AS kirim_qty,
             COALESCE(SUM(CASE WHEN type='KIRIM' THEN total_cost ELSE 0 END),0) AS kirim_cost,
             COALESCE(SUM(CASE WHEN type='SARF'  THEN qty ELSE 0 END),0)        AS sarf_qty,
             COALESCE(SUM(CASE WHEN type='SARF'  THEN total_cost ELSE 0 END),0) AS sarf_cost,
-            COALESCE(SUM(CASE WHEN type='KOREKSIYA' THEN signed_qty ELSE 0 END),0) AS korr_net
+            COALESCE(SUM(CASE WHEN type='KOREKSIYA' THEN signed_qty ELSE 0 END),0) AS korr_net,
+            COALESCE(SUM(CASE WHEN type='KOREKSIYA' THEN (CASE WHEN signed_qty < 0 THEN -total_cost ELSE total_cost END) ELSE 0 END),0) AS korr_cost
        FROM raw_material_movements WHERE moved_at >= $1 AND moved_at <= $2
       GROUP BY material_name, unit`,
     [start_date, end_date]
@@ -216,12 +219,16 @@ async function getLedgerRangeSummary(start_date, end_date) {
   const ensure = (name, unit) => {
     const k = `${name}||${unit || ''}`;
     if (!byKey[k]) byKey[k] = {
-      name, unit: unit || 'kg', opening: 0,
-      kirim_qty: 0, kirim_cost: 0, sarf_qty: 0, sarf_cost: 0, korr_net: 0,
+      name, unit: unit || 'kg', opening: 0, opening_cost: 0,
+      kirim_qty: 0, kirim_cost: 0, sarf_qty: 0, sarf_cost: 0, korr_net: 0, korr_cost: 0,
     };
     return byKey[k];
   };
-  opening.rows.forEach(r => { ensure(r.name, r.unit).opening = parseFloat(r.opening) || 0; });
+  opening.rows.forEach(r => {
+    const e = ensure(r.name, r.unit);
+    e.opening = parseFloat(r.opening) || 0;
+    e.opening_cost = parseFloat(r.opening_cost) || 0;
+  });
   inRange.rows.forEach(r => {
     const e = ensure(r.name, r.unit);
     e.kirim_qty = parseFloat(r.kirim_qty) || 0;
@@ -229,6 +236,7 @@ async function getLedgerRangeSummary(start_date, end_date) {
     e.sarf_qty = parseFloat(r.sarf_qty) || 0;
     e.sarf_cost = parseFloat(r.sarf_cost) || 0;
     e.korr_net = parseFloat(r.korr_net) || 0;
+    e.korr_cost = parseFloat(r.korr_cost) || 0;
   });
 
   return Object.values(byKey)
@@ -241,6 +249,7 @@ async function getLedgerRangeSummary(start_date, end_date) {
       sarf_qty: e.sarf_qty,
       sarf_cost: e.sarf_cost,
       closing: e.opening + e.kirim_qty - e.sarf_qty + e.korr_net,
+      closing_cost: e.opening_cost + e.kirim_cost - e.sarf_cost + e.korr_cost,
     }))
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }

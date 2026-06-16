@@ -219,13 +219,14 @@ export default function ExpensesPage() {
                   <th>Kirim summasi</th>
                   <th>Sarf miqdori</th>
                   <th>Yakuniy qoldiq</th>
+                  <th>Yakuniy summa</th>
                 </tr>
               </thead>
               <tbody>
                 {rangeLoading ? (
-                  <tr><td colSpan={6} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
+                  <tr><td colSpan={7} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
                 ) : !rangeSummary?.rows?.length ? (
-                  <tr><td colSpan={6} className="text-center py-8 text-gray-400">Ma'lumot yo'q</td></tr>
+                  <tr><td colSpan={7} className="text-center py-8 text-gray-400">Ma'lumot yo'q</td></tr>
                 ) : rangeSummary.rows.map(r => (
                   <tr key={r.name}>
                     <td className="font-medium text-gray-900">{r.name}</td>
@@ -234,6 +235,7 @@ export default function ExpensesPage() {
                     <td className="text-green-600">{fmt(r.kirim_cost)} so'm</td>
                     <td className="text-red-600">{fmt(r.sarf_qty)} {r.unit || 'kg'}</td>
                     <td className={`font-semibold ${parseFloat(r.closing) < 0 ? 'text-red-600' : ''}`}>{fmt(r.closing)} {r.unit || 'kg'}</td>
+                    <td className="font-semibold text-gray-900">{fmt(r.closing_cost)} so'm</td>
                   </tr>
                 ))}
               </tbody>

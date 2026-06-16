@@ -56,6 +56,8 @@ export const salesAPI = {
   updateStatus: (id, data) => api.put(`/sales/${id}/status`, data),
   getPayments: (id) => api.get(`/sales/${id}/payments`),
   addPayment: (id, data) => api.post(`/sales/${id}/payments`, data),
+  returnSale: (id, data) => api.post(`/sales/${id}/return`, data),
+  getReturns: (id) => api.get(`/sales/${id}/returns`),
   delete: (id) => api.delete(`/sales/${id}`),
 };
 

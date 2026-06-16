@@ -128,6 +128,11 @@ require('./services/rawMaterialLedger')
   .ensureLedger()
   .catch(e => console.error('Ledger init xato:', e.message));
 
+// Sotuvdan qaytarish (vozvrat) jadvalini tayyorlash
+require('./services/saleReturns')
+  .ensureReturnsSchema()
+  .catch(e => console.error('Sale returns init xato:', e.message));
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Teknoplast Backend: http://localhost:${PORT}`);

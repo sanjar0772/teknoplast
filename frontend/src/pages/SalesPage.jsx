@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { QRCodeSVG } from 'qrcode.react';
-import { Plus, Download, Search, X, CheckCircle, Clock, AlertCircle, FileText, Printer, Pencil, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Download, Search, X, CheckCircle, Clock, AlertCircle, FileText, Printer, Pencil, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
 import { salesAPI, productsAPI, reportsAPI, customersAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -41,6 +41,7 @@ export default function SalesPage() {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [chekSaleId, setChekSaleId] = useState(null);
   const [editForm, setEditForm] = useState(null); // tahrirlanayotgan savdo
+  const [returnForm, setReturnForm] = useState(null); // vozvrat (qaytarish)
   const [expanded, setExpanded] = useState(() => new Set()); // ochilgan cheklar (order_ref)
   const toggleExpand = (key) => setExpanded(prev => {
     const next = new Set(prev);
@@ -113,6 +114,40 @@ export default function SalesPage() {
       toast.error(err?.response?.data?.error || 'Saqlashda xato');
     },
   });
+
+  const returnMutation = useMutation({
+    mutationFn: ({ id, data }) => salesAPI.returnSale(id, data),
+    onSuccess: (res) => {
+      const refund = parseFloat(res?.data?.refund_amount || 0);
+      toast.success(refund > 0 ? `Vozvrat qabul qilindi. Qaytariladigan pul: ${fmt(refund)} so'm` : 'Vozvrat qabul qilindi');
+      qc.invalidateQueries({ queryKey: ['sales'] });
+      qc.invalidateQueries({ queryKey: ['sales-summary'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      setReturnForm(null);
+    },
+    onError: (err) => toast.error(err?.response?.data?.error || 'Vozvratda xato'),
+  });
+
+  const openReturn = (sale) => {
+    setReturnForm({
+      id: sale.id,
+      product_name: sale.product_name,
+      max: parseInt(sale.quantity, 10) || 0,
+      unit: sale.unit || 'dona',
+      unit_price: parseFloat(sale.unit_price) || 0,
+      quantity: parseInt(sale.quantity, 10) || 1,
+      reason: '',
+    });
+  };
+
+  const submitReturn = () => {
+    const q = parseInt(returnForm.quantity, 10);
+    if (!q || q < 1) return toast.error('Miqdor noto\'g\'ri');
+    if (q > returnForm.max) return toast.error(`Faqat ${returnForm.max} dona qaytarish mumkin`);
+    if (!returnForm.reason.trim()) return toast.error('Vozvrat sababi majburiy');
+    returnMutation.mutate({ id: returnForm.id, data: { quantity: q, reason: returnForm.reason.trim() } });
+  };
 
   // Bitta chekdagi barcha to'lanmagan mahsulotlarni "To'langan" qilish
   const markCheckPaid = (sales) => {
@@ -311,6 +346,11 @@ export default function SalesPage() {
                             <Pencil size={12} /> Tahrir
                           </button>
                         )}
+                        {!multi && canCreate && (parseInt(first.quantity, 10) || 0) > 0 && (
+                          <button onClick={() => openReturn(first)} className="btn-secondary btn-sm" title="Vozvrat (qaytarish)">
+                            <RotateCcw size={12} /> Vozvrat
+                          </button>
+                        )}
                         {g.status !== 'PAID' && canCreate && (
                           <button
                             onClick={() => multi ? markCheckPaid(sales) : statusMutation.mutate({ id: first.id, status: 'PAID' })}
@@ -337,6 +377,11 @@ export default function SalesPage() {
                         {canCreate && (
                           <button onClick={() => openEdit(s)} className="btn-secondary btn-sm" title="Tahrirlash">
                             <Pencil size={12} /> Tahrir
+                          </button>
+                        )}
+                        {canCreate && (parseInt(s.quantity, 10) || 0) > 0 && (
+                          <button onClick={() => openReturn(s)} className="btn-secondary btn-sm" title="Vozvrat (qaytarish)">
+                            <RotateCcw size={12} /> Vozvrat
                           </button>
                         )}
                       </td>
@@ -497,6 +542,46 @@ export default function SalesPage() {
               <button type="button" onClick={() => setEditForm(null)} className="btn-secondary flex-1">Bekor</button>
               <button type="button" onClick={submitEdit} disabled={updateMutation.isPending} className="btn-primary flex-1">
                 {updateMutation.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Vozvrat (qaytarish) modal */}
+      <Modal open={!!returnForm} onClose={() => setReturnForm(null)} title="Vozvrat — sotuvdan qaytarish">
+        {returnForm && (
+          <div className="space-y-4">
+            <div className="bg-gray-50 rounded-xl p-3 text-sm">
+              <div className="font-medium text-gray-900">{returnForm.product_name || 'Mahsulot'}</div>
+              <div className="text-gray-500">Sotilgan: {returnForm.max} {returnForm.unit} · Narx: {fmt(returnForm.unit_price)} so'm</div>
+            </div>
+            <div>
+              <label className="label">Qaytariladigan miqdor * (maks: {returnForm.max})</label>
+              <input
+                type="number" min="1" max={returnForm.max} className="input"
+                value={returnForm.quantity}
+                onChange={e => setReturnForm(f => ({ ...f, quantity: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="label">Sabab * (majburiy)</label>
+              <textarea
+                className="input" rows={2} placeholder="Masalan: sifatsiz, ortiqcha, mijoz qaytardi..."
+                value={returnForm.reason}
+                onChange={e => setReturnForm(f => ({ ...f, reason: e.target.value }))}
+              />
+            </div>
+            <div className="bg-emerald-50 rounded-xl p-3 text-sm flex justify-between">
+              <span className="text-gray-600">Qaytariladigan summa:</span>
+              <span className="font-semibold text-emerald-700">
+                {fmt((parseInt(returnForm.quantity, 10) || 0) * returnForm.unit_price)} so'm
+              </span>
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <button onClick={() => setReturnForm(null)} className="btn-secondary btn-sm">Bekor</button>
+              <button onClick={submitReturn} disabled={returnMutation.isPending} className="btn-primary btn-sm">
+                <RotateCcw size={14} /> Vozvratni tasdiqlash
               </button>
             </div>
           </div>

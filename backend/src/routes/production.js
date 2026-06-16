@@ -383,6 +383,35 @@ router.put('/approve-day', requireRole('OWNER', 'SALES_HEAD'), async (req, res, 
   } catch (err) { next(err); }
 });
 
+// DELETE /api/production/all — BARCHA kunlik ishlab chiqarish yozuvlarini o'chirish (faqat OWNER)
+router.delete('/all', requireRole('OWNER'), async (req, res, next) => {
+  try {
+    const existing = await query('SELECT id, product_id, quantity_produced, approval_status, rang FROM employee_production', []);
+    const client = await require('../db').getClient();
+    try {
+      await client.query('BEGIN');
+      for (const row of existing.rows) {
+        if (row.product_id && row.quantity_produced > 0 && row.approval_status === 'APPROVED') {
+          await client.query(
+            'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at=NOW() WHERE id=$2',
+            [row.quantity_produced, row.product_id]
+          );
+          await addColorStock(client.query, row.product_id, row.rang, -row.quantity_produced);
+        }
+      }
+      await client.query('DELETE FROM employee_production');
+      await client.query('COMMIT');
+      logAudit(req, { action: 'PRODUCTION_DELETE_ALL', table: 'employee_production', newValues: { count: existing.rows.length } });
+      res.json({ count: existing.rows.length, message: `${existing.rows.length} ta yozuv o'chirildi` });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (err) { next(err); }
+});
+
 // DELETE /api/production/:id — yagona yozuvni o'chirish (OWNER yoki PRODUCTION_HEAD)
 router.delete('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async (req, res, next) => {
   try {

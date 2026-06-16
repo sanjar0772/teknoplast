@@ -72,11 +72,12 @@ export default function ExpensesPage() {
   const selRm = rawMats.find(r => r.id === selRmId);
   const calcAmount = selRm && selKg ? Math.round(parseFloat(selKg) * parseFloat(selRm.price_per_unit || 0)) : 0;
 
-  // Ta'minotchi uchun Kirim/Harajat/Qoldiq hisoboti (tanlangan davr)
+  // Kirim/Harajat/Qoldiq hisoboti (tanlangan davr) — Ta'minotchi, OWNER va ACCOUNTANT ko'radi
+  const canSeeRawMaterialReport = isOwner() || isAccountant() || taminotchiOnly;
   const { data: rangeSummary, isLoading: rangeLoading } = useQuery({
     queryKey: ['raw-material-range-summary', rangeStart, rangeEnd],
     queryFn: () => productsAPI.getRawMaterialRangeSummary({ start_date: rangeStart, end_date: rangeEnd }).then(r => r.data),
-    enabled: taminotchiOnly && !!rangeStart && !!rangeEnd,
+    enabled: canSeeRawMaterialReport && !!rangeStart && !!rangeEnd,
   });
 
   const downloadRawMaterialExcel = async () => {
@@ -134,59 +135,12 @@ export default function ExpensesPage() {
 
       {taminotchiOnly ? (
         /* Ta'minotchi uchun soddalashtirilgan ko'rinish — faqat Xom ashyo xarajatlari */
-        <div className="space-y-6">
-          <div className="card max-w-sm">
-            <h2 className="text-sm font-semibold text-gray-700 mb-1">Shu oydagi xom ashyo xarajati</h2>
-            <p className="text-2xl font-bold text-red-600 mb-1">
-              {fmt((data?.expenses || []).reduce((sum, e) => sum + parseFloat(e.amount || 0), 0))} so'm
-            </p>
-            <p className="text-xs text-gray-400">{(data?.expenses || []).length} ta yozuv</p>
-          </div>
-
-          {/* Kirim / Harajat / Qoldiq hisoboti — davrni tanlab ko'rish va Excel yuklab olish */}
-          <div className="card">
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <h2 className="text-sm font-semibold text-gray-700">Hom ashyo hisoboti (Kirim / Harajat / Qoldiq)</h2>
-              <div className="flex gap-2 items-center">
-                <input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} className="input w-36" />
-                <span className="text-gray-400 text-sm">—</span>
-                <input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} className="input w-36" />
-                <button onClick={downloadRawMaterialExcel} className="btn-secondary btn-sm">
-                  <Download size={14} /> Excel
-                </button>
-              </div>
-            </div>
-            <div className="table-container">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Xom ashyo</th>
-                    <th>Kirim miqdori</th>
-                    <th>Kirim summasi</th>
-                    <th>Harajat miqdori</th>
-                    <th>Harajat summasi</th>
-                    <th>Qoldiq</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rangeLoading ? (
-                    <tr><td colSpan={6} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
-                  ) : !rangeSummary?.rows?.length ? (
-                    <tr><td colSpan={6} className="text-center py-8 text-gray-400">Ma'lumot yo'q</td></tr>
-                  ) : rangeSummary.rows.map(r => (
-                    <tr key={r.name}>
-                      <td className="font-medium text-gray-900">{r.name}</td>
-                      <td>{fmt(r.kirim_qty)} {r.unit || 'kg'}</td>
-                      <td className="text-green-600">{fmt(r.kirim_cost)} so'm</td>
-                      <td>{fmt(r.harajat_qty)} {r.unit || 'kg'}</td>
-                      <td className="text-red-600">{fmt(r.harajat_cost)} so'm</td>
-                      <td className="font-semibold">{fmt(r.qoldiq)} {r.unit || 'kg'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+        <div className="card max-w-sm">
+          <h2 className="text-sm font-semibold text-gray-700 mb-1">Shu oydagi xom ashyo xarajati</h2>
+          <p className="text-2xl font-bold text-red-600 mb-1">
+            {fmt((data?.expenses || []).reduce((sum, e) => sum + parseFloat(e.amount || 0), 0))} so'm
+          </p>
+          <p className="text-xs text-gray-400">{(data?.expenses || []).length} ta yozuv</p>
         </div>
       ) : (
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -239,6 +193,53 @@ export default function ExpensesPage() {
           </div>
         </div>
       </div>
+      )}
+
+      {/* Kirim / Harajat / Qoldiq hisoboti — davrni tanlab ko'rish va Excel yuklab olish */}
+      {canSeeRawMaterialReport && (
+        <div className="card">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h2 className="text-sm font-semibold text-gray-700">Hom ashyo hisoboti (Kirim / Harajat / Qoldiq)</h2>
+            <div className="flex gap-2 items-center">
+              <input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} className="input w-36" />
+              <span className="text-gray-400 text-sm">—</span>
+              <input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} className="input w-36" />
+              <button onClick={downloadRawMaterialExcel} className="btn-secondary btn-sm">
+                <Download size={14} /> Excel
+              </button>
+            </div>
+          </div>
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Xom ashyo</th>
+                  <th>Kirim miqdori</th>
+                  <th>Kirim summasi</th>
+                  <th>Harajat miqdori</th>
+                  <th>Harajat summasi</th>
+                  <th>Qoldiq</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rangeLoading ? (
+                  <tr><td colSpan={6} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
+                ) : !rangeSummary?.rows?.length ? (
+                  <tr><td colSpan={6} className="text-center py-8 text-gray-400">Ma'lumot yo'q</td></tr>
+                ) : rangeSummary.rows.map(r => (
+                  <tr key={r.name}>
+                    <td className="font-medium text-gray-900">{r.name}</td>
+                    <td>{fmt(r.kirim_qty)} {r.unit || 'kg'}</td>
+                    <td className="text-green-600">{fmt(r.kirim_cost)} so'm</td>
+                    <td>{fmt(r.harajat_qty)} {r.unit || 'kg'}</td>
+                    <td className="text-red-600">{fmt(r.harajat_cost)} so'm</td>
+                    <td className="font-semibold">{fmt(r.qoldiq)} {r.unit || 'kg'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       {/* Table */}

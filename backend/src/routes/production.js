@@ -9,27 +9,6 @@ const { addColorStock } = require('../utils/colorStock');
 const router = express.Router();
 router.use(authenticate);
 
-// Faqat APPROVED yozuvlar uchun ombor qaytariladi, keyin o'chiriladi
-async function clearEmployeeDay(client, employee_id, production_date) {
-  const existing = await client.query(
-    'SELECT product_id, quantity_produced, approval_status, rang FROM employee_production WHERE employee_id=$1 AND production_date=$2',
-    [employee_id, production_date]
-  );
-  for (const row of existing.rows) {
-    if (row.product_id && row.approval_status === 'APPROVED') {
-      await client.query(
-        'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at=NOW() WHERE id=$2',
-        [row.quantity_produced, row.product_id]
-      );
-      await addColorStock(client.query, row.product_id, row.rang, -row.quantity_produced);
-    }
-  }
-  await client.query(
-    'DELETE FROM employee_production WHERE employee_id=$1 AND production_date=$2',
-    [employee_id, production_date]
-  );
-}
-
 // PENDING sifatida saqlaydi — omborga qo'SHILMAYDI (tasdiqlashdan keyin qo'shiladi)
 async function insertProductionRow(client, {
   employee_id, product_id, machine_id, production_date,
@@ -211,8 +190,7 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
     const client = await require('../db').getClient();
     try {
       await client.query('BEGIN');
-      // Yakka kiritish: shu xodimning shu kungi yozuvini almashtiramiz
-      await clearEmployeeDay(client, employee_id, production_date);
+      // Har bir kiritish QO'SHILADI (append) — eski yozuvlar o'chmaydi. Tuzatish uchun DELETE /api/production/:id.
       const production = await insertProductionRow(client, {
         employee_id, product_id, machine_id, production_date,
         quantity_produced, daily_tariff, calculated_amount, month, notes, production_type: ptype, rang,
@@ -264,8 +242,8 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async 
         const employee_type = emp.rows[0].type;
         const empDailyTariff = emp.rows[0].daily_tariff;
 
-        // Shu xodimning shu kungi barcha eski yozuvlarini tozalaymiz (ombor qaytadi)
-        await clearEmployeeDay(client, employee_id, production_date);
+        // Yozuvlar QO'SHILADI (append) — shu xodimning eski kunlik yozuvlari o'chmaydi.
+        // Shu kunga 2-marta prihod kiritilsa, ikkalasi ham saqlanadi.
 
         for (const entry of items) {
           let daily_tariff = empDailyTariff;

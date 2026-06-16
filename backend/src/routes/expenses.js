@@ -3,6 +3,7 @@ const { body, validationResult } = require('express-validator');
 const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
+const ledger = require('../services/rawMaterialLedger');
 
 const router = express.Router();
 router.use(authenticate);
@@ -94,6 +95,20 @@ router.post('/', requireRole('OWNER', 'ACCOUNTANT', 'TAMINOTCHI'), [
         'UPDATE raw_materials SET stock_balance = GREATEST(0, stock_balance - $1), last_used_date=NOW(), updated_at=NOW() WHERE id=$2',
         [quantity, raw_material_id]
       );
+
+      // Aylma daftariga SARF (chiqim) yozamiz — Sarf miqdor/summa va Yakuniy qoldiq uchun
+      try {
+        const rm = await query('SELECT name, unit, supplier_name FROM raw_materials WHERE id=$1', [raw_material_id]);
+        const m = rm.rows[0] || {};
+        await ledger.recordMovement(query, {
+          raw_material_id, material_name: m.name, unit: m.unit,
+          type: 'SARF', qty: quantity, total_cost: amount,
+          unit_cost: quantity ? (amount / quantity) : 0,
+          supplier_name: m.supplier_name || null, note: description || 'Xom ashyo sarfi',
+          moved_at: (expense_date && String(expense_date).slice(0, 10)) || undefined,
+          created_by: req.user.id,
+        });
+      } catch (e) { console.error('Ledger SARF xato:', e.message); }
     }
 
     res.status(201).json({ expense: result.rows[0] });
@@ -128,6 +143,18 @@ router.delete('/:id', requireRole('OWNER', 'ACCOUNTANT', 'TAMINOTCHI'), async (r
         'UPDATE raw_materials SET stock_balance = stock_balance + $1, updated_at=NOW() WHERE id=$2',
         [quantity, raw_material_id]
       );
+
+      // Daftarda sarfni bekor qilamiz (KOREKSIYA +quantity) — qoldiq qaytadi
+      try {
+        const rm = await query('SELECT name, unit, supplier_name FROM raw_materials WHERE id=$1', [raw_material_id]);
+        const m = rm.rows[0] || {};
+        await ledger.recordMovement(query, {
+          raw_material_id, material_name: m.name, unit: m.unit,
+          type: 'KOREKSIYA', qty: parseFloat(quantity) || 0,
+          supplier_name: m.supplier_name || null, note: "Sarf bekor qilindi (xarajat o'chirildi)",
+          created_by: req.user.id,
+        });
+      } catch (e) { console.error('Ledger sarf bekor xato:', e.message); }
     }
 
     res.json({ message: 'Xarajat o\'chirildi' });

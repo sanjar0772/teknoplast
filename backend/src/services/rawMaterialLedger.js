@@ -144,6 +144,43 @@ async function ensureLedger() {
       }
       console.log(`📒 Xom ashyo daftari to'ldirildi: ${mats.rows.length} ta material`);
     }
+
+    // Tekislash (reconciliation) — har boot'da bir marta.
+    // Daftar bo'yicha yakuniy qoldiq haqiqiy stock_balance ga teng bo'lmasa
+    // (masalan, chiqim daftarga yozilmay qolgan bo'lsa), farqni yozamiz:
+    //   stock kam  -> SARF (ishlatilgan, ammo yozilmagan chiqim)
+    //   stock ko'p -> KIRIM (yozilmagan kirim)
+    // Idempotent: teng bo'lsa hech narsa qilmaydi -> ikki marta sanalmaydi.
+    try {
+      const all = await db.query(
+        `SELECT id, name, unit, price_per_unit, supplier_name, stock_balance
+           FROM raw_materials WHERE is_active = true`
+      );
+      let fixed = 0;
+      for (const r of all.rows) {
+        const led = await db.query(
+          'SELECT COALESCE(SUM(signed_qty),0) AS closing FROM raw_material_movements WHERE raw_material_id = $1',
+          [r.id]
+        );
+        const closing = parseFloat(led.rows?.[0]?.closing) || 0;
+        const bal = parseFloat(r.stock_balance) || 0;
+        const price = parseFloat(r.price_per_unit) || 0;
+        const diff = bal - closing;
+        if (Math.abs(diff) > 0.0001) {
+          await recordMovement(db.query, {
+            raw_material_id: r.id, material_name: r.name, unit: r.unit,
+            type: diff < 0 ? 'SARF' : 'KIRIM', qty: Math.abs(diff),
+            unit_cost: price, supplier_name: r.supplier_name,
+            note: 'Tekislash (avtomatik)',
+          });
+          fixed++;
+        }
+      }
+      if (fixed) console.log(`📒 Daftar tekislandi: ${fixed} ta material`);
+    } catch (e) {
+      console.error('Ledger tekislash xato:', e.message);
+    }
+
     _ready = true;
   } catch (e) {
     console.error('Ledger backfill xato:', e.message);

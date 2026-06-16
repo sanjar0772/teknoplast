@@ -293,6 +293,71 @@ router.get('/raw-materials/intake-history', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Tanlangan davr uchun Kirim/Harajat/Qoldiq ni xom ashyo nomi bo'yicha birlashtiradi
+async function getRawMaterialRangeSummary(start_date, end_date) {
+  const kirim = await query(`
+    SELECT name, unit,
+           COALESCE(SUM(quantity), 0) as kirim_qty,
+           COALESCE(SUM(quantity * price_per_unit), 0) as kirim_cost
+    FROM raw_materials
+    WHERE received_date >= $1 AND received_date <= $2
+    GROUP BY name, unit
+  `, [start_date, end_date]);
+
+  const harajat = await query(`
+    SELECT rm.name, rm.unit,
+           COALESCE(SUM(e.quantity), 0) as harajat_qty,
+           COALESCE(SUM(e.amount), 0) as harajat_cost
+    FROM expenses e JOIN raw_materials rm ON rm.id = e.raw_material_id
+    WHERE e.category = 'RAW_MATERIAL' AND e.raw_material_id IS NOT NULL
+      AND e.expense_date >= $1 AND e.expense_date <= $2
+    GROUP BY rm.name, rm.unit
+  `, [start_date, end_date]);
+
+  const qoldiq = await query(`
+    SELECT name, unit, COALESCE(SUM(stock_balance), 0) as qoldiq
+    FROM raw_materials
+    WHERE is_active = true
+    GROUP BY name, unit
+  `, []);
+
+  const byName = {};
+  const ensure = (name, unit) => {
+    if (!byName[name]) byName[name] = { name, unit, kirim_qty: 0, kirim_cost: 0, harajat_qty: 0, harajat_cost: 0, qoldiq: 0 };
+    return byName[name];
+  };
+  kirim.rows.forEach(r => { const e = ensure(r.name, r.unit); e.kirim_qty = parseFloat(r.kirim_qty); e.kirim_cost = parseFloat(r.kirim_cost); });
+  harajat.rows.forEach(r => { const e = ensure(r.name, r.unit); e.harajat_qty = parseFloat(r.harajat_qty); e.harajat_cost = parseFloat(r.harajat_cost); });
+  qoldiq.rows.forEach(r => { const e = ensure(r.name, r.unit); e.qoldiq = parseFloat(r.qoldiq); });
+
+  return Object.values(byName).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// GET /api/products/raw-materials/range-summary?start_date=&end_date= — Kirim/Harajat/Qoldiq hisoboti
+router.get('/raw-materials/range-summary', requireRole('OWNER', 'ACCOUNTANT', 'TAMINOTCHI'), async (req, res, next) => {
+  try {
+    const { start_date, end_date } = req.query;
+    if (!start_date || !end_date) return res.status(400).json({ error: 'start_date va end_date kerak' });
+    const rows = await getRawMaterialRangeSummary(start_date, end_date);
+    res.json({ rows, start_date, end_date });
+  } catch (err) { next(err); }
+});
+
+// GET /api/products/raw-materials/range-summary/excel?start_date=&end_date= — Excel hisobot
+router.get('/raw-materials/range-summary/excel', requireRole('OWNER', 'ACCOUNTANT', 'TAMINOTCHI'), async (req, res, next) => {
+  try {
+    const { start_date, end_date } = req.query;
+    if (!start_date || !end_date) return res.status(400).json({ error: 'start_date va end_date kerak' });
+    const rows = await getRawMaterialRangeSummary(start_date, end_date);
+
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateRawMaterialRangeExcel(rows, start_date, end_date);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="hom-ashyo-${start_date}_${end_date}.xlsx"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) { next(err); }
+});
+
 // POST /api/products/raw-materials — xom ashyo qo'shish faqat Ta'minotchi vazifasi
 // (PRODUCTION_HEAD bu yerdan olib tashlandi — xom ashyo bilan faqat TAMINOTCHI shug'ullanadi)
 router.post('/raw-materials', requireRole('OWNER', 'TAMINOTCHI'), async (req, res, next) => {

@@ -76,7 +76,7 @@ router.post('/', requireRole('OWNER', 'ACCOUNTANT', 'TAMINOTCHI'), [
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { category, amount, description, expense_date } = req.body;
+    const { category, amount, description, expense_date, raw_material_id, quantity } = req.body;
 
     // TAMINOTCHI faqat RAW_MATERIAL expenses qo'shishi mumkin
     if (req.user.role === 'TAMINOTCHI' && category !== 'RAW_MATERIAL') {
@@ -84,9 +84,18 @@ router.post('/', requireRole('OWNER', 'ACCOUNTANT', 'TAMINOTCHI'), [
     }
 
     const result = await query(
-      'INSERT INTO expenses (category, amount, description, expense_date, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-      [category, amount, description, expense_date || new Date(), req.user.id]
+      'INSERT INTO expenses (category, amount, description, expense_date, created_by, raw_material_id, quantity) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+      [category, amount, description, expense_date || new Date(), req.user.id, raw_material_id || null, quantity || null]
     );
+
+    // Xom ashyo sarfi qayd etilgan bo'lsa — ombor balansidan kamaytiramiz (Qoldiq hisoboti uchun)
+    if (raw_material_id && quantity) {
+      await query(
+        'UPDATE raw_materials SET stock_balance = GREATEST(0, stock_balance - $1), last_used_date=NOW(), updated_at=NOW() WHERE id=$2',
+        [quantity, raw_material_id]
+      );
+    }
+
     res.status(201).json({ expense: result.rows[0] });
   } catch (err) { next(err); }
 });
@@ -107,8 +116,20 @@ router.put('/:id', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, next) =>
 // DELETE /api/expenses/:id
 router.delete('/:id', requireRole('OWNER', 'ACCOUNTANT', 'TAMINOTCHI'), async (req, res, next) => {
   try {
+    const existing = await query('SELECT raw_material_id, quantity FROM expenses WHERE id=$1', [req.params.id]);
+    if (!existing.rows.length) return res.status(404).json({ error: 'Xarajat topilmadi' });
+
     const result = await query('DELETE FROM expenses WHERE id=$1 RETURNING id', [req.params.id]);
-    if (!result.rows.length) return res.status(404).json({ error: 'Xarajat topilmadi' });
+
+    // O'chirilgan xarajat xom ashyo sarfi bo'lsa — ombor balansini qaytaramiz
+    const { raw_material_id, quantity } = existing.rows[0];
+    if (raw_material_id && quantity) {
+      await query(
+        'UPDATE raw_materials SET stock_balance = stock_balance + $1, updated_at=NOW() WHERE id=$2',
+        [quantity, raw_material_id]
+      );
+    }
+
     res.json({ message: 'Xarajat o\'chirildi' });
   } catch (err) { next(err); }
 });

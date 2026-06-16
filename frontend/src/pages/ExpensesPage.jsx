@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Trash2 } from 'lucide-react';
+import { Plus, X, Trash2, Download } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { expensesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
@@ -40,6 +40,11 @@ export default function ExpensesPage() {
   // Ta'minotchi uchun: tanlangan xom ashyo va kg miqdori
   const [selRmId, setSelRmId] = useState('');
   const [selKg, setSelKg] = useState('');
+  // Ta'minotchi uchun: Kirim/Harajat/Qoldiq hisoboti davri
+  const [rangeStart, setRangeStart] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10);
+  });
+  const [rangeEnd, setRangeEnd] = useState(new Date().toISOString().slice(0, 10));
 
   const { data, isLoading } = useQuery({
     queryKey: ['expenses', month, taminotchiOnly],
@@ -67,12 +72,29 @@ export default function ExpensesPage() {
   const selRm = rawMats.find(r => r.id === selRmId);
   const calcAmount = selRm && selKg ? Math.round(parseFloat(selKg) * parseFloat(selRm.price_per_unit || 0)) : 0;
 
+  // Ta'minotchi uchun Kirim/Harajat/Qoldiq hisoboti (tanlangan davr)
+  const { data: rangeSummary, isLoading: rangeLoading } = useQuery({
+    queryKey: ['raw-material-range-summary', rangeStart, rangeEnd],
+    queryFn: () => productsAPI.getRawMaterialRangeSummary({ start_date: rangeStart, end_date: rangeEnd }).then(r => r.data),
+    enabled: taminotchiOnly && !!rangeStart && !!rangeEnd,
+  });
+
+  const downloadRawMaterialExcel = async () => {
+    try {
+      const res = await productsAPI.getRawMaterialRangeExcel({ start_date: rangeStart, end_date: rangeEnd });
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url; a.download = `hom-ashyo-${rangeStart}_${rangeEnd}.xlsx`; a.click();
+    } catch { toast.error('Yuklab bo\'lmadi'); }
+  };
+
   const createMutation = useMutation({
     mutationFn: (d) => expensesAPI.create(d),
     onSuccess: () => {
       toast.success('Xarajat qo\'shildi');
       qc.invalidateQueries({ queryKey: ['expenses'] });
       qc.invalidateQueries({ queryKey: ['expenses-summary'] });
+      qc.invalidateQueries({ queryKey: ['raw-material-range-summary'] });
       setShowModal(false);
       reset();
       setSelRmId(''); setSelKg('');
@@ -84,6 +106,7 @@ export default function ExpensesPage() {
     onSuccess: () => {
       toast.success('O\'chirildi');
       qc.invalidateQueries({ queryKey: ['expenses'] });
+      qc.invalidateQueries({ queryKey: ['raw-material-range-summary'] });
     },
   });
 
@@ -111,12 +134,59 @@ export default function ExpensesPage() {
 
       {taminotchiOnly ? (
         /* Ta'minotchi uchun soddalashtirilgan ko'rinish — faqat Xom ashyo xarajatlari */
-        <div className="card max-w-sm">
-          <h2 className="text-sm font-semibold text-gray-700 mb-1">Shu oydagi xom ashyo xarajati</h2>
-          <p className="text-2xl font-bold text-red-600 mb-1">
-            {fmt((data?.expenses || []).reduce((sum, e) => sum + parseFloat(e.amount || 0), 0))} so'm
-          </p>
-          <p className="text-xs text-gray-400">{(data?.expenses || []).length} ta yozuv</p>
+        <div className="space-y-6">
+          <div className="card max-w-sm">
+            <h2 className="text-sm font-semibold text-gray-700 mb-1">Shu oydagi xom ashyo xarajati</h2>
+            <p className="text-2xl font-bold text-red-600 mb-1">
+              {fmt((data?.expenses || []).reduce((sum, e) => sum + parseFloat(e.amount || 0), 0))} so'm
+            </p>
+            <p className="text-xs text-gray-400">{(data?.expenses || []).length} ta yozuv</p>
+          </div>
+
+          {/* Kirim / Harajat / Qoldiq hisoboti — davrni tanlab ko'rish va Excel yuklab olish */}
+          <div className="card">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <h2 className="text-sm font-semibold text-gray-700">Hom ashyo hisoboti (Kirim / Harajat / Qoldiq)</h2>
+              <div className="flex gap-2 items-center">
+                <input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} className="input w-36" />
+                <span className="text-gray-400 text-sm">—</span>
+                <input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} className="input w-36" />
+                <button onClick={downloadRawMaterialExcel} className="btn-secondary btn-sm">
+                  <Download size={14} /> Excel
+                </button>
+              </div>
+            </div>
+            <div className="table-container">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Xom ashyo</th>
+                    <th>Kirim miqdori</th>
+                    <th>Kirim summasi</th>
+                    <th>Harajat miqdori</th>
+                    <th>Harajat summasi</th>
+                    <th>Qoldiq</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rangeLoading ? (
+                    <tr><td colSpan={6} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
+                  ) : !rangeSummary?.rows?.length ? (
+                    <tr><td colSpan={6} className="text-center py-8 text-gray-400">Ma'lumot yo'q</td></tr>
+                  ) : rangeSummary.rows.map(r => (
+                    <tr key={r.name}>
+                      <td className="font-medium text-gray-900">{r.name}</td>
+                      <td>{fmt(r.kirim_qty)} {r.unit || 'kg'}</td>
+                      <td className="text-green-600">{fmt(r.kirim_cost)} so'm</td>
+                      <td>{fmt(r.harajat_qty)} {r.unit || 'kg'}</td>
+                      <td className="text-red-600">{fmt(r.harajat_cost)} so'm</td>
+                      <td className="font-semibold">{fmt(r.qoldiq)} {r.unit || 'kg'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       ) : (
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -216,6 +286,8 @@ export default function ExpensesPage() {
                 amount: calcAmount,
                 description: d.description || `${selRm?.name} - ${selKg} ${selRm?.unit || 'kg'}`,
                 expense_date: d.expense_date,
+                raw_material_id: selRmId,
+                quantity: parseFloat(selKg),
               });
             } else {
               createMutation.mutate(d);

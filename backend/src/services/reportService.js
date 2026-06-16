@@ -243,6 +243,52 @@ async function generateProductionRangeExcel(rows, startDate, endDate) {
   return buffer;
 }
 
+// Xom ashyo — tanlangan davr uchun Kirim/Harajat/Qoldiq hisoboti
+async function generateRawMaterialRangeExcel(rows, startDate, endDate) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet(`${startDate}_${endDate}`.slice(0, 31));
+
+  sheet.columns = [
+    { header: '№', key: 'num', width: 5 },
+    { header: 'Xom ashyo', key: 'name', width: 25 },
+    { header: 'Birlik', key: 'unit', width: 10 },
+    { header: 'Kirim miqdori', key: 'kirim_qty', width: 15 },
+    { header: "Kirim summasi (so'm)", key: 'kirim_cost', width: 20 },
+    { header: 'Harajat miqdori', key: 'harajat_qty', width: 15 },
+    { header: "Harajat summasi (so'm)", key: 'harajat_cost', width: 20 },
+    { header: 'Qoldiq', key: 'qoldiq', width: 15 },
+  ];
+
+  sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF065F46' } };
+
+  rows.forEach((r, i) => {
+    sheet.addRow({
+      num: i + 1,
+      name: r.name,
+      unit: r.unit || 'kg',
+      kirim_qty: r.kirim_qty,
+      kirim_cost: r.kirim_cost,
+      harajat_qty: r.harajat_qty,
+      harajat_cost: r.harajat_cost,
+      qoldiq: r.qoldiq,
+    });
+  });
+
+  const totalRow = sheet.addRow({
+    num: '', name: 'JAMI:',
+    kirim_qty: rows.reduce((a, r) => a + r.kirim_qty, 0),
+    kirim_cost: rows.reduce((a, r) => a + r.kirim_cost, 0),
+    harajat_qty: rows.reduce((a, r) => a + r.harajat_qty, 0),
+    harajat_cost: rows.reduce((a, r) => a + r.harajat_cost, 0),
+    qoldiq: rows.reduce((a, r) => a + r.qoldiq, 0),
+  });
+  totalRow.font = { bold: true };
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return buffer;
+}
+
 // Nakladnoy (yuk xati) — QR kod bilan
 async function generateWaybillPDF(order) {
   const QRCode = require('qrcode');
@@ -419,4 +465,4 @@ async function generateInvoicePDF(sale, items, viewUrl) {
   });
 }
 
-module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateWaybillPDF, generateInvoicePDF };
+module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF };

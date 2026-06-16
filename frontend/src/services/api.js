@@ -146,6 +146,8 @@ export const productsAPI = {
   updateRawMaterial: (id, data) => api.put(`/products/raw-materials/${id}`, data),
   updateRawMaterialStock: (id, data) => api.put(`/products/raw-materials/${id}/stock`, data),
   deleteRawMaterial: (id) => api.delete(`/products/raw-materials/${id}`),
+  getRawMaterialRangeSummary: (params) => api.get('/products/raw-materials/range-summary', { params }),
+  getRawMaterialRangeExcel: (params) => api.get('/products/raw-materials/range-summary/excel', { params, responseType: 'blob' }),
 };
 
 // Machines

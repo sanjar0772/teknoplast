@@ -140,7 +140,10 @@ export default function QuickSalePage() {
     for (const x of cart) {
       if (!x.qty || x.qty < 1) return toast.error(`"${x.name}" miqdori noto'g'ri`);
       if (!(x.color_stock || []).length) return toast.error(`"${x.name}" omborda yo'q`);
-      if (!x.rang) return toast.error(`"${x.name}" uchun rang tanlang`);
+      // Rangsiz ('') ham yaroqli — agar shu mahsulotda rangsiz ombor bucket bo'lsa.
+      // Faqat "tanlangan rang ombordagi bucketga mos kelmasa" rang tanlashni so'raymiz.
+      const hasBucket = (x.color_stock || []).some(c => (c.rang || '') === (x.rang || ''));
+      if (!hasBucket) return toast.error(`"${x.name}" uchun rang tanlang`);
       const avail = rowAvail(x);
       if (parseFloat(x.qty) > avail) {
         return toast.error(`"${x.name}" — ${rangLabel(x.rang)} rangidan faqat ${avail} dona bor`);
@@ -386,9 +389,10 @@ export default function QuickSalePage() {
                             <select
                               value={x.rang || ''}
                               onChange={e => updateRow(x.id, 'rang', e.target.value)}
-                              className={`select py-1 px-2 text-sm w-36 ${!x.rang ? 'border-red-300' : ''}`}
+                              className={`select py-1 px-2 text-sm w-36 ${((x.color_stock || []).length > 1 && !(x.color_stock || []).some(c => (c.rang || '') === (x.rang || ''))) ? 'border-red-300' : ''}`}
                             >
-                              <option value="">— Rang tanlang —</option>
+                              {/* Placeholder faqat bir nechta rang bo'lsa — bitta (rangsiz ham) bucket o'zi tanlanadi */}
+                              {(x.color_stock || []).length > 1 && <option value="">— Rang tanlang —</option>}
                               {(x.color_stock || []).map(c => (
                                 <option key={c.rang || 'none'} value={c.rang}>{rangLabel(c.rang)} ({c.quantity})</option>
                               ))}

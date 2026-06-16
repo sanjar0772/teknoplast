@@ -230,7 +230,7 @@ export default function ExpensesPage() {
                 <label className="label">Xom ashyo nomi *</label>
                 <select
                   value={selRmId}
-                  onChange={e => setSelRmId(e.target.value ? parseInt(e.target.value) : '')}
+                  onChange={e => setSelRmId(e.target.value)}
                   className="select"
                 >
                   <option value="">— Tanlang —</option>

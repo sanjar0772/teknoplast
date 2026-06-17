@@ -5,11 +5,9 @@ import { PackagePlus, X, Search, Plus, Trash2, Check, Ban, Eye, Save, Users, Che
 import { intakesAPI, productsAPI, productionAPI, employeesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import clsx from 'clsx';
+import { RANGLAR, RANG_COLORS } from '../constants/colors';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
-
-const RANGLAR = ['Қора', 'Оқ', 'Қизил', 'Кўк', 'Яшил', 'Сариқ', 'Тўқ сариқ'];
-const RANG_COLORS = { 'Қора': '#1a1a1a', 'Оқ': '#d1d5db', 'Қизил': '#ef4444', 'Кўк': '#3b82f6', 'Яшил': '#22c55e', 'Сариқ': '#eab308', 'Тўқ сариқ': '#f97316' };
 let _rowId = 0;
 const newRowId = () => ++_rowId;
 

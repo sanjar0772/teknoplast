@@ -7,11 +7,10 @@ import {
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { productsAPI, customersAPI, salesAPI, fulfillmentAPI } from '../services/api';
+import { RANG_COLORS } from '../constants/colors';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
-const RANGLAR = ['Қора', 'Оқ', 'Қизил', 'Кўк', 'Яшил', 'Сариқ', 'Тўқ сариқ'];
-const RANG_COLORS = { 'Қора': '#1a1a1a', 'Оқ': '#d1d5db', 'Қизил': '#ef4444', 'Кўк': '#3b82f6', 'Яшил': '#22c55e', 'Сариқ': '#eab308', 'Тўқ сариқ': '#f97316' };
 const rangLabel = (r) => (r && r.trim()) ? r : 'Rangsiz';
 // Tanlangan rang bo'yicha ombordagi son
 const rowAvail = (x) => {

@@ -22,11 +22,22 @@ const COLOR_MAP = {
   'оранжевий': "to'q sariq", 'оранжевый': "to'q sariq",
   'шаффоф': 'shaffof', 'шафоф': 'shaffof',
   'кулранг': 'kulrang',
+  // Qo'shimcha ranglar
+  'жигарранг': 'jigarrang', 'жигар': 'jigarrang',
+  'бинафша': 'binafsha',
+  'феруза': 'feruza',
+  'беж': 'bej', 'бежевый': 'bej', 'бежевий': 'bej',
+  'крем': 'krem', 'кремовый': 'krem',
+  'бордо': 'bordo', 'бордовый': 'bordo', 'бордовий': 'bordo',
+  'олтин': 'oltin', 'золотой': 'oltin',
+  'кумуш': 'kumush', 'серебристый': 'kumush',
+  'лимон': 'limon', 'лимонный': 'limon',
 };
 
 // Lotin ranglar ro'yxati (frontend dropdown bilan mos)
 const LATIN_COLORS = ['oq', 'shaffof', "ko'k", 'qizil', 'yashil', 'sariq', 'qora',
-  'kulrang', 'pushti', 'havorang', 'mentol', 'binafsha', 'och yashil', 'och sariq', "to'q sariq"];
+  'kulrang', 'pushti', 'havorang', 'mentol', 'binafsha', 'och yashil', 'och sariq', "to'q sariq",
+  'jigarrang', 'feruza', 'bej', 'krem', 'bordo', 'oltin', 'kumush', 'limon'];
 
 // "оч яшил" (och) yoki "тўқ ..." (to'q) modifikatorlari bilan rang so'zini tahlil qiladi
 function parseColorPhrase(phrase) {

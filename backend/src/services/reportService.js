@@ -383,21 +383,43 @@ async function generateWaybillPDF(order) {
     doc.text('№', 50, y); doc.text('Mahsulot', 80, y); doc.text('Miqdor', 360, y); doc.text('Summa', 450, y);
     y += 4; doc.moveTo(50, y + 12).lineTo(545, y + 12).stroke(); y += 18;
 
-    doc.font('Arial').fontSize(10);
+    doc.font('Arial').fontSize(9);
     let total = 0;
-    (order.items || []).forEach((it, i) => {
-      const name = `${it.product_name || ''}${it.razmer ? ' ' + it.razmer : ''}${it.rang ? ' ' + it.rang : ''}`;
+    let grandQtyW = 0;
+    const wGroups = groupSaleItems(order.items || []);
+    const wUnit = wGroups[0]?.unit || 'dona';
+    wGroups.forEach((g, i) => {
+      const totalQty = g.items.reduce((s, x) => s + parseFloat(x.quantity || 0), 0);
+      const totalSum = g.items.reduce((s, x) => s + parseFloat(x.total_amount || 0), 0);
+      total += totalSum;
+      grandQtyW += totalQty;
+      const multiColor = g.items.length > 1 && g.items.some(x => x.rang);
+      const singleColor = g.items.length === 1 && g.items[0].rang;
+      const baseName = `${g.product_name}${g.razmer ? ' ' + g.razmer : ''}`.trim();
       doc.text(String(i + 1), 50, y);
-      doc.text(name.slice(0, 45), 80, y, { width: 270 });
-      doc.text(`${it.quantity} ${it.unit || 'dona'}`, 360, y);
-      doc.text(formatMoney(it.total_amount), 450, y);
-      total += parseFloat(it.total_amount || 0);
-      y += 18;
+      doc.text(baseName.slice(0, 42), 80, y, { width: 265 });
+      doc.text(`${totalQty} ${g.unit}`, 355, y, { width: 90, align: 'right' });
+      doc.text(formatMoney(totalSum), 450, y, { width: 95 });
+      let rowH = 17;
+      if (multiColor) {
+        const colorLine = g.items.map(x => `${x.rang || '?'}: ${x.quantity}`).join('   ');
+        doc.fontSize(7.5).fillColor('#666')
+          .text(colorLine, 84, y + 11, { width: 340 });
+        doc.fontSize(9).fillColor('black');
+        rowH = 26;
+      } else if (singleColor) {
+        doc.fontSize(7.5).fillColor('#888')
+          .text(g.items[0].rang, 84, y + 11, { width: 200 });
+        doc.fontSize(9).fillColor('black');
+        rowH = 26;
+      }
+      y += rowH;
       if (y > 720) { doc.addPage(); y = 50; }
     });
 
     doc.moveTo(50, y + 4).lineTo(545, y + 4).stroke(); y += 14;
-    doc.font('Arial-Bold').text(`JAMI: ${formatMoney(total)}`, 360, y);
+    doc.font('Arial').fontSize(9).text(`Jami miqdor: ${grandQtyW} ${wUnit}`, 50, y);
+    doc.font('Arial-Bold').text(`JAMI: ${formatMoney(total)}`, 360, y, { width: 185, align: 'right' });
 
     y += 50;
     doc.font('Arial').fontSize(9);
@@ -408,11 +430,7 @@ async function generateWaybillPDF(order) {
   });
 }
 
-// To'lov turini sotuv yozuvidan aniqlaymiz (frontend InvoicePage bilan bir xil mantiq):
-//  - status === PAID va notes ichida "Karta"/"Naqd" bo'lsa — shu nom ko'rsatiladi
-//  - status === PAID lekin notes'da to'lov turi yo'q bo'lsa — "To'langan"
-//  - status === PARTIALLY_PAID — "Qisman to'langan"
-//  - aks holda (PENDING va h.k.) — "Qarz"
+// To'lov turini sotuv yozuvidan aniqlaymiz
 function getInvoicePaymentLabel(sale) {
   const notes = sale?.notes || '';
   if (sale?.status === 'PAID') {
@@ -424,98 +442,182 @@ function getInvoicePaymentLabel(sale) {
   return 'Qarz';
 }
 
-// Schyot-faktura (счет-фактура) — bitta sotuv/buyurtma uchun, QR kod bilan
-// QR kod tizimdagi haqiqiy "/invoice/:id" sahifasiga yo'naltiradi (viewUrl orqali beriladi)
+// Bir xil mahsulot (ism+razmer) bo'lgan qatorlarni birlashtiramiz —
+// turli ranglar bitta qatorda ko'rsatiladi
+function groupSaleItems(rows) {
+  const order = [];
+  const map = {};
+  rows.forEach(it => {
+    const key = `${it.product_name || ''}||${it.razmer || ''}`;
+    if (!map[key]) {
+      map[key] = {
+        product_name: it.product_name || '',
+        razmer: it.razmer || '',
+        unit: it.unit || 'dona',
+        unit_price: it.unit_price,
+        items: []
+      };
+      order.push(map[key]);
+    }
+    map[key].items.push(it);
+  });
+  return order;
+}
+
+// Schyot-faktura — ixcham, ranglar bitta qatorda ko'rsatiladi
 async function generateInvoicePDF(sale, items, viewUrl) {
   const QRCode = require('qrcode');
-  const qrDataUrl = await QRCode.toDataURL(viewUrl, { margin: 1, width: 160 });
+  const qrDataUrl = await QRCode.toDataURL(viewUrl, { margin: 1, width: 140 });
   const qrBuffer = Buffer.from(qrDataUrl.split(',')[1], 'base64');
 
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const doc = new PDFDocument({ margin: 35, size: 'A4' });
     registerCyrillicFonts(doc);
     const chunks = [];
     doc.on('data', c => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
+    const M = 35;
+    const W = 525;
+    const fn = n => new Intl.NumberFormat('uz-UZ').format(parseFloat(n || 0));
     const orderRef = sale.order_ref || sale.id;
     const saleDate = new Date(sale.sale_date || Date.now()).toLocaleDateString('uz-UZ');
     const rows = (items && items.length) ? items : [sale];
+    const groups = groupSaleItems(rows);
 
-    // Sarlavha
-    doc.fontSize(18).font('Arial-Bold').text('TEKNOPLAST', 50, 50);
-    doc.fontSize(13).font('Arial-Bold').text(`SCHYOT-FAKTURA №  ${orderRef}`, 50, 75);
-    doc.fontSize(9).font('Arial').text(`Sana: ${saleDate}`, 50, 95);
+    // ── HEADER ────────────────────────────────────────────
+    doc.image(qrBuffer, M + W - 88, 28, { width: 88 });
+    doc.fontSize(6.5).font('Arial').fillColor('#999')
+      .text("QR: hujjat haqiqiyligi", M + W - 88, 118, { width: 88, align: 'center' });
 
-    // QR kod — o'ng yuqori burchakda — ushbu hujjatni tizimda ko'rish havolasi
-    doc.image(qrBuffer, 420, 45, { width: 110 });
-    doc.fontSize(7.5).font('Arial')
-      .text("Hujjatni tizimda ko'rish uchun skanerlang", 420, 158, { width: 110, align: 'center' });
+    doc.fontSize(17).font('Arial-Bold').fillColor('#111').text('TEKNOPLAST', M, 30);
+    doc.fontSize(10.5).font('Arial-Bold').text(`SCHYOT-FAKTURA  №  ${orderRef}`, M, 54);
+    doc.fontSize(8.5).font('Arial').fillColor('#555').text(`Sana: ${saleDate}`, M, 71);
 
-    doc.moveTo(50, 178).lineTo(545, 178).stroke();
-
-    // Sotuvchi / Xaridor
-    let y = 193;
-    doc.font('Arial-Bold').fontSize(10).text('Sotuvchi:', 50, y);
-    doc.font('Arial').text('TEKNOPLAST MCHJ', 150, y);
-    y += 16;
-    doc.font('Arial-Bold').text('Xaridor:', 50, y);
-    doc.font('Arial').text(sale.customer_full_name || sale.customer_name || "Noma'lum", 150, y);
-    y += 16;
+    // Sotuvchi / Xaridor — 2 ustun
+    let y = 90;
+    doc.fontSize(8.5).font('Arial-Bold').fillColor('#111');
+    doc.text('Sotuvchi:', M, y);
+    doc.font('Arial').text('TEKNOPLAST MCHJ', M + 56, y);
+    doc.font('Arial-Bold').text("Xaridor:", M + 260, y);
+    doc.font('Arial').text(
+      (sale.customer_full_name || sale.customer_name || "Noma'lum").slice(0, 32),
+      M + 314, y, { width: 156 }
+    );
+    y += 14;
     const phone = sale.customer_full_phone || sale.customer_phone;
     if (phone) {
-      doc.font('Arial-Bold').text('Telefon:', 50, y);
-      doc.font('Arial').text(phone, 150, y);
-      y += 16;
+      doc.font('Arial-Bold').text('Telefon:', M + 260, y);
+      doc.font('Arial').text(phone, M + 314, y);
+      y += 14;
     }
     if (sale.customer_address) {
-      doc.font('Arial-Bold').text('Manzil:', 50, y);
-      doc.font('Arial').text(sale.customer_address, 150, y, { width: 380 });
-      y += 16;
+      doc.font('Arial-Bold').text('Manzil:', M + 260, y);
+      doc.font('Arial').text(sale.customer_address.slice(0, 30), M + 314, y);
+      y += 14;
     }
-    y += 6;
-    doc.moveTo(50, y).lineTo(545, y).stroke();
-    y += 16;
 
-    // Jadval sarlavhasi
-    doc.font('Arial-Bold').fontSize(10);
-    doc.text('№', 50, y);
-    doc.text('Mahsulot nomi', 80, y);
-    doc.text('Birlik', 300, y);
-    doc.text('Miqdor', 350, y);
-    doc.text('Narx', 405, y);
-    doc.text('Summa', 475, y);
-    y += 4; doc.moveTo(50, y + 12).lineTo(545, y + 12).stroke(); y += 18;
+    y += 4;
+    doc.moveTo(M, y).lineTo(M + W, y).lineWidth(1).stroke('#333');
+    y += 8;
 
-    doc.font('Arial').fontSize(9);
-    let total = 0;
-    rows.forEach((it, i) => {
-      doc.text(String(i + 1), 50, y);
-      doc.text((it.product_name || '').slice(0, 40), 80, y, { width: 215 });
-      doc.text(it.unit || 'dona', 300, y);
-      doc.text(String(it.quantity), 350, y);
-      doc.text(new Intl.NumberFormat('uz-UZ').format(parseFloat(it.unit_price || 0)), 405, y, { width: 65 });
-      doc.text(new Intl.NumberFormat('uz-UZ').format(parseFloat(it.total_amount || 0)), 470, y, { width: 75 });
-      total += parseFloat(it.total_amount || 0);
-      y += 18;
-      if (y > 700) { doc.addPage(); y = 50; }
+    // ── JADVAL SARLAVHASI ─────────────────────────────────
+    const C = { n: M, name: M + 22, unit: M + 275, qty: M + 312, price: M + 360, sum: M + 448 };
+
+    doc.fontSize(8.5).font('Arial-Bold').fillColor('#111');
+    doc.text('№',            C.n,    y, { width: 18 });
+    doc.text('Mahsulot nomi', C.name, y, { width: 248 });
+    doc.text('Birlik',        C.unit, y, { width: 36 });
+    doc.text('Miqdor',        C.qty,  y, { width: 46, align: 'right' });
+    doc.text('Narx',          C.price,y, { width: 82, align: 'right' });
+    doc.text('Summa',         C.sum,  y, { width: 77, align: 'right' });
+    y += 5;
+    doc.moveTo(M, y + 7).lineTo(M + W, y + 7).lineWidth(0.8).stroke('#333');
+    y += 14;
+
+    // ── QATORLAR ──────────────────────────────────────────
+    doc.fontSize(8.5).font('Arial').fillColor('black');
+    let grandTotal = 0;
+    let grandQty   = 0;
+    const defaultUnit = groups[0]?.unit || 'dona';
+
+    groups.forEach((g, i) => {
+      const totalQty = g.items.reduce((s, x) => s + parseFloat(x.quantity || 0), 0);
+      const totalSum = g.items.reduce((s, x) => s + parseFloat(x.total_amount || 0), 0);
+      grandTotal += totalSum;
+      grandQty   += totalQty;
+
+      const multiColor = g.items.length > 1 && g.items.some(x => x.rang);
+      const singleColor = g.items.length === 1 && g.items[0].rang;
+      const samePrice = g.items.every(
+        x => Math.abs(parseFloat(x.unit_price || 0) - parseFloat(g.items[0].unit_price || 0)) < 1
+      );
+      const rowH = multiColor ? 24 : (singleColor ? 24 : 16);
+
+      // Alternating background
+      if (i % 2 === 1) {
+        doc.save().rect(M, y - 2, W, rowH).fill('#f7f7f7').restore();
+      }
+
+      doc.fillColor('#555').text(String(i + 1), C.n, y, { width: 18 });
+      doc.fillColor('#111');
+
+      const baseName = `${g.product_name}${g.razmer ? ' ' + g.razmer : ''}`.trim();
+      doc.text(baseName.slice(0, 46), C.name, y, { width: 248 });
+      doc.text(g.unit, C.unit, y, { width: 36 });
+      doc.text(String(totalQty), C.qty, y, { width: 46, align: 'right' });
+
+      if (samePrice) {
+        doc.text(fn(g.items[0].unit_price), C.price, y, { width: 82, align: 'right' });
+      } else {
+        doc.fillColor('#aaa').text('—', C.price, y, { width: 82, align: 'right' }).fillColor('#111');
+      }
+      doc.text(fn(totalSum), C.sum, y, { width: 77, align: 'right' });
+
+      // Rang tafsilotlari (kichik qator)
+      if (multiColor) {
+        const colorLine = g.items.map(x => `${x.rang || '?'}: ${x.quantity}`).join('    ');
+        doc.fontSize(7.5).fillColor('#666').font('Arial')
+          .text(colorLine, C.name + 3, y + 12, { width: 360 });
+        doc.fontSize(8.5).fillColor('#111').font('Arial');
+      } else if (singleColor) {
+        doc.fontSize(7.5).fillColor('#888').font('Arial')
+          .text(g.items[0].rang, C.name + 3, y + 12, { width: 200 });
+        doc.fontSize(8.5).fillColor('#111').font('Arial');
+      }
+
+      doc.moveTo(M, y + rowH).lineTo(M + W, y + rowH).lineWidth(0.25).stroke('#ddd');
+      y += rowH + 2;
+
+      if (y > 760) { doc.addPage(); y = 35; }
     });
 
-    doc.moveTo(50, y + 4).lineTo(545, y + 4).stroke(); y += 16;
-    doc.font('Arial-Bold').fontSize(11).text(`JAMI: ${formatMoney(total)}`, 380, y, { width: 165, align: 'right' });
+    // ── JAMI ──────────────────────────────────────────────
+    doc.moveTo(M, y + 3).lineTo(M + W, y + 3).lineWidth(1).stroke('#333');
+    y += 12;
 
-    y += 26;
-    doc.font('Arial').fontSize(9);
-    doc.text(`To'lov holati: ${getInvoicePaymentLabel(sale)}`, 50, y);
+    doc.font('Arial').fontSize(8.5).fillColor('#555')
+      .text(`Jami miqdor: ${grandQty} ${defaultUnit}`, M, y);
+    doc.font('Arial-Bold').fontSize(10.5).fillColor('#111')
+      .text(`JAMI: ${formatMoney(grandTotal)}`, M, y, { width: W, align: 'right' });
+    y += 16;
 
-    y += 50;
-    doc.font('Arial').fontSize(9);
-    doc.text('Sotuvchi: ____________________', 50, y);
-    doc.text('Xaridor: ____________________', 320, y);
+    doc.font('Arial').fontSize(8.5).fillColor('#333')
+      .text(`To'lov holati: ${getInvoicePaymentLabel(sale)}`, M, y);
 
-    doc.fontSize(7).fillColor('gray')
-      .text('Hujjat Texno Plast tizimi orqali avtomatik generatsiya qilindi. Haqiqiyligini QR kod orqali tekshiring.', 50, 770, { width: 495, align: 'center' });
+    // ── IMZOLAR ───────────────────────────────────────────
+    y += 38;
+    doc.fontSize(8.5).fillColor('#111');
+    doc.text("Sotuvchi: ____________________", M, y);
+    doc.text("Xaridor: ____________________", M + 285, y);
+
+    // ── FOOTER ────────────────────────────────────────────
+    doc.fontSize(6.5).fillColor('#bbb')
+      .text(
+        'Hujjat Texno Plast tizimi orqali avtomatik generatsiya qilindi. Haqiqiyligini QR kod orqali tekshiring.',
+        M, 815, { width: W, align: 'center' }
+      );
 
     doc.end();
   });

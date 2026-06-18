@@ -179,7 +179,9 @@ export default function QuickSalePage() {
       ? 0
       : (partialAmount !== '' ? Math.max(0, parseFloat(partialAmount) || 0) : grandTotal);
     const paymentLabel = paymentType === 'CASH' ? 'Naqd'
-                       : paymentType === 'CARD' ? 'Karta' : 'Qarz';
+                       : paymentType === 'CARD' ? 'Karta'
+                       : paymentType === 'BANK' ? 'Bank'
+                       : 'Qarz';
     saveMutation.mutate({
       customer_id: customerId,
       sale_date: saleDate,
@@ -371,6 +373,7 @@ export default function QuickSalePage() {
               >
                 <option value="CASH">💵 Naqd</option>
                 <option value="CARD">💳 Karta</option>
+                <option value="BANK">🏦 Bank</option>
                 <option value="DEBT">📝 To'liq qarz</option>
               </select>
             </div>

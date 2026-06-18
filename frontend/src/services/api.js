@@ -151,6 +151,9 @@ export const productsAPI = {
   deleteRawMaterial: (id) => api.delete(`/products/raw-materials/${id}`),
   getRawMaterialRangeSummary: (params) => api.get('/products/raw-materials/range-summary', { params }),
   getRawMaterialRangeExcel: (params) => api.get('/products/raw-materials/range-summary/excel', { params, responseType: 'blob' }),
+  getBom: (id) => api.get(`/products/${id}/bom`),
+  addBomItem: (id, data) => api.post(`/products/${id}/bom`, data),
+  removeBomItem: (id, componentId) => api.delete(`/products/${id}/bom/${componentId}`),
 };
 
 // Machines

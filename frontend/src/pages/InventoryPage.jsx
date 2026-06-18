@@ -38,6 +38,8 @@ export default function InventoryPage() {
   const [editRmModal, setEditRmModal] = useState(null); // tahrirlash uchun
   const [rmStockModal, setRmStockModal] = useState(null);
   const [rmStockForm, setRmStockForm] = useState({ quantity: 0, operation: 'add' });
+  const [bomModal, setBomModal] = useState(null); // { id, name } — tarkibni ko'rish/tahrirlash
+  const [bomAddForm, setBomAddForm] = useState({ component_id: '', qty: 1 });
 
   const { data: products } = useQuery({
     queryKey: ['inventory-products'],
@@ -86,6 +88,27 @@ export default function InventoryPage() {
       setShowCompModal(false);
       resetComp();
     },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+
+  const { data: bomData } = useQuery({
+    queryKey: ['product-bom', bomModal?.id],
+    queryFn: () => productsAPI.getBom(bomModal.id).then(r => r.data),
+    enabled: !!bomModal,
+  });
+
+  const addBomMutation = useMutation({
+    mutationFn: ({ product_id, ...data }) => productsAPI.addBomItem(product_id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['product-bom', bomModal?.id] });
+      setBomAddForm({ component_id: '', qty: 1 });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+
+  const removeBomMutation = useMutation({
+    mutationFn: ({ product_id, component_id }) => productsAPI.removeBomItem(product_id, component_id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['product-bom', bomModal?.id] }),
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
@@ -252,13 +275,24 @@ export default function InventoryPage() {
                       </td>
                       {canManageProducts && (
                         <td>
-                          <button
-                            onClick={() => moveMutation.mutate({ id: p.id, kind: isProdTab ? 'TAYYOR' : 'KOMPONENT' })}
-                            className="btn-secondary btn-sm whitespace-nowrap"
-                            title={isProdTab ? 'Tayyor mahsulotlar omboriga ko\'chirish' : 'Ishlab chiqarish omboriga ko\'chirish'}
-                          >
-                            {isProdTab ? '→ Tayyorga' : '→ Ishlab chiqarishga'}
-                          </button>
+                          <div className="flex gap-1 flex-wrap">
+                            {!isProdTab && (
+                              <button
+                                onClick={() => { setBomModal(p); setBomAddForm({ component_id: '', qty: 1 }); }}
+                                className="btn-secondary btn-sm"
+                                title="Tarkibni boshqarish"
+                              >
+                                Tarkib
+                              </button>
+                            )}
+                            <button
+                              onClick={() => moveMutation.mutate({ id: p.id, kind: isProdTab ? 'TAYYOR' : 'KOMPONENT' })}
+                              className="btn-secondary btn-sm whitespace-nowrap"
+                              title={isProdTab ? 'Tayyor mahsulotlar omboriga ko\'chirish' : 'Ishlab chiqarish omboriga ko\'chirish'}
+                            >
+                              {isProdTab ? '→ Tayyorga' : '→ Ishlab chiqarishga'}
+                            </button>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -491,6 +525,90 @@ export default function InventoryPage() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* BOM — Tayyor mahsulot tarkibi modali */}
+      <Modal
+        open={!!bomModal}
+        onClose={() => { setBomModal(null); setBomAddForm({ component_id: '', qty: 1 }); }}
+        title={`Tarkib — ${bomModal?.name || ''}`}
+      >
+        <div className="space-y-4">
+          <div>
+            <h4 className="text-sm font-medium text-gray-700 mb-2">Tarkibdagi komponentlar</h4>
+            {!(bomData?.bom?.length) ? (
+              <p className="text-sm text-gray-400 text-center py-4">Hali komponent qo'shilmagan</p>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {(bomData?.bom || []).map(item => (
+                  <div key={item.component_id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                    <div>
+                      <span className="font-medium text-sm">{item.name}</span>
+                      <span className="text-gray-500 text-sm ml-2">× {item.qty} {item.unit}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">ombor: {item.stock_quantity}</span>
+                      {canManageProducts && (
+                        <button
+                          onClick={() => removeBomMutation.mutate({ product_id: bomModal.id, component_id: item.component_id })}
+                          disabled={removeBomMutation.isPending}
+                          className="p-1 text-red-400 hover:text-red-600 rounded"
+                          title="Olib tashlash"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {canManageProducts && (
+            <div className="border-t pt-3">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Komponent qo'shish</h4>
+              <div className="flex gap-2 items-center">
+                <select
+                  value={bomAddForm.component_id}
+                  onChange={e => setBomAddForm(f => ({ ...f, component_id: e.target.value }))}
+                  className="select flex-1 text-sm"
+                >
+                  <option value="">Komponent tanlang...</option>
+                  {componentProducts.map(c => (
+                    <option key={c.id} value={c.id}>{c.name} (ombor: {c.stock_quantity})</option>
+                  ))}
+                </select>
+                <input
+                  type="number" min="1" step="1"
+                  value={bomAddForm.qty}
+                  onChange={e => setBomAddForm(f => ({ ...f, qty: parseFloat(e.target.value) || 1 }))}
+                  className="input w-20 text-sm"
+                  placeholder="soni"
+                />
+                <button
+                  onClick={() => {
+                    if (!bomAddForm.component_id) return toast.error('Komponent tanlang');
+                    addBomMutation.mutate({ product_id: bomModal.id, component_id: bomAddForm.component_id, qty: bomAddForm.qty });
+                  }}
+                  disabled={addBomMutation.isPending}
+                  className="btn-primary btn-sm whitespace-nowrap"
+                >
+                  <Plus size={14} /> Qo'shish
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end pt-1">
+            <button
+              onClick={() => { setBomModal(null); setBomAddForm({ component_id: '', qty: 1 }); }}
+              className="btn-secondary"
+            >
+              Yopish
+            </button>
+          </div>
+        </div>
       </Modal>
 
       {/* RM Stock Modal */}

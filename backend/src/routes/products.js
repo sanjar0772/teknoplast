@@ -527,4 +527,57 @@ router.post('/colors/set-white', requireRole('OWNER'), async (req, res, next) =>
   } catch (err) { next(err); }
 });
 
+// GET /api/products/:id/bom — tayyor mahsulot tarkibini olish (komponentlar ro'yxati)
+router.get('/:id/bom', async (req, res, next) => {
+  try {
+    const result = await query(`
+      SELECT pb.component_id, pb.qty, p.name, p.unit, p.stock_quantity
+      FROM product_bom pb
+      JOIN products p ON p.id = pb.component_id
+      WHERE pb.product_id = $1
+      ORDER BY p.name
+    `, [req.params.id]);
+    res.json({ bom: result.rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/products/:id/bom — komponent qo'shish yoki yangilash (upsert)
+router.post('/:id/bom', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, next) => {
+  try {
+    const { component_id, qty } = req.body;
+    if (!component_id || !qty || parseFloat(qty) <= 0) {
+      return res.status(400).json({ error: 'component_id va qty (>0) kerak' });
+    }
+    const usePostgres = process.env.USE_POSTGRES === 'true';
+    if (usePostgres) {
+      await query(
+        'INSERT INTO product_bom (product_id, component_id, qty) VALUES ($1,$2,$3) ON CONFLICT (product_id, component_id) DO UPDATE SET qty=$3',
+        [req.params.id, component_id, parseFloat(qty)]
+      );
+    } else {
+      await query(
+        'INSERT OR REPLACE INTO product_bom (product_id, component_id, qty) VALUES ($1,$2,$3)',
+        [req.params.id, component_id, parseFloat(qty)]
+      );
+    }
+    const result = await query(`
+      SELECT pb.component_id, pb.qty, p.name, p.unit, p.stock_quantity
+      FROM product_bom pb JOIN products p ON p.id = pb.component_id
+      WHERE pb.product_id = $1 ORDER BY p.name
+    `, [req.params.id]);
+    res.json({ bom: result.rows });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/products/:id/bom/:componentId — komponentni tarkibdan olib tashlash
+router.delete('/:id/bom/:componentId', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, next) => {
+  try {
+    await query(
+      'DELETE FROM product_bom WHERE product_id=$1 AND component_id=$2',
+      [req.params.id, req.params.componentId]
+    );
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

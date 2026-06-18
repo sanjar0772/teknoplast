@@ -788,6 +788,8 @@ if (USE_PG) {
       `ALTER TABLE expenses ADD COLUMN quantity REAL`,
       // Ombor turi: TAYYOR=tayyor mahsulotlar ombori, KOMPONENT=ishlab chiqarish ombori (detallar)
       `ALTER TABLE products ADD COLUMN kind TEXT DEFAULT 'TAYYOR'`,
+      // BOM: tayyor mahsulot tarkibi — qaysi komponentlardan iborat va nechta
+      `CREATE TABLE IF NOT EXISTS product_bom (product_id TEXT NOT NULL, component_id TEXT NOT NULL, qty REAL NOT NULL DEFAULT 1, PRIMARY KEY (product_id, component_id))`,
     ];
     for (const m of migrations) {
       try {

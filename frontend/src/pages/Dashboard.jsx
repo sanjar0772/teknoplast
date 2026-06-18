@@ -87,6 +87,108 @@ export default function Dashboard() {
 
   const profit = parseFloat(d.month?.profit || 0);
 
+  // ── SAVDO BOSHLIG'I (SALES_HEAD) — faqat sotuvga oid ko'rinish ──
+  if (user?.role === 'SALES_HEAD') {
+    const monthTotal = parseFloat(d.month?.sales?.total || 0);
+    const monthPaid = parseFloat(d.month?.sales?.paid || 0);
+    const monthDebt = Math.max(0, monthTotal - monthPaid);
+    const topProducts = d.top_products || [];
+    return (
+      <div className="space-y-6">
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Xush kelibsiz, {user?.full_name?.split(' ')[0]}!</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {new Date().toLocaleDateString('uz-UZ', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </p>
+          </div>
+          <button onClick={() => refetch()} className="btn-secondary btn-sm">
+            <RefreshCw size={14} /> Yangilash
+          </button>
+        </div>
+
+        {/* Sotuv KPI'lari */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <KpiCard icon={ShoppingCart} iconBg="bg-blue-500" title="Bugungi sotuv"
+            value={`${fmt(d.today?.sales?.total)} so'm`} sub={`${d.today?.sales?.count || 0} ta sotuv`} />
+          <KpiCard icon={TrendingUp} iconBg="bg-green-500" title="Bu oylik sotuv"
+            value={`${fmt(monthTotal)} so'm`} sub="jami daromad" />
+          <KpiCard icon={Banknote} iconBg="bg-emerald-500" title="To'langan"
+            value={`${fmt(monthPaid)} so'm`} sub="bu oy" />
+          <KpiCard icon={TrendingDown} iconBg="bg-amber-500" title="Qarz (kutilmoqda)"
+            value={`${fmt(monthDebt)} so'm`} sub="to'lanmagan" />
+        </div>
+
+        {/* 6 oylik sotuv trendi (tarix) */}
+        <div className="card">
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">6 Oylik Sotuv Tarixi</h2>
+          {salesTrend.length > 0 ? (
+            <ResponsiveContainer width="100%" height={240}>
+              <AreaChart data={salesTrend}>
+                <defs>
+                  <linearGradient id="shSalesGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} tickFormatter={v => `${(v / 1000000).toFixed(0)}M`} />
+                <Tooltip formatter={(v) => [`${fmt(v)} so'm`, 'Sotuv']} />
+                <Area type="monotone" dataKey="sotuv" stroke="#3b82f6" fill="url(#shSalesGrad)" strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-52 flex items-center justify-center text-gray-400 text-sm">Ma'lumot yo'q</div>
+          )}
+        </div>
+
+        {/* Top mahsulotlar — diagramma + jadval */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <div className="card">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">Bu Oylik Top Mahsulotlar</h2>
+            {topProducts.length > 0 ? (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={topProducts} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} />
+                  <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={v => [`${fmt(v)} so'm`]} />
+                  <Bar dataKey="revenue" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-48 flex items-center justify-center text-gray-400 text-sm">Bu oyda sotuv yo'q</div>
+            )}
+          </div>
+
+          <div className="card">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">Top Mahsulotlar — tafsilot</h2>
+            <div className="table-container">
+              <table className="table">
+                <thead>
+                  <tr><th>#</th><th>Mahsulot</th><th>Sotilgan</th><th>Daromad</th></tr>
+                </thead>
+                <tbody>
+                  {topProducts.length > 0 ? topProducts.map((p, i) => (
+                    <tr key={i}>
+                      <td className="text-gray-400">{i + 1}</td>
+                      <td className="font-medium text-gray-900">{p.name}</td>
+                      <td>{fmt(p.qty)}</td>
+                      <td className="font-semibold text-blue-700">{fmt(p.revenue)} so'm</td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan={4} className="text-center py-8 text-gray-400">Bu oyda sotuv yo'q</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}

@@ -12,6 +12,9 @@ import { RANG_COLORS } from '../constants/colors';
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
 const rangLabel = (r) => (r && r.trim()) ? r : 'Rangsiz';
+// Savat qatori uchun noyob kalit (bir mahsulot bir nechta rangda alohida qator bo'lishi uchun)
+let _rowKey = 0;
+const newRowKey = () => ++_rowKey;
 // Tanlangan rang bo'yicha ombordagi son
 const rowAvail = (x) => {
   const cs = (x.color_stock || []).find(c => (c.rang || '') === (x.rang || ''));
@@ -66,8 +69,11 @@ export default function QuickSalePage() {
         const toAdd = preset
           .filter(p => !ids.has(p.id))
           .map(p => ({
+            key: newRowKey(),
             id: p.id, name: p.name, unit: p.unit || 'dona',
             price: parseFloat(p.price) || 0, qty: 1, stock: p.stock_quantity,
+            color_stock: p.color_stock || [],
+            rang: (p.color_stock || []).length === 1 ? p.color_stock[0].rang : '',
           }));
         return [...c, ...toAdd];
       });
@@ -80,10 +86,15 @@ export default function QuickSalePage() {
 
   const addToCart = (p) => {
     if (cartIds.has(p.id)) {
-      setCart(c => c.map(x => x.id === p.id ? { ...x, qty: x.qty + 1 } : x));
+      // Birinchi shu mahsulot qatorining sonini oshiramiz (boshqa rang qatori tegmaydi)
+      setCart(c => {
+        const idx = c.findIndex(x => x.id === p.id);
+        return c.map((x, i) => i === idx ? { ...x, qty: (parseFloat(x.qty) || 0) + 1 } : x);
+      });
     } else {
       const cs = p.color_stock || [];
       setCart(c => [...c, {
+        key: newRowKey(),
         id: p.id, name: p.name, unit: p.unit || 'dona',
         price: parseFloat(p.price) || 0, qty: 1, stock: p.stock_quantity,
         color_stock: cs,
@@ -92,11 +103,22 @@ export default function QuickSalePage() {
     }
   };
 
-  const updateRow = (id, field, value) => {
-    setCart(c => c.map(x => x.id === id ? { ...x, [field]: value } : x));
+  // Bir mahsulotni boshqa rangda alohida qator qilib qo'shadi
+  const addColorRow = (row) => {
+    setCart(c => {
+      const idx = c.findIndex(x => x.key === row.key);
+      const dup = { ...row, key: newRowKey(), rang: '', qty: 1 };
+      const next = [...c];
+      next.splice(idx + 1, 0, dup);
+      return next;
+    });
   };
 
-  const removeRow = (id) => setCart(c => c.filter(x => x.id !== id));
+  const updateRow = (key, field, value) => {
+    setCart(c => c.map(x => x.key === key ? { ...x, [field]: value } : x));
+  };
+
+  const removeRow = (key) => setCart(c => c.filter(x => x.key !== key));
   const clearCart = () => setCart([]);
 
   const grandTotal = cart.reduce((sum, x) => sum + (parseFloat(x.qty) || 0) * (parseFloat(x.price) || 0), 0);
@@ -372,7 +394,7 @@ export default function QuickSalePage() {
                       </td>
                     </tr>
                   ) : cart.map((x, i) => (
-                    <tr key={x.id}>
+                    <tr key={x.key}>
                       <td className="text-gray-400">{i + 1}</td>
                       <td>
                         <div className="font-medium text-gray-900">{x.name}</div>
@@ -387,7 +409,7 @@ export default function QuickSalePage() {
                           <div className="flex items-center gap-1">
                             <select
                               value={x.rang || ''}
-                              onChange={e => updateRow(x.id, 'rang', e.target.value)}
+                              onChange={e => updateRow(x.key, 'rang', e.target.value)}
                               className={`select py-1 px-2 text-sm w-36 ${((x.color_stock || []).length > 1 && !(x.color_stock || []).some(c => (c.rang || '') === (x.rang || ''))) ? 'border-red-300' : ''}`}
                             >
                               {/* Placeholder faqat bir nechta rang bo'lsa — bitta (rangsiz ham) bucket o'zi tanlanadi */}
@@ -397,13 +419,22 @@ export default function QuickSalePage() {
                               ))}
                             </select>
                             {x.rang && <span style={{ display:'inline-block', width:9, height:9, borderRadius:'50%', flexShrink:0, background: RANG_COLORS[x.rang] || '#999', border:'1px solid #ccc' }} />}
+                            {(x.color_stock || []).length > 1 && (
+                              <button
+                                type="button" onClick={() => addColorRow(x)}
+                                title="Shu mahsulotni boshqa rangda qo'shish"
+                                className="text-blue-500 hover:text-blue-700 text-xs whitespace-nowrap"
+                              >
+                                + rang
+                              </button>
+                            )}
                           </div>
                         )}
                       </td>
                       <td>
                         <input
                           type="number" min="0" value={x.price}
-                          onChange={e => updateRow(x.id, 'price', e.target.value)}
+                          onChange={e => updateRow(x.key, 'price', e.target.value)}
                           onFocus={e => e.target.select()}
                           className="input py-1 px-2 text-sm w-24"
                         />
@@ -411,7 +442,7 @@ export default function QuickSalePage() {
                       <td>
                         <input
                           type="number" min="1" max={rowAvail(x)} value={x.qty}
-                          onChange={e => updateRow(x.id, 'qty', e.target.value)}
+                          onChange={e => updateRow(x.key, 'qty', e.target.value)}
                           onFocus={e => e.target.select()}
                           className={`input py-1 px-2 text-sm w-20 ${x.rang && parseFloat(x.qty) > rowAvail(x) ? 'border-red-400 text-red-600' : ''}`}
                         />
@@ -420,7 +451,7 @@ export default function QuickSalePage() {
                         {fmt((parseFloat(x.qty) || 0) * (parseFloat(x.price) || 0))}
                       </td>
                       <td>
-                        <button onClick={() => removeRow(x.id)} className="text-gray-300 hover:text-red-500">
+                        <button onClick={() => removeRow(x.key)} className="text-gray-300 hover:text-red-500">
                           <Trash2 size={15} />
                         </button>
                       </td>

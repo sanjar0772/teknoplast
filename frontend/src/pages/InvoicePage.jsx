@@ -4,8 +4,27 @@ import toast from 'react-hot-toast';
 import { QRCodeSVG } from 'qrcode.react';
 import { ArrowLeft, Download, Printer } from 'lucide-react';
 import { salesAPI } from '../services/api';
+import { RANG_COLORS } from '../constants/colors';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
+const rangLabel = (r) => (r && String(r).trim()) ? r : 'Rangsiz';
+
+// Bir xil mahsulotni (nom + narx) bitta qatorga birlashtiradi; ranglar ichida ko'rsatiladi
+function groupInvoiceRows(rows) {
+  const order = [], map = {};
+  rows.forEach(it => {
+    const key = `${it.product_name || ''}||${it.unit_price}`;
+    if (!map[key]) {
+      map[key] = { product_name: it.product_name, unit: it.unit, unit_price: it.unit_price, items: [], qty: 0, sum: 0 };
+      order.push(map[key]);
+    }
+    const g = map[key];
+    g.items.push(it);
+    g.qty += parseFloat(it.quantity) || 0;
+    g.sum += parseFloat(it.total_amount) || 0;
+  });
+  return order;
+}
 
 // To'lov turini sotuv yozuvidan aniqlaymiz:
 //  - status === PAID  va notes ichida "Karta"/"Naqd" bo'lsa — shu nom ko'rsatiladi
@@ -136,16 +155,31 @@ export default function InvoicePage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((it, i) => (
-                <tr key={it.id || i}>
-                  <td>{i + 1}</td>
-                  <td className="font-medium">{it.product_name}</td>
-                  <td>{it.unit}</td>
-                  <td>{it.quantity}</td>
-                  <td>{fmt(it.unit_price)} so'm</td>
-                  <td className="font-semibold text-blue-700">{fmt(it.total_amount)} so'm</td>
-                </tr>
-              ))}
+              {groupInvoiceRows(rows).map((g, i) => {
+                const hasColor = g.items.some(x => x.rang && String(x.rang).trim());
+                return (
+                  <tr key={i}>
+                    <td>{i + 1}</td>
+                    <td className="font-medium">
+                      <div>{g.product_name}</div>
+                      {hasColor && (
+                        <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                          {g.items.map((x, j) => (
+                            <span key={j} className="inline-flex items-center gap-1">
+                              <span style={{ width: 8, height: 8, borderRadius: '50%', display: 'inline-block', background: RANG_COLORS[x.rang] || '#999', border: '1px solid #ddd' }} />
+                              {rangLabel(x.rang)}: {x.quantity}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td>{g.unit}</td>
+                    <td>{g.qty}</td>
+                    <td>{fmt(g.unit_price)} so'm</td>
+                    <td className="font-semibold text-blue-700">{fmt(g.sum)} so'm</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

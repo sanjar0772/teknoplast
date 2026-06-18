@@ -220,6 +220,19 @@ const READ_TOOLS = [
     },
   },
   {
+    name: 'product_stats',
+    description: "Barcha mahsulotlar bo'yicha sotuv statistikasi: har bir mahsulot qancha sotilgan (dona) va qancha daromad keltirgan. Vaqt oralig'i berilsa (masalan 'may oyida', '1-iyundan 15-iyungacha', 'bugun', 'shu oy') o'sha davr bo'yicha ko'rsatadi. 'Mahsulotlar statistikasi', 'qaysi mahsulot ko'p sotildi', 'to'liq sotuv statistikasi', 'статистика товаров'.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        period: { type: 'string', enum: ['today', 'month', 'all'], description: "today=bugun, month=shu oy, all=butun davr (standart). start_date/end_date berilsa o'sha ustun." },
+        start_date: { type: 'string', description: 'YYYY-MM-DD — davr boshi (ixtiyoriy)' },
+        end_date: { type: 'string', description: 'YYYY-MM-DD — davr oxiri (ixtiyoriy)' },
+        limit: { type: 'number', description: "Nechta mahsulot ko'rsatilsin (standart 50; 'hammasi' so'ralsa katta son, mas. 500)" },
+      },
+    },
+  },
+  {
     name: 'lookup',
     description: 'Mahsulot narxi yoki ombordagi sonini bilish. "gul tuvak narxi qancha?", "omborda nechta chelak bor?".',
     input_schema: {
@@ -499,7 +512,7 @@ async function commandHandler(req, res) {
 ${isOwner
   ? 'Вы можете выполнять любые операции: продажи, расходы, приход, сотрудники, производство, цены, склад.'
   : 'Вы можете только просматривать: отчёты, остатки, сотрудников, должников. Изменения — только для администратора.'}
-Инструменты: get_report (отчёт), lookup (цена/склад), list_debtors (должники), get_employees (сотрудники), generate_document (PDF/Excel)${isOwner ? ', create_sale, add_expense, add_customer, create_intake, update_price, update_stock, record_payment, add_production, add_employee, remove_employee, update_employee, add_user (создать логин-аккаунт)' : ''}.
+Инструменты: get_report (отчёт), product_stats (статистика товаров за период), lookup (цена/склад), list_debtors (должники), get_employees (сотрудники), generate_document (PDF/Excel)${isOwner ? ', create_sale, add_expense, add_customer, create_intake, update_price, update_stock, record_payment, add_production, add_employee, remove_employee, update_employee, add_user (создать логин-аккаунт)' : ''}.
 Помните историю разговора (до 6 сообщений). Краткие ответы. Числа: 1 000 000 сум. Представляйтесь как Ахмад.
 Вы УМЕЕТЕ читать файлы (PDF, фото, Excel, Word) — если пользователь хочет прислать файл, пусть нажмёт кнопку прикрепления (скрепка). НИКОГДА не говорите "не могу читать PDF/файлы".
 ВАЖНО: без *, #, эмодзи, маркдауна — только чистый текст (ответ озвучивается).`
@@ -508,7 +521,7 @@ Joriy foydalanuvchi roli: ${isOwner ? 'ADMIN (to\'liq huquq)' : 'XODIM (faqat ko
 ${isOwner
   ? 'Siz har qanday amalni bajara olasiz: sotuv, xarajat, kirim, xodim, ishlab chiqarish, narx, ombor.'
   : 'Siz faqat ko\'ra olasiz: hisobot, ombor, xodimlar, qarzdorlar. O\'zgartirish faqat admin uchun.'}
-Toollar: get_report, lookup, list_debtors, get_employees, generate_document${isOwner ? ', create_sale, add_expense, add_customer, create_intake, update_price, update_stock, record_payment, add_production, add_employee, remove_employee, update_employee, add_user (login akkaunt yaratish)' : ''}.
+Toollar: get_report, product_stats (mahsulotlar statistikasi — davr bo'yicha), lookup, list_debtors, get_employees, generate_document${isOwner ? ', create_sale, add_expense, add_customer, create_intake, update_price, update_stock, record_payment, add_production, add_employee, remove_employee, update_employee, add_user (login akkaunt yaratish)' : ''}.
 Suhbat tarixini esda tuting (6 xabar). Qisqa javoblar. Raqamlar: 1 000 000 so\'m. O\'zingizni Ahmad deb tanishtiring.
 Siz fayl ham O\'QIY OLASIZ (PDF, rasm, Excel, Word) — foydalanuvchi fayl yubormoqchi bo\'lsa, biriktirish (qisqich) tugmasidan foydalansin. HECH QACHON "PDF/fayl o\'qiy olmayman" demang.
 MUHIM: *, #, emoji, markdown ishlatmang — faqat toza matn (ovozda o\'qiladi).`;
@@ -545,6 +558,46 @@ MUHIM: *, #, emoji, markdown ishlatmang — faqat toza matn (ovozda o\'qiladi).`
     if (toolBlock.name === 'get_report') {
       const data = await gatherReport(inp.period || 'today');
       return res.json({ response: reportToText(data, lang) });
+    }
+
+    if (toolBlock.name === 'product_stats') {
+      const limit = Math.min(Math.max(parseInt(inp.limit) || 50, 1), 500);
+      const params = [];
+      let where = '';
+      let label;
+      if (inp.start_date && inp.end_date) {
+        where = 'WHERE s.sale_date >= $1 AND s.sale_date <= $2';
+        params.push(inp.start_date, inp.end_date);
+        label = `${inp.start_date} — ${inp.end_date}`;
+      } else if (inp.period === 'today') {
+        where = "WHERE strftime('%Y-%m-%d', s.sale_date) = $1";
+        params.push(new Date().toISOString().slice(0, 10));
+        label = lang === 'ru' ? 'за сегодня' : 'bugun';
+      } else if (inp.period === 'month') {
+        where = "WHERE TO_CHAR(s.sale_date,'YYYY-MM') = $1";
+        params.push(new Date().toISOString().slice(0, 7));
+        label = lang === 'ru' ? 'за месяц' : 'shu oy';
+      } else {
+        where = '';
+        label = lang === 'ru' ? 'за всё время' : 'butun davr';
+      }
+      const rows = (await query(
+        `SELECT p.name, COALESCE(SUM(s.quantity),0) qty, COALESCE(SUM(s.total_amount),0) revenue
+         FROM sales s JOIN products p ON s.product_id = p.id
+         ${where}
+         GROUP BY p.name ORDER BY revenue DESC LIMIT $${params.length + 1}`,
+        [...params, limit]
+      )).rows;
+      if (!rows.length) {
+        return res.json({ response: lang === 'ru' ? `Продаж (${label}) нет.` : `${label} bo'yicha sotuv yo'q.` });
+      }
+      const totalQty = rows.reduce((a, r) => a + Number(r.qty || 0), 0);
+      const totalRev = rows.reduce((a, r) => a + Number(r.revenue || 0), 0);
+      const list = rows.map((r, i) => `${i + 1}. ${r.name}: ${fmt(r.qty)} ${lang === 'ru' ? 'шт' : 'dona'}, ${fmt(r.revenue)} ${lang === 'ru' ? 'сум' : "so'm"}`).join('\n');
+      const head = lang === 'ru'
+        ? `Статистика товаров (${label}). Всего ${rows.length} наименований, ${fmt(totalQty)} шт, ${fmt(totalRev)} сум:\n`
+        : `Mahsulotlar statistikasi (${label}). Jami ${rows.length} xil, ${fmt(totalQty)} dona, ${fmt(totalRev)} so'm:\n`;
+      return res.json({ response: head + list });
     }
 
     if (toolBlock.name === 'lookup') {

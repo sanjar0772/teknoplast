@@ -126,6 +126,27 @@ export default function ProductsPage() {
     onError: (e) => toast.error(e?.response?.data?.error || 'Xato'),
   });
 
+  const importPricelistMutation = useMutation({
+    mutationFn: () => productsAPI.importPricelist(),
+    onSuccess: (res) => {
+      const d = res.data;
+      toast.success(`Praysist yuklandi — ${d.created} ta yangi qo'shildi (${d.skipped} ta o'tkazildi)`);
+      qc.invalidateQueries({ queryKey: ['products'] });
+    },
+    onError: (e) => toast.error(e?.response?.data?.error || 'Xato'),
+  });
+
+  const importPricelist = () => {
+    const ok = confirm(
+      'PRAYSLIST yuklash — Texno Innovator 04.05.2026 narxlari\n\n' +
+      '• 217 ta mahsulot yangi narh bilan qo\'shiladi\n' +
+      '• Har bir mahsulotga 1000 dona ombor avtomatik qo\'yiladi\n' +
+      '• Bir xil nomli mahsulot bo\'lsa, o\'tkazib yuboriladi (qayta qo\'shilmaydi)\n\n' +
+      'Davom etilsinmi?'
+    );
+    if (ok) importPricelistMutation.mutate();
+  };
+
   const resetStock = () => {
     const n = (data?.products || []).length;
     if (!n) return toast.error('Mahsulot yo\'q');
@@ -180,7 +201,13 @@ export default function ProductsPage() {
     <div className="space-y-6">
       <div className="page-header">
         <h1 className="page-title">Mahsulotlar</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {isOwner() && (
+            <button onClick={importPricelist} disabled={importPricelistMutation.isPending}
+              className="btn-sm border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg px-3 flex items-center gap-1 font-medium">
+              {importPricelistMutation.isPending ? 'Yuklanmoqda...' : '📋 Praysist yuklash (217 ta)'}
+            </button>
+          )}
           {isOwner() && data?.products?.length > 0 && (
             <button onClick={resetStock} disabled={resetStockMutation.isPending}
               className="btn-sm border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 rounded-lg px-3 flex items-center gap-1">

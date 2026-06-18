@@ -207,6 +207,37 @@ router.post('/reset-all', requireRole('OWNER'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/products/import-pricelist — 2026-yil prayslist (217 ta mahsulot) avtomatik yuklash
+router.post('/import-pricelist', requireRole('OWNER'), async (req, res, next) => {
+  try {
+    const pricelist = require('../data/pricelist2026');
+    const client = await require('../db').getClient();
+    let created = 0, skipped = 0;
+    try {
+      await client.query('BEGIN');
+      for (const item of pricelist) {
+        // Bir xil nomli mahsulot bo'lsa o'tkazib yuboramiz
+        const existing = await client.query('SELECT id FROM products WHERE name = $1 LIMIT 1', [item.name]);
+        if (existing.rows.length) { skipped++; continue; }
+        const type = item.code ? item.code.split('-')[0] : 'Plastik';
+        await client.query(
+          'INSERT INTO products (name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, rang, kind) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+          [item.name, `Kod ${type}`, item.code || null, item.price, 0, 1000, null, 'dona', null, 'TAYYOR']
+        );
+        created++;
+      }
+      await client.query('COMMIT');
+      logAudit(req, { action: 'IMPORT_PRICELIST_2026', table: 'products', recordId: 'BULK', newValues: { created, skipped, total: pricelist.length } });
+      res.json({ created, skipped, total: pricelist.length });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (err) { next(err); }
+});
+
 // PUT /api/products/:id — yagona mahsulotni yangilash
 router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, next) => {
   try {

@@ -154,6 +154,7 @@ export const productsAPI = {
   getBom: (id) => api.get(`/products/${id}/bom`),
   addBomItem: (id, data) => api.post(`/products/${id}/bom`, data),
   removeBomItem: (id, componentId) => api.delete(`/products/${id}/bom/${componentId}`),
+  importPricelist: () => api.post('/products/import-pricelist'),
 };
 
 // Machines

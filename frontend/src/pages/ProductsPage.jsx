@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Package, DollarSign, Trash2 } from 'lucide-react';
+import { Plus, X, Package, DollarSign, Trash2, Layers } from 'lucide-react';
 import { productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import { RANGLAR, RANG_COLORS } from '../constants/colors';
@@ -34,6 +34,8 @@ export default function ProductsPage() {
   const [stockForm, setStockForm] = useState({ quantity: 0, operation: 'add' });
   const [pricingModal, setPricingModal] = useState(null);
   const [pricingForm, setPricingForm] = useState({ stanokchi_rate: 0, stanokchi_semi_rate: 0, detalchi_rate: 0 });
+  const [bomModal, setBomModal] = useState(null); // { id, name } — tarkibni boshqarish
+  const [bomAddForm, setBomAddForm] = useState({ component_id: '', qty: 1 });
 
   const { data, isLoading } = useQuery({
     queryKey: ['products'],
@@ -70,6 +72,33 @@ export default function ProductsPage() {
       qc.invalidateQueries({ queryKey: ['products'] });
       setPricingModal(null);
     },
+  });
+
+  // BOM (komponentlar tarkibi)
+  const { data: bomData } = useQuery({
+    queryKey: ['product-bom', bomModal?.id],
+    queryFn: () => productsAPI.getBom(bomModal.id).then(r => r.data),
+    enabled: !!bomModal,
+  });
+
+  const addBomMutation = useMutation({
+    mutationFn: ({ product_id, ...data }) => productsAPI.addBomItem(product_id, data),
+    onSuccess: () => {
+      toast.success('Komponent qo\'shildi');
+      qc.invalidateQueries({ queryKey: ['product-bom', bomModal?.id] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      setBomAddForm({ component_id: '', qty: 1 });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+
+  const removeBomMutation = useMutation({
+    mutationFn: ({ product_id, component_id }) => productsAPI.removeBomItem(product_id, component_id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['product-bom', bomModal?.id] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
   const deleteAllMutation = useMutation({
@@ -137,6 +166,9 @@ export default function ProductsPage() {
   const canPrice = isOwner() || isAccountant() || isProductionHead();
   // KIRIMCHI faqat yangi mahsulot qo'shishi mumkin
   const canAdd = canWrite || isKirimchi();
+
+  // Komponent (KOMPONENT) mahsulotlar — Tarkib formasi uchun
+  const componentProducts = (data?.products || []).filter(p => p.kind === 'KOMPONENT');
 
   return (
     <div className="space-y-6">
@@ -242,6 +274,17 @@ export default function ProductsPage() {
                   <DollarSign size={13} /> Narh
                 </button>
               )}
+              {canWrite && p.kind !== 'KOMPONENT' && (
+                <button onClick={() => { setBomModal(p); setBomAddForm({ component_id: '', qty: 1 }); }}
+                  className="btn-sm w-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 flex items-center gap-1 justify-center mt-1">
+                  <Layers size={13} /> Tarkib (komponentlar)
+                </button>
+              )}
+              {p.kind === 'KOMPONENT' && (
+                <span className="w-full text-center text-xs text-gray-500 bg-gray-50 rounded-lg py-1.5 mt-1">
+                  Komponent — boshqa mahsulot tarkibida ishlatiladi
+                </span>
+              )}
             </div>
           </div>
         ))}
@@ -344,6 +387,111 @@ export default function ProductsPage() {
           </div>
         </Modal>
       )}
+
+      {/* BOM (Tarkib) Modal — tayyor mahsulotning komponentlari */}
+      <Modal
+        open={!!bomModal}
+        onClose={() => { setBomModal(null); setBomAddForm({ component_id: '', qty: 1 }); }}
+        title={`Tarkib — ${bomModal?.name || ''}`}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-gray-500">
+            Ushbu tayyor mahsulot qaysi komponentlardan yig'iladi. Komponentlar "Ishlab chiqarish ombori"da turadi.
+          </p>
+
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 mb-2">Hozirgi tarkib</h4>
+            {!(bomData?.bom?.length) ? (
+              <div className="text-center py-6 bg-gray-50 rounded-lg">
+                <Package size={24} className="mx-auto mb-2 text-gray-300" />
+                <p className="text-sm text-gray-400">Hali komponent qo'shilmagan</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                {(bomData?.bom || []).map(item => (
+                  <div key={item.component_id} className="flex items-center justify-between bg-indigo-50 rounded-lg px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="font-medium text-sm text-gray-900 truncate">{item.name}</div>
+                      <div className="text-xs text-gray-500">
+                        × <strong>{item.qty}</strong> {item.unit} · omborda: {item.stock_quantity}
+                      </div>
+                    </div>
+                    {canWrite && (
+                      <button
+                        onClick={() => removeBomMutation.mutate({ product_id: bomModal.id, component_id: item.component_id })}
+                        disabled={removeBomMutation.isPending}
+                        className="p-1 text-red-400 hover:text-red-600 rounded"
+                        title="Olib tashlash"
+                      >
+                        <X size={16} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {canWrite && (
+            <div className="border-t pt-3">
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">Komponent qo'shish</h4>
+              {!componentProducts.length ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                  Komponent mahsulotlar topilmadi. Avval "Ishlab chiqarish ombori" sahifasida
+                  yangi komponent qo'shing (Turi: KOMPONENT).
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <select
+                    value={bomAddForm.component_id}
+                    onChange={e => setBomAddForm(f => ({ ...f, component_id: e.target.value }))}
+                    className="select text-sm"
+                  >
+                    <option value="">— Komponent tanlang —</option>
+                    {componentProducts.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} (omborda: {c.stock_quantity} {c.unit})
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex gap-2 items-center">
+                    <label className="text-xs text-gray-600 whitespace-nowrap">Soni:</label>
+                    <input
+                      type="number" min="1" step="1"
+                      value={bomAddForm.qty}
+                      onChange={e => setBomAddForm(f => ({ ...f, qty: parseFloat(e.target.value) || 1 }))}
+                      className="input text-sm w-24"
+                    />
+                    <button
+                      onClick={() => {
+                        if (!bomAddForm.component_id) return toast.error('Komponent tanlang');
+                        addBomMutation.mutate({
+                          product_id: bomModal.id,
+                          component_id: bomAddForm.component_id,
+                          qty: bomAddForm.qty,
+                        });
+                      }}
+                      disabled={addBomMutation.isPending}
+                      className="btn-primary btn-sm flex-1"
+                    >
+                      <Plus size={14} /> Qo'shish
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end pt-1">
+            <button
+              onClick={() => { setBomModal(null); setBomAddForm({ component_id: '', qty: 1 }); }}
+              className="btn-secondary"
+            >
+              Yopish
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Pricing Modal — Bugalter/OWNER uchun */}
       {pricingModal && (

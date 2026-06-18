@@ -75,12 +75,12 @@ export default function InventoryPage() {
   // Ishlab chiqarish ombori — yangi mahsulot (komponent) qo'shish
   const createCompMutation = useMutation({
     mutationFn: (d) => productsAPI.create({
-      name: d.name, type: d.type || 'Komponent', unit: d.unit || 'dona',
+      name: d.name, type: d.type || (d.kind === 'TAYYOR' ? 'Mahsulot' : 'Komponent'), unit: d.unit || 'dona',
       price: parseFloat(d.price) || 0, stock_quantity: parseInt(d.stock_quantity) || 0,
-      kind: 'KOMPONENT',
+      kind: d.kind === 'TAYYOR' ? 'TAYYOR' : 'KOMPONENT',
     }),
-    onSuccess: () => {
-      toast.success('Mahsulot ishlab chiqarish omboriga qo\'shildi');
+    onSuccess: (_res, d) => {
+      toast.success(d.kind === 'TAYYOR' ? 'Tayyor mahsulot qo\'shildi' : 'Komponent ishlab chiqarish omboriga qo\'shildi');
       qc.invalidateQueries({ queryKey: ['inventory-products'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       setShowCompModal(false);
@@ -405,6 +405,13 @@ export default function InventoryPage() {
       <Modal open={showCompModal} onClose={() => setShowCompModal(false)} title="Ishlab chiqarish — mahsulot qo'shish">
         <form onSubmit={handleSubmitComp(d => createCompMutation.mutate(d))} className="space-y-4">
           <div>
+            <label className="label">Turi *</label>
+            <select {...registerComp('kind')} defaultValue="KOMPONENT" className="select">
+              <option value="KOMPONENT">Komponent (yig'iladi — detal)</option>
+              <option value="TAYYOR">Tayyor (bittada tayyor — sotiladi)</option>
+            </select>
+          </div>
+          <div>
             <label className="label">Nomi *</label>
             <input {...registerComp('name', { required: true })} className="input" placeholder="Masalan: Korpus, Oyoq, Qopqoq..." />
           </div>
@@ -432,7 +439,7 @@ export default function InventoryPage() {
               <input {...registerComp('stock_quantity')} type="number" min="0" defaultValue={0} className="input" />
             </div>
           </div>
-          <p className="text-xs text-gray-400">Bu mahsulot <b>ishlab chiqarish omboriga</b> qo'shiladi va sotuvда ko'rinmaydi.</p>
+          <p className="text-xs text-gray-400"><b>Komponent</b> → ishlab chiqarish ombori (sotuvда ko'rinmaydi). <b>Tayyor</b> → tayyor mahsulotlar ombori (sotuvда ko'rinadi).</p>
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={() => setShowCompModal(false)} className="btn-secondary flex-1">Bekor</button>
             <button type="submit" disabled={createCompMutation.isPending} className="btn-primary flex-1">Saqlash</button>

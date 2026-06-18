@@ -490,4 +490,41 @@ router.put('/raw-materials/:id/stock', requireRole('OWNER', 'TAMINOTCHI'), async
   } catch (err) { next(err); }
 });
 
+// POST /api/products/colors/set-white — barcha mahsulot omborini 'Оқ' rangga o'tkazadi (OWNER)
+// Har mahsulotning mavjud rang bucketlari o'chirilib, stock_quantity bitta 'Оқ' bucketiga joylanadi.
+// Shundan keyin mahsulotlar Sotuvda 'Оқ' rangda sotiladi. Boshqa ranglar keyin Kirim orqali qo'shiladi.
+router.post('/colors/set-white', requireRole('OWNER'), async (req, res, next) => {
+  try {
+    const client = await require('../db').getClient();
+    try {
+      await client.query('BEGIN');
+      const prods = await client.query('SELECT id, stock_quantity FROM products WHERE is_active = true');
+      let updated = 0, totalQty = 0;
+      for (const p of prods.rows) {
+        await client.query('DELETE FROM product_color_stock WHERE product_id = $1', [p.id]);
+        const q = parseFloat(p.stock_quantity) || 0;
+        if (q > 0) {
+          await client.query(
+            'INSERT INTO product_color_stock (product_id, rang, quantity) VALUES ($1, $2, $3)',
+            [p.id, 'Оқ', q]
+          );
+          updated++;
+          totalQty += q;
+        }
+      }
+      await client.query('COMMIT');
+      logAudit(req, {
+        action: 'PRODUCTS_COLOR_SET_WHITE', table: 'product_color_stock', recordId: 'ALL',
+        newValues: { products: prods.rows.length, updated, total_quantity: totalQty },
+      });
+      res.json({ products: prods.rows.length, updated, total_quantity: totalQty });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

@@ -239,7 +239,7 @@ router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), [
 // POST /api/sales/bulk — bir nechta mahsulotni bitta chekda sotish
 router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
   try {
-    const { customer_id, customer_name, customer_phone, sale_date, status, items, notes } = req.body;
+    const { customer_id, customer_name, customer_phone, sale_date, status, items, notes, payment_amount: reqPayment } = req.body;
     if (!Array.isArray(items) || !items.length) {
       return res.status(400).json({ error: 'Kamida bitta mahsulot kerak' });
     }
@@ -270,7 +270,14 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (re
     }
 
     const saleDate = sale_date || new Date().toISOString().slice(0, 10);
-    const saleStatus = status || 'PENDING';
+    // To'lov summasi: agar reqPayment kelsa — undan foydalaniladi, aks holda status asosida
+    const preGrand = items.reduce((s, it) => s + (parseInt(it.quantity) * parseFloat(it.unit_price)), 0);
+    const paidAmount = reqPayment !== undefined
+      ? Math.max(0, Math.min(parseFloat(reqPayment) || 0, preGrand))
+      : null;
+    const saleStatus = paidAmount !== null
+      ? (paidAmount >= preGrand ? 'PAID' : paidAmount > 0 ? 'PARTIALLY_PAID' : 'PENDING')
+      : (status || 'PENDING');
     const order_ref = genOrderRef();
     const client = await require('../db').getClient();
     const created = [];
@@ -282,12 +289,16 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (re
         const price = parseFloat(it.unit_price);
         const total = qty * price;
         grandTotal += total;
+        // Har bir mahsulot uchun to'lov proporsional taqsimlanadi
+        const itemPaid = paidAmount !== null
+          ? (preGrand > 0 ? Math.round((total / preGrand) * paidAmount) : 0)
+          : (saleStatus === 'PAID' ? total : 0);
         const r = await client.query(
           `INSERT INTO sales (product_id, customer_id, quantity, unit_price, total_amount,
             customer_name, customer_phone, sale_date, status, payment_amount, notes, created_by, order_ref, rang)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
           [it.product_id, customer_id || null, qty, price, total, custName, custPhone,
-           saleDate, saleStatus, saleStatus === 'PAID' ? total : 0, notes || null, req.user.id, order_ref, it.rang || null]
+           saleDate, saleStatus, itemPaid, notes || null, req.user.id, order_ref, it.rang || null]
         );
         await client.query(
           'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW() WHERE id = $2',
@@ -301,7 +312,8 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (re
         action: 'SALE_BULK_CREATE', table: 'sales', recordId: order_ref,
         newValues: { count: created.length, grand_total: grandTotal, customer_id: customer_id || null, order_ref },
       });
-      res.status(201).json({ sales: created, count: created.length, grand_total: grandTotal, order_ref, customer_name: custName });
+      const finalPaid = paidAmount !== null ? paidAmount : (saleStatus === 'PAID' ? grandTotal : 0);
+      res.status(201).json({ sales: created, count: created.length, grand_total: grandTotal, paid_amount: finalPaid, order_ref, customer_name: custName });
     } catch (e) {
       await client.query('ROLLBACK');
       throw e;

@@ -30,10 +30,10 @@ export default function QuickSalePage() {
   const [cart, setCart] = useState([]);          // [{id,name,unit,price,qty,stock}]
   const [customerId, setCustomerId] = useState('');
   // To'lov turi: 'CASH' (Naqd), 'CARD' (Karta), 'DEBT' (Qarz)
-  // Backend status'ga shunday o'tadi: CASH/CARD → PAID, DEBT → PENDING
   const [paymentType, setPaymentType] = useState('CASH');
+  const [partialAmount, setPartialAmount] = useState(''); // '' = to'liq to'lov; qiymat = qisman to'lov
   const [saleDate, setSaleDate] = useState(new Date().toISOString().slice(0, 10));
-  const [lastOrder, setLastOrder] = useState(null); // {order_ref, count, grand_total, items}
+  const [lastOrder, setLastOrder] = useState(null); // {order_ref, count, grand_total, paid_amount, items}
   const lastCartRef = useRef([]);
 
   const { data: productsData, isLoading } = useQuery({
@@ -150,6 +150,7 @@ export default function QuickSalePage() {
         customer_name: cust?.name || null,
         date: new Date(),
       });
+      setPartialAmount('');
       setCart([]);
       setSearch('');
     },
@@ -173,15 +174,17 @@ export default function QuickSalePage() {
     }
     // Chek uchun savat nusxasi (nomlar bilan)
     lastCartRef.current = cart.map(x => ({ name: x.name, qty: parseInt(x.qty), price: parseFloat(x.price), unit: x.unit, rang: x.rang }));
-    // To'lov turini backend statusiga moslash
-    const status = paymentType === 'DEBT' ? 'PENDING' : 'PAID';
+    // To'langan summa: DEBT → 0; CASH/CARD → kiritilgan yoki to'liq summa
+    const paidNow = paymentType === 'DEBT'
+      ? 0
+      : (partialAmount !== '' ? Math.max(0, parseFloat(partialAmount) || 0) : grandTotal);
     const paymentLabel = paymentType === 'CASH' ? 'Naqd'
                        : paymentType === 'CARD' ? 'Karta' : 'Qarz';
     saveMutation.mutate({
       customer_id: customerId,
       sale_date: saleDate,
-      status,
-      notes: `To'lov turi: ${paymentLabel}`,
+      payment_amount: paidNow,
+      notes: `To'lov: ${paymentLabel}${paidNow > 0 && paidNow < grandTotal ? ` · To'landi: ${fmt(paidNow)} so'm` : ''}`,
       items: cart.map(x => ({
         product_id: x.id,
         quantity: parseInt(x.qty),
@@ -243,9 +246,19 @@ export default function QuickSalePage() {
               </div>
 
               {/* Total */}
-              <div className="flex justify-between font-bold text-[15px] border-b border-dashed border-gray-300 pb-2 mb-2">
+              <div className={`flex justify-between font-bold text-[15px] ${lastOrder.paid_amount < lastOrder.grand_total ? '' : 'border-b border-dashed border-gray-300'} pb-2 mb-2`}>
                 <span>JAMI:</span><span>{fmt(lastOrder.grand_total)} so'm</span>
               </div>
+              {lastOrder.paid_amount < lastOrder.grand_total && (
+                <div className="text-[12px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-2">
+                  <div className="flex justify-between text-green-700">
+                    <span>To'landi:</span><span className="font-bold">{fmt(lastOrder.paid_amount)} so'm</span>
+                  </div>
+                  <div className="flex justify-between text-red-600">
+                    <span>Qarz:</span><span className="font-bold">{fmt(lastOrder.grand_total - lastOrder.paid_amount)} so'm</span>
+                  </div>
+                </div>
+              )}
 
               {/* QR */}
               <div className="flex flex-col items-center pt-1">
@@ -330,8 +343,8 @@ export default function QuickSalePage() {
 
         {/* O'NG: Savat (Excel-grid) */}
         <div className="lg:col-span-3 space-y-3">
-          {/* Mijoz / sana / status */}
-          <div className="card p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+          {/* Mijoz / sana / status / to'langan */}
+          <div className="card p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
               <label className="label">Mijoz <span className="text-red-500">*</span></label>
               <select
@@ -350,13 +363,39 @@ export default function QuickSalePage() {
               <input type="date" value={saleDate} onChange={e => setSaleDate(e.target.value)} className="input text-sm" />
             </div>
             <div>
-              <label className="label">To'lov holati</label>
-              <select value={paymentType} onChange={e => setPaymentType(e.target.value)} className="select text-sm">
+              <label className="label">To'lov turi</label>
+              <select
+                value={paymentType}
+                onChange={e => { setPaymentType(e.target.value); if (e.target.value === 'DEBT') setPartialAmount(''); }}
+                className="select text-sm"
+              >
                 <option value="CASH">💵 Naqd</option>
                 <option value="CARD">💳 Karta</option>
-                <option value="DEBT">📝 Qarz</option>
+                <option value="DEBT">📝 To'liq qarz</option>
               </select>
             </div>
+            {paymentType !== 'DEBT' && (
+              <div>
+                <label className="label">
+                  To'langan summa
+                  {partialAmount !== '' && parseFloat(partialAmount) < grandTotal && grandTotal > 0 && (
+                    <span className="ml-1 text-red-500 font-medium">
+                      · qarz: {fmt(grandTotal - (parseFloat(partialAmount) || 0))}
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max={grandTotal}
+                  step="1000"
+                  value={partialAmount}
+                  onChange={e => setPartialAmount(e.target.value)}
+                  placeholder={`${fmt(grandTotal)} (to'liq)`}
+                  className={`input text-sm ${partialAmount !== '' && parseFloat(partialAmount) < grandTotal && grandTotal > 0 ? 'border-orange-400' : ''}`}
+                />
+              </div>
+            )}
           </div>
 
           {/* Savat jadvali */}

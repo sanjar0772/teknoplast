@@ -222,7 +222,7 @@ router.post('/import-pricelist', requireRole('OWNER'), async (req, res, next) =>
         const type = item.code ? item.code.split('-')[0] : 'Plastik';
         await client.query(
           'INSERT INTO products (name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, rang, kind) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-          [item.name, `Kod ${type}`, item.code || null, item.price, 0, 1000, null, 'dona', null, 'TAYYOR']
+          [item.name, `Kod ${type}`, item.code || null, item.price, 0, 1000, null, 'dona', 'Оқ', 'TAYYOR']
         );
         created++;
       }

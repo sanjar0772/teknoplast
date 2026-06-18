@@ -226,6 +226,7 @@ export default function SalesPage() {
     });
     return Array.from(map.entries()).map(([key, sales]) => {
       const total = sales.reduce((sum, x) => sum + parseFloat(x.total_amount || 0), 0);
+      const paid = sales.reduce((sum, x) => sum + parseFloat(x.payment_amount || 0), 0);
       const totalQty = sales.reduce((sum, x) => sum + parseFloat(x.quantity || 0), 0);
       const statuses = new Set(sales.map(x => x.status));
       return {
@@ -234,6 +235,8 @@ export default function SalesPage() {
         first: sales[0],
         multi: sales.length > 1,
         total,
+        paid,
+        debt: Math.max(0, total - paid),
         totalQty,
         status: statuses.size === 1 ? sales[0].status : null, // null = aralash
       };
@@ -327,7 +330,15 @@ export default function SalesPage() {
                     </td>
                     <td>{multi ? `${g.totalQty} dona` : `${first.quantity} ${first.unit}`}</td>
                     <td>{multi ? <span className="text-gray-400">—</span> : `${fmt(first.unit_price)} so'm`}</td>
-                    <td className="font-semibold text-blue-700">{fmt(g.total)} so'm</td>
+                    <td>
+                      <div className="font-semibold text-blue-700">{fmt(g.total)} so'm</div>
+                      {g.debt > 0 && (
+                        <div className="text-xs mt-0.5">
+                          <span className="text-green-600">✓ {fmt(g.paid)}</span>
+                          <span className="text-red-500 ml-1">· qarz {fmt(g.debt)}</span>
+                        </div>
+                      )}
+                    </td>
                     <td>{first.customer_name || <span className="text-gray-400">—</span>}</td>
                     <td>
                       {g.status ? (
@@ -606,6 +617,8 @@ export default function SalesPage() {
               const { sale, items } = chekData;
               const rows = items?.length ? items : [sale];
               const total = rows.reduce((s, it) => s + parseFloat(it.total_amount || 0), 0);
+              const chekPaid = rows.reduce((s, it) => s + parseFloat(it.payment_amount || 0), 0);
+              const chekDebt = Math.max(0, total - chekPaid);
               const invoiceUrl = `${window.location.origin}/invoice/${sale.order_ref || sale.id}`;
               return (
                 <>
@@ -631,9 +644,19 @@ export default function SalesPage() {
                         </div>
                       ))}
                     </div>
-                    <div className="flex justify-between font-bold text-[15px] border-b border-dashed border-gray-300 pb-2 mb-3">
+                    <div className={`flex justify-between font-bold text-[15px] pb-2 mb-2 ${chekDebt > 0 ? '' : 'border-b border-dashed border-gray-300 mb-3'}`}>
                       <span>JAMI:</span><span>{fmt(total)} so'm</span>
                     </div>
+                    {chekDebt > 0 && (
+                      <div className="text-[12px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-3">
+                        <div className="flex justify-between text-green-700">
+                          <span>To'landi:</span><span className="font-bold">{fmt(chekPaid)} so'm</span>
+                        </div>
+                        <div className="flex justify-between text-red-600">
+                          <span>Qarz:</span><span className="font-bold">{fmt(chekDebt)} so'm</span>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex flex-col items-center">
                       <QRCodeSVG value={invoiceUrl} size={110} />
                       <div className="text-[10px] text-gray-500 mt-1">Xaridingiz uchun rahmat!</div>

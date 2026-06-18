@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Package, DollarSign, Trash2, Layers } from 'lucide-react';
+import { Plus, X, Package, DollarSign, Trash2, Layers, Boxes } from 'lucide-react';
+import clsx from 'clsx';
 import { productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import { RANGLAR, RANG_COLORS } from '../constants/colors';
@@ -36,6 +37,10 @@ export default function ProductsPage() {
   const [pricingForm, setPricingForm] = useState({ stanokchi_rate: 0, stanokchi_semi_rate: 0, detalchi_rate: 0 });
   const [bomModal, setBomModal] = useState(null); // { id, name } — tarkibni boshqarish
   const [bomAddForm, setBomAddForm] = useState({ component_id: '', qty: 1 });
+  // Tab: 'TAYYOR' = sotiladigan mahsulotlar, 'KOMPONENT' = ishlab chiqarish komponentlari
+  const [tab, setTab] = useState('TAYYOR');
+  // Yangi mahsulot/komponent qo'shish — qaysi turda?
+  const [newKind, setNewKind] = useState('TAYYOR');
 
   const { data, isLoading } = useQuery({
     queryKey: ['products'],
@@ -48,9 +53,15 @@ export default function ProductsPage() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: (d) => editProduct ? productsAPI.update(editProduct.id, d) : productsAPI.create(d),
+    mutationFn: (d) => {
+      const payload = { ...d, kind: editProduct ? editProduct.kind : newKind };
+      return editProduct ? productsAPI.update(editProduct.id, payload) : productsAPI.create(payload);
+    },
     onSuccess: () => {
-      toast.success(editProduct ? 'Yangilandi' : 'Mahsulot qo\'shildi');
+      const isComp = (editProduct ? editProduct.kind : newKind) === 'KOMPONENT';
+      toast.success(editProduct
+        ? 'Yangilandi'
+        : isComp ? 'Komponent qo\'shildi' : 'Mahsulot qo\'shildi');
       qc.invalidateQueries({ queryKey: ['products'] });
       setShowModal(false); setEditProduct(null);
     },
@@ -169,6 +180,9 @@ export default function ProductsPage() {
 
   // Komponent (KOMPONENT) mahsulotlar — Tarkib formasi uchun
   const componentProducts = (data?.products || []).filter(p => p.kind === 'KOMPONENT');
+  const finishedProducts = (data?.products || []).filter(p => p.kind !== 'KOMPONENT');
+  // Joriy tab uchun ko'rinadigan mahsulotlar
+  const shownProducts = tab === 'KOMPONENT' ? componentProducts : finishedProducts;
 
   return (
     <div className="space-y-6">
@@ -187,22 +201,83 @@ export default function ProductsPage() {
             </button>
           )}
           {canAdd && (
-            <button onClick={() => { reset(); setEditProduct(null); setShowModal(true); }} className="btn-primary btn-sm">
-              <Plus size={14} /> Mahsulot qo'shish
+            <button
+              onClick={() => {
+                reset();
+                setEditProduct(null);
+                setNewKind(tab); // joriy tab kindi bilan ochiladi
+                setShowModal(true);
+              }}
+              className={clsx('btn-sm flex items-center gap-1 rounded-lg px-3',
+                tab === 'KOMPONENT'
+                  ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              )}
+            >
+              <Plus size={14} /> {tab === 'KOMPONENT' ? 'Komponent qo\'shish' : 'Mahsulot qo\'shish'}
             </button>
           )}
         </div>
       </div>
 
+      {/* Tabs: Tayyor / Komponent */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {[
+          { key: 'TAYYOR', label: 'Tayyor mahsulotlar', icon: Package, count: finishedProducts.length, color: 'blue' },
+          { key: 'KOMPONENT', label: 'Komponentlar (detallar)', icon: Boxes, count: componentProducts.length, color: 'indigo' },
+        ].map(t => {
+          const Icon = t.icon;
+          const active = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={clsx(
+                'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
+                active
+                  ? (t.color === 'indigo' ? 'border-indigo-600 text-indigo-700' : 'border-blue-600 text-blue-700')
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              )}
+            >
+              <Icon size={15} /> {t.label}
+              <span className={clsx(
+                'ml-1 text-[10px] rounded-full px-1.5 py-0.5 font-semibold',
+                active
+                  ? (t.color === 'indigo' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700')
+                  : 'bg-gray-100 text-gray-500'
+              )}>
+                {t.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === 'KOMPONENT' && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-sm text-indigo-900">
+          <p className="font-medium mb-1">Komponentlar (detallar)</p>
+          <p className="text-xs text-indigo-700">
+            Bu yerga ishlab chiqarishda foydalanilanadigan detal/komponentlar ro'yxatga olinadi
+            (masalan: <i>унитаз коппоги, бачок копог, лола тувак №1 куйди, унитаз пакир усти</i>).
+            Komponentlar sotuvда ko'rinmaydi — faqat tayyor mahsulotlar tarkibida ishlatiladi.
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {isLoading ? (
           <div className="col-span-3 text-center py-12 text-gray-400">Yuklanmoqda...</div>
-        ) : !data?.products?.length ? (
+        ) : !shownProducts.length ? (
           <div className="col-span-3 text-center py-12 text-gray-400">
             <Package size={40} className="mx-auto mb-2 opacity-30" />
-            <p>Mahsulot yo'q</p>
+            <p>{tab === 'KOMPONENT' ? 'Hali komponent yo\'q' : 'Mahsulot yo\'q'}</p>
+            <p className="text-xs mt-1">
+              {tab === 'KOMPONENT'
+                ? 'Yuqoridagi "Komponent qo\'shish" tugmasi bilan qo\'shing'
+                : 'Yuqoridagi "Mahsulot qo\'shish" tugmasi bilan qo\'shing'}
+            </p>
           </div>
-        ) : data.products.map(p => (
+        ) : shownProducts.map(p => (
           <div key={p.id} className={`card ${!p.is_active ? 'opacity-60' : ''}`}>
             <div className="flex items-start justify-between mb-3">
               <div>
@@ -292,11 +367,32 @@ export default function ProductsPage() {
 
       {/* Product Modal */}
       <Modal open={showModal} onClose={() => { setShowModal(false); setEditProduct(null); }}
-        title={editProduct ? 'Mahsulotni tahrirlash' : 'Yangi Mahsulot'}>
+        title={editProduct
+          ? `${editProduct.kind === 'KOMPONENT' ? 'Komponentni' : 'Mahsulotni'} tahrirlash`
+          : newKind === 'KOMPONENT' ? 'Yangi Komponent' : 'Yangi Mahsulot'}>
         <form onSubmit={handleSubmit(d => saveMutation.mutate(d))} className="space-y-4">
+          {!editProduct && (
+            <div>
+              <label className="label">Turi *</label>
+              <select
+                value={newKind}
+                onChange={e => setNewKind(e.target.value)}
+                className="select"
+              >
+                <option value="TAYYOR">Tayyor mahsulot (sotiladi)</option>
+                <option value="KOMPONENT">Komponent / detal (sotuvда ko'rinmaydi)</option>
+              </select>
+              <p className="text-[11px] text-gray-500 mt-1">
+                {newKind === 'KOMPONENT'
+                  ? 'Komponent — ishlab chiqarish ombori. Boshqa mahsulot tarkibida ishlatiladi.'
+                  : 'Tayyor mahsulot — mijozlarga sotiladi.'}
+              </p>
+            </div>
+          )}
           <div>
             <label className="label">Nomi *</label>
-            <input {...register('name', { required: true })} className="input" />
+            <input {...register('name', { required: true })} className="input"
+              placeholder={newKind === 'KOMPONENT' ? "Masalan: Бачок 22л копог" : "Masalan: Бачок 22л to'plam"} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

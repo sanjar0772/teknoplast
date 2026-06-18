@@ -75,10 +75,10 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, rang } = req.body;
+    const { name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, rang, kind } = req.body;
     const result = await query(
-      'INSERT INTO products (name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, rang) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
-      [name, type, description, price, daily_production || 0, stock_quantity || 0, raw_material_id || null, unit || 'dona', rang || null]
+      'INSERT INTO products (name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, rang, kind) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+      [name, type, description, price, daily_production || 0, stock_quantity || 0, raw_material_id || null, unit || 'dona', rang || null, kind === 'KOMPONENT' ? 'KOMPONENT' : 'TAYYOR']
     );
     res.status(201).json({ product: result.rows[0] });
   } catch (err) { next(err); }

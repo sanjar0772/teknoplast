@@ -34,6 +34,7 @@ export default function InventoryPage() {
   const taminotchiOnly = user?.role === 'TAMINOTCHI';
   const [tab, setTab] = useState(taminotchiOnly ? 'raw' : 'products'); // 'products' | 'raw'
   const [showRmModal, setShowRmModal] = useState(false);
+  const [showCompModal, setShowCompModal] = useState(false); // ishlab chiqarish ombori — mahsulot qo'shish
   const [editRmModal, setEditRmModal] = useState(null); // tahrirlash uchun
   const [rmStockModal, setRmStockModal] = useState(null);
   const [rmStockForm, setRmStockForm] = useState({ quantity: 0, operation: 'add' });
@@ -69,6 +70,24 @@ export default function InventoryPage() {
 
   const { register: registerRm, handleSubmit: handleSubmitRm, reset: resetRm } = useForm();
   const { register: registerEdit, handleSubmit: handleSubmitEdit, reset: resetEdit } = useForm();
+  const { register: registerComp, handleSubmit: handleSubmitComp, reset: resetComp } = useForm();
+
+  // Ishlab chiqarish ombori — yangi mahsulot (komponent) qo'shish
+  const createCompMutation = useMutation({
+    mutationFn: (d) => productsAPI.create({
+      name: d.name, type: d.type || 'Komponent', unit: d.unit || 'dona',
+      price: parseFloat(d.price) || 0, stock_quantity: parseInt(d.stock_quantity) || 0,
+      kind: 'KOMPONENT',
+    }),
+    onSuccess: () => {
+      toast.success('Mahsulot ishlab chiqarish omboriga qo\'shildi');
+      qc.invalidateQueries({ queryKey: ['inventory-products'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      setShowCompModal(false);
+      resetComp();
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
 
   const updateRmMutation = useMutation({
     mutationFn: ({ id, ...d }) => productsAPI.updateRawMaterial(id, d),
@@ -140,6 +159,11 @@ export default function InventoryPage() {
         {tab === 'products' && canManageProducts && (
           <button onClick={() => navigate('/intake')} className="btn-primary btn-sm">
             <PackagePlus size={14} /> Mahsulot kirimi (Kirim sahifasi)
+          </button>
+        )}
+        {tab === 'production' && canManageProducts && (
+          <button onClick={() => { resetComp(); setShowCompModal(true); }} className="btn-primary btn-sm">
+            <Plus size={14} /> Mahsulot qo'shish
           </button>
         )}
         {tab === 'raw' && canWriteRaw && (
@@ -373,6 +397,45 @@ export default function InventoryPage() {
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={() => setShowRmModal(false)} className="btn-secondary flex-1">Bekor</button>
             <button type="submit" disabled={createRmMutation.isPending} className="btn-primary flex-1">Saqlash</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Ishlab chiqarish ombori — mahsulot (komponent) qo'shish */}
+      <Modal open={showCompModal} onClose={() => setShowCompModal(false)} title="Ishlab chiqarish — mahsulot qo'shish">
+        <form onSubmit={handleSubmitComp(d => createCompMutation.mutate(d))} className="space-y-4">
+          <div>
+            <label className="label">Nomi *</label>
+            <input {...registerComp('name', { required: true })} className="input" placeholder="Masalan: Korpus, Oyoq, Qopqoq..." />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Turi</label>
+              <input {...registerComp('type')} className="input" placeholder="Komponent" />
+            </div>
+            <div>
+              <label className="label">Birlik</label>
+              <select {...registerComp('unit')} className="select">
+                <option value="dona">dona</option>
+                <option value="kg">kg</option>
+                <option value="metr">metr</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Narxi (so'm)</label>
+              <input {...registerComp('price')} type="number" min="0" defaultValue={0} className="input" />
+            </div>
+            <div>
+              <label className="label">Omborda (soni)</label>
+              <input {...registerComp('stock_quantity')} type="number" min="0" defaultValue={0} className="input" />
+            </div>
+          </div>
+          <p className="text-xs text-gray-400">Bu mahsulot <b>ishlab chiqarish omboriga</b> qo'shiladi va sotuvда ko'rinmaydi.</p>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={() => setShowCompModal(false)} className="btn-secondary flex-1">Bekor</button>
+            <button type="submit" disabled={createCompMutation.isPending} className="btn-primary flex-1">Saqlash</button>
           </div>
         </form>
       </Modal>

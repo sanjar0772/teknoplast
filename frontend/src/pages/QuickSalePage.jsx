@@ -46,7 +46,8 @@ export default function QuickSalePage() {
     queryFn: () => customersAPI.getAll().then(r => r.data),
   });
 
-  const products = productsData?.products || [];
+  // Sotuvда faqat TAYYOR mahsulotlar — ishlab chiqarish ombori (KOMPONENT) ko'rinmaydi
+  const products = (productsData?.products || []).filter(p => p.kind !== 'KOMPONENT');
 
   // Qidiruv natijasi (client-side filtr, 1000+ mahsulot uchun tez)
   const filtered = useMemo(() => {

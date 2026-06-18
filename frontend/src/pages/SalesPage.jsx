@@ -401,7 +401,7 @@ export default function SalesPage() {
             <label className="label">Mahsulot *</label>
             <select {...register('product_id', { required: true })} className="select">
               <option value="">Tanlang...</option>
-              {products?.products?.map(p => (
+              {(products?.products || []).filter(p => p.kind !== 'KOMPONENT').map(p => (
                 <option key={p.id} value={p.id}>{p.name} (Ombor: {p.stock_quantity})</option>
               ))}
             </select>
@@ -475,7 +475,7 @@ export default function SalesPage() {
                 className="select"
               >
                 <option value="">Tanlang...</option>
-                {products?.products?.map(p => (
+                {(products?.products || []).filter(p => p.kind !== 'KOMPONENT').map(p => (
                   <option key={p.id} value={p.id}>{p.name} (Ombor: {p.stock_quantity})</option>
                 ))}
               </select>

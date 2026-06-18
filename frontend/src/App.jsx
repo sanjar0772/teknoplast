@@ -16,6 +16,7 @@ import EmployeesPage from './pages/EmployeesPage';
 import ProductionPage from './pages/ProductionPage';
 import SalariesPage from './pages/SalariesPage';
 import ProductsPage from './pages/ProductsPage';
+import ComponentsPage from './pages/ComponentsPage';
 import SmartProductsPage from './pages/SmartProductsPage';
 import InventoryPage from './pages/InventoryPage';
 import MachinesPage from './pages/MachinesPage';
@@ -57,6 +58,7 @@ export default function App() {
           <Route path="production" element={<ProductionPage />} />
           <Route path="salaries" element={<SalariesPage />} />
           <Route path="products" element={<ProductsPage />} />
+          <Route path="components" element={<ComponentsPage />} />
           <Route path="products-grid" element={<SmartProductsPage />} />
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="machines" element={<MachinesPage />} />

@@ -786,6 +786,8 @@ if (USE_PG) {
       `ALTER TABLE employee_production ADD COLUMN approved_at TEXT`,
       `CREATE TABLE IF NOT EXISTS product_color_stock (product_id TEXT NOT NULL, rang TEXT NOT NULL DEFAULT '', quantity REAL NOT NULL DEFAULT 0, PRIMARY KEY (product_id, rang))`,
       `ALTER TABLE expenses ADD COLUMN quantity REAL`,
+      // Ombor turi: TAYYOR=tayyor mahsulotlar ombori, KOMPONENT=ishlab chiqarish ombori (detallar)
+      `ALTER TABLE products ADD COLUMN kind TEXT DEFAULT 'TAYYOR'`,
     ];
     for (const m of migrations) {
       try {

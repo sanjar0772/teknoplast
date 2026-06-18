@@ -92,7 +92,7 @@ router.put('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'SALES_HEAD', 'ACCOU
       return res.status(400).json({ error: 'Yangilanishlar bo\'sh' });
     }
     // Ruxsat etilgan maydonlar (XSS / SQL injectiondan himoya)
-    const allowed = ['name', 'base_name', 'razmer', 'rang', 'type', 'description', 'price', 'daily_production', 'stock_quantity', 'unit', 'is_active'];
+    const allowed = ['name', 'base_name', 'razmer', 'rang', 'type', 'description', 'price', 'daily_production', 'stock_quantity', 'unit', 'is_active', 'kind'];
     const client = await require('../db').getClient();
     const updated = [];
     try {

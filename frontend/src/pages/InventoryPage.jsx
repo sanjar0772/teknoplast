@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, AlertTriangle, Warehouse, Package, Boxes, PackagePlus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, X, AlertTriangle, Warehouse, Package, Boxes, PackagePlus, Pencil, Trash2, Factory } from 'lucide-react';
 import { productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import clsx from 'clsx';
@@ -101,7 +101,14 @@ export default function InventoryPage() {
     });
   };
 
-  const lowProducts = (products?.products || []).filter(p => p.stock_quantity < 10);
+  // Ombor turi bo'yicha ajratish: KOMPONENT = ishlab chiqarish ombori, qolgani = tayyor ombor
+  const allProducts = products?.products || [];
+  const finishedProducts = allProducts.filter(p => p.kind !== 'KOMPONENT');
+  const componentProducts = allProducts.filter(p => p.kind === 'KOMPONENT');
+  const isProdTab = tab === 'production';
+  const shownProducts = isProdTab ? componentProducts : finishedProducts;
+
+  const lowProducts = finishedProducts.filter(p => p.stock_quantity < 10);
   const lowRm = (rawMats?.raw_materials || []).filter(rm => rm.stock_balance <= rm.min_stock_level);
 
   // Xom ashyo qo'shish/tahrirlash — faqat Ta'minotchi (va nazorat uchun Ega) qila oladi
@@ -109,10 +116,22 @@ export default function InventoryPage() {
   // Tayyor mahsulot kirimini boshqarish — Kirimchi (va Ega) ning vazifasi, "Kirim" sahifasi orqali
   const canManageProducts = isOwner() || isKirimchi();
 
+  // Mahsulotni omborlar o'rtasida ko'chirish (tayyor <-> ishlab chiqarish)
+  const moveMutation = useMutation({
+    mutationFn: ({ id, kind }) => productsAPI.updateBulk([{ id, kind }]),
+    onSuccess: () => {
+      toast.success('Ombor o\'zgartirildi');
+      qc.invalidateQueries({ queryKey: ['inventory-products'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+
   const TABS = [
-    { key: 'products', label: 'Tayyor mahsulotlar', icon: Package },
-    { key: 'raw',      label: 'Xom ashyo',          icon: Boxes },
-  ].filter(t => !(taminotchiOnly && t.key === 'products'));
+    { key: 'products',   label: 'Tayyor mahsulotlar',     icon: Package },
+    { key: 'production', label: 'Ishlab chiqarish ombori', icon: Factory },
+    { key: 'raw',        label: 'Xom ashyo',              icon: Boxes },
+  ].filter(t => !(taminotchiOnly && (t.key === 'products' || t.key === 'production')));
 
   return (
     <div className="space-y-6">
@@ -154,10 +173,10 @@ export default function InventoryPage() {
       </div>
       )}
 
-      {tab === 'products' && !taminotchiOnly && (
+      {(tab === 'products' || tab === 'production') && !taminotchiOnly && (
         <>
-          {/* Products alert */}
-          {lowProducts.length > 0 && (
+          {/* Products alert — faqat tayyor ombor uchun */}
+          {!isProdTab && lowProducts.length > 0 && (
             <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
               <div className="flex items-center gap-2 mb-2">
                 <AlertTriangle size={18} className="text-orange-500" />
@@ -171,20 +190,26 @@ export default function InventoryPage() {
             </div>
           )}
 
-          {/* Products inventory */}
+          {/* Ombor jadvali */}
           <div className="card">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">Tayyor Mahsulotlar Ombori</h2>
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">
+              {isProdTab ? 'Ishlab Chiqarish Ombori (detallar/komponentlar)' : 'Tayyor Mahsulotlar Ombori'}
+            </h2>
             <div className="table-container">
               <table className="table">
                 <thead>
-                  <tr><th>Mahsulot</th><th>Turi</th><th>Omborda</th><th>Narxi</th><th>Qiymati</th><th>Holat</th></tr>
+                  <tr>
+                    <th>Mahsulot</th><th>Turi</th><th>Omborda</th><th>Narxi</th><th>Qiymati</th><th>Holat</th>
+                    {canManageProducts && <th>Ombor</th>}
+                  </tr>
                 </thead>
                 <tbody>
-                  {!(products?.products || []).length ? (
-                    <tr><td colSpan={6} className="text-center py-8 text-gray-400">
-                      <Warehouse size={32} className="mx-auto mb-2 opacity-30" /><br />Mahsulot yo'q
+                  {!shownProducts.length ? (
+                    <tr><td colSpan={canManageProducts ? 7 : 6} className="text-center py-8 text-gray-400">
+                      <Warehouse size={32} className="mx-auto mb-2 opacity-30" /><br />
+                      {isProdTab ? "Ishlab chiqarish omborida mahsulot yo'q" : "Mahsulot yo'q"}
                     </td></tr>
-                  ) : (products?.products || []).map(p => (
+                  ) : shownProducts.map(p => (
                     <tr key={p.id}>
                       <td className="font-medium">{p.name}</td>
                       <td>{p.type}</td>
@@ -201,12 +226,23 @@ export default function InventoryPage() {
                             : <span className="badge-green">Yetarli</span>
                         }
                       </td>
+                      {canManageProducts && (
+                        <td>
+                          <button
+                            onClick={() => moveMutation.mutate({ id: p.id, kind: isProdTab ? 'TAYYOR' : 'KOMPONENT' })}
+                            className="btn-secondary btn-sm whitespace-nowrap"
+                            title={isProdTab ? 'Tayyor mahsulotlar omboriga ko\'chirish' : 'Ishlab chiqarish omboriga ko\'chirish'}
+                          >
+                            {isProdTab ? '→ Tayyorga' : '→ Ishlab chiqarishga'}
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            {canManageProducts && (
+            {canManageProducts && !isProdTab && (
               <p className="text-xs text-gray-400 mt-3">
                 Mahsulot ombori "Kirim" sahifasi orqali to'ldiriladi — bu yerda faqat ko'rish mumkin.
               </p>

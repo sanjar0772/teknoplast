@@ -133,6 +133,11 @@ require('./services/saleReturns')
   .ensureReturnsSchema()
   .catch(e => console.error('Sale returns init xato:', e.message));
 
+// Texno Innovator 2026 prayslistini avtomatik yuklash (faqat bir marta, sentinel bilan himoyalangan)
+require('./services/pricelistSeed')
+  .ensurePricelist2026()
+  .catch(e => console.error('Praysist seed init xato:', e.message));
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Teknoplast Backend: http://localhost:${PORT}`);

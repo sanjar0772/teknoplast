@@ -207,50 +207,13 @@ router.post('/reset-all', requireRole('OWNER'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/products/import-pricelist — 2026-yil prayslist (217 ta mahsulot) avtomatik yuklash
+// POST /api/products/import-pricelist — 2026-yil prayslist (214 ta mahsulot) qo'lda yuklash
 router.post('/import-pricelist', requireRole('OWNER'), async (req, res, next) => {
   try {
-    const pricelist = require('../data/pricelist2026');
-    const client = await require('../db').getClient();
-    let created = 0, updated = 0;
-    try {
-      await client.query('BEGIN');
-      for (const item of pricelist) {
-        // Mavjud mahsulotni topish: avval kod (description) + narx bo'yicha,
-        // bo'lmasa eski nom bo'yicha (lotin holatda kiritilgan bo'lishi mumkin).
-        // Bu — oldin lotin alifbosida import qilingan mahsulotlarni kirillga yangilaydi.
-        let existing = await client.query(
-          'SELECT id FROM products WHERE description = $1 AND price = $2 LIMIT 1',
-          [item.code, item.price]
-        );
-        if (!existing.rows.length) {
-          existing = await client.query('SELECT id FROM products WHERE name = $1 LIMIT 1', [item.name]);
-        }
-        if (existing.rows.length) {
-          // Mavjud — nomni kirillga, to'liq kodni va Оқ rangni yangilaymiz (ombor/narxga tegmaymiz)
-          await client.query(
-            'UPDATE products SET name=$1, type=$2, description=$3, rang=$4, updated_at=NOW() WHERE id=$5',
-            [item.name, `Kod ${item.code}`, item.code, 'Оқ', existing.rows[0].id]
-          );
-          updated++;
-        } else {
-          // Yangi — 1000 dona ombor bilan qo'shamiz
-          await client.query(
-            'INSERT INTO products (name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, rang, kind) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-            [item.name, `Kod ${item.code}`, item.code || null, item.price, 0, 1000, null, 'dona', 'Оқ', 'TAYYOR']
-          );
-          created++;
-        }
-      }
-      await client.query('COMMIT');
-      logAudit(req, { action: 'IMPORT_PRICELIST_2026', table: 'products', recordId: 'BULK', newValues: { created, updated, total: pricelist.length } });
-      res.json({ created, updated, total: pricelist.length });
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+    const { importPricelist2026 } = require('../services/pricelistSeed');
+    const result = await importPricelist2026();
+    logAudit(req, { action: 'IMPORT_PRICELIST_2026', table: 'products', recordId: 'BULK', newValues: result });
+    res.json(result);
   } catch (err) { next(err); }
 });
 

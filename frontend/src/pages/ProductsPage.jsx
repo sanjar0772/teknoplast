@@ -139,7 +139,7 @@ export default function ProductsPage() {
   const importPricelist = () => {
     const ok = confirm(
       'PRAYSLIST yuklash — Texno Innovator 04.05.2026 narxlari\n\n' +
-      '• 217 ta mahsulot kirill alifbosida (Бачок, Яшик, Унитаз...)\n' +
+      '• 214 ta mahsulot kirill alifbosida (Бачок, Яшик, Унитаз...)\n' +
       '• Har bir nomga to\'liq kod qo\'shiladi (masalan: Kod 72-A)\n' +
       '• Rangi — Оқ\n' +
       '• Yangi mahsulotga 1000 dona ombor\n' +
@@ -207,7 +207,7 @@ export default function ProductsPage() {
           {isOwner() && (
             <button onClick={importPricelist} disabled={importPricelistMutation.isPending}
               className="btn-sm border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg px-3 flex items-center gap-1 font-medium">
-              {importPricelistMutation.isPending ? 'Yuklanmoqda...' : '📋 Praysist yuklash (217 ta)'}
+              {importPricelistMutation.isPending ? 'Yuklanmoqda...' : '📋 Praysist yuklash (214 ta)'}
             </button>
           )}
           {isOwner() && data?.products?.length > 0 && (

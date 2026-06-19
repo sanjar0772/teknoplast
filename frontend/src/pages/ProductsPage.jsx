@@ -130,7 +130,7 @@ export default function ProductsPage() {
     mutationFn: () => productsAPI.importPricelist(),
     onSuccess: (res) => {
       const d = res.data;
-      toast.success(`Praysist yuklandi — ${d.created} ta yangi qo'shildi (${d.skipped} ta o'tkazildi)`);
+      toast.success(`Praysist yuklandi — ${d.created} ta yangi, ${d.updated} ta yangilandi (kirill + kod)`);
       qc.invalidateQueries({ queryKey: ['products'] });
     },
     onError: (e) => toast.error(e?.response?.data?.error || 'Xato'),
@@ -139,9 +139,11 @@ export default function ProductsPage() {
   const importPricelist = () => {
     const ok = confirm(
       'PRAYSLIST yuklash — Texno Innovator 04.05.2026 narxlari\n\n' +
-      '• 217 ta mahsulot yangi narh bilan qo\'shiladi\n' +
-      '• Har bir mahsulotga 1000 dona ombor avtomatik qo\'yiladi\n' +
-      '• Bir xil nomli mahsulot bo\'lsa, o\'tkazib yuboriladi (qayta qo\'shilmaydi)\n\n' +
+      '• 217 ta mahsulot kirill alifbosida (Бачок, Яшик, Унитаз...)\n' +
+      '• Har bir nomga to\'liq kod qo\'shiladi (masalan: Kod 72-A)\n' +
+      '• Rangi — Оқ\n' +
+      '• Yangi mahsulotga 1000 dona ombor\n' +
+      '• Mavjud (lotin) mahsulotlar kirillga YANGILANADI — ombor/narx saqlanadi\n\n' +
       'Davom etilsinmi?'
     );
     if (ok) importPricelistMutation.mutate();

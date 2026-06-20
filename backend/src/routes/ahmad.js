@@ -82,6 +82,57 @@ async function transcribeWithGroq(buffer, filename, lang) {
   return (data.text || '').trim();
 }
 
+// ---------- UzbekVoice.ai — o'zbekka maxsus STT (Whisper'dan ko'ra aniqroq) ----------
+const UZBEKVOICE_API_KEY = process.env.UZBEKVOICE_API_KEY;
+
+// Javobdan transkript matnini turli shakllardan mustahkam ajratib olish
+function extractUzbekVoiceText(data) {
+  if (!data) return '';
+  if (typeof data === 'string') return data;
+  const cands = [
+    data.text, data.transcript, data.transcription,
+    data.result?.text, data.result?.transcript,
+    data.data?.text, data.data?.transcript,
+    typeof data.result === 'string' ? data.result : null,
+    typeof data.data === 'string' ? data.data : null,
+  ];
+  for (const c of cands) if (typeof c === 'string' && c.trim()) return c;
+  // result/segments massiv bo'lsa — birlashtiramiz
+  const arr = Array.isArray(data.result) ? data.result
+            : Array.isArray(data.segments) ? data.segments
+            : Array.isArray(data.data) ? data.data : null;
+  if (arr) {
+    const joined = arr.map(s => (s && (s.text || s.transcript)) || '').join(' ').trim();
+    if (joined) return joined;
+  }
+  return '';
+}
+
+// Audio buffer -> matn (UzbekVoice.ai). blocking=true => javob darhol qaytadi.
+async function transcribeWithUzbekVoice(buffer, filename, lang) {
+  if (!UZBEKVOICE_API_KEY) throw new Error('NO_UZBEKVOICE_KEY');
+  const form = new FormData();
+  form.append('file', new Blob([buffer]), filename || 'audio.webm');
+  form.append('language', lang === 'ru' ? 'ru' : 'uz');
+  form.append('model', 'general');
+  form.append('blocking', 'true');        // sinxron — javobni darhol oladi (webhook kerak emas)
+  form.append('return_offsets', 'false');
+  form.append('run_diarization', 'false');
+
+  const resp = await fetch('https://uzbekvoice.ai/api/v1/stt', {
+    method: 'POST',
+    headers: { Authorization: UZBEKVOICE_API_KEY }, // hujjatda Bearer YO'Q — to'g'ridan-to'g'ri kalit
+    body: form,
+  });
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => '');
+    throw new Error(`UZBEKVOICE_${resp.status}: ${errText.slice(0, 300)}`);
+  }
+  const ct = resp.headers.get('content-type') || '';
+  const data = ct.includes('application/json') ? await resp.json() : await resp.text();
+  return extractUzbekVoiceText(data).trim();
+}
+
 // ---------- Narx/miqdor tozalash: "5 000", "5,000", "5.000" → 5000 ----------
 function cleanNum(v) {
   if (v == null) return 0;
@@ -1620,19 +1671,20 @@ function executeAction(action, user) {
   });
 }
 
-// ---------- Ovozli buyruq: audio yuborish -> matn (Groq Whisper) ----------
+// ---------- Ovozli buyruq: audio yuborish -> matn ----------
+// Birinchi UzbekVoice.ai (o'zbekka maxsus), bo'lmasa/ishlamasa Groq Whisper (zaxira).
 router.post('/transcribe', audioUpload.single('audio'), async (req, res) => {
   const lang = req.body.language === 'ru' ? 'ru' : 'uz';
   try {
     if (!req.file) {
       return res.status(400).json({ error: lang === 'ru' ? 'Аудио не загружено' : 'Audio yuklanmadi' });
     }
-    if (!GROQ_API_KEY) {
+    if (!UZBEKVOICE_API_KEY && !GROQ_API_KEY) {
       try { fs.unlinkSync(req.file.path); } catch {}
       return res.status(503).json({
         error: lang === 'ru'
-          ? 'Голосовое распознавание не настроено (нужен GROQ_API_KEY на сервере).'
-          : "Ovoz tanish sozlanmagan (serverda GROQ_API_KEY kerak).",
+          ? 'Голосовое распознавание не настроено (нужен UZBEKVOICE_API_KEY или GROQ_API_KEY на сервере).'
+          : "Ovoz tanish sozlanmagan (serverda UZBEKVOICE_API_KEY yoki GROQ_API_KEY kerak).",
       });
     }
 
@@ -1640,8 +1692,24 @@ router.post('/transcribe', audioUpload.single('audio'), async (req, res) => {
     const filename = req.file.originalname || 'audio.webm';
     try { fs.unlinkSync(req.file.path); } catch {}
 
-    const text = await transcribeWithGroq(buffer, filename, lang);
-    return res.json({ text });
+    let text = '';
+    let engine = '';
+    // 1) UzbekVoice (o'zbekka maxsus) — kalit bo'lsa birinchi shu
+    if (UZBEKVOICE_API_KEY) {
+      try {
+        text = await transcribeWithUzbekVoice(buffer, filename, lang);
+        engine = 'uzbekvoice';
+      } catch (e) {
+        console.error('[ahmad/transcribe] UzbekVoice xato, Whisper sinaladi:', e.message);
+      }
+    }
+    // 2) Natija bo'sh yoki UzbekVoice yo'q bo'lsa — Groq Whisper zaxira
+    if (!text && GROQ_API_KEY) {
+      text = await transcribeWithGroq(buffer, filename, lang);
+      engine = engine ? engine + '+groq' : 'groq';
+    }
+
+    return res.json({ text, engine });
   } catch (e) {
     if (req.file) { try { fs.unlinkSync(req.file.path); } catch {} }
     console.error('[ahmad/transcribe]', e.message);

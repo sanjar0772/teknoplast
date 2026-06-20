@@ -501,37 +501,61 @@ async function generateInvoicePDF(sale, items, viewUrl) {
     const rows = (items && items.length) ? items : [sale];
     const groups = groupSaleItems(rows);
 
-    // ── HEADER ────────────────────────────────────────────
-    doc.image(qrBuffer, M + W - 88, 28, { width: 88 });
-    doc.fontSize(6.5).font('Arial').fillColor('#999')
-      .text("QR: hujjat haqiqiyligi", M + W - 88, 118, { width: 88, align: 'center' });
+    // ── HEADER: yetkazib beruvchi rekvizitlari ────────────
+    const COMPANY = {
+      name: 'ТЕХНО-ИННОВАТОР МЧЖ',
+      address: 'АНДИЖОН ТУМАН Найманобод М.Ф.Й. Темир йул куча №2',
+      phone: '+998 99-444-70-99',
+      account: '20208000304436294001',
+      bank: 'АТБ "Хамкорбанк" Андижон булими',
+      mfo: '00083',
+      inn: '205811951',
+    };
 
-    doc.fontSize(17).font('Arial-Bold').fillColor('#111').text('TEKNOPLAST', M, 30);
-    doc.fontSize(10.5).font('Arial-Bold').text(`SCHYOT-FAKTURA  №  ${orderRef}`, M, 54);
-    doc.fontSize(8.5).font('Arial').fillColor('#555').text(`Sana: ${saleDate}`, M, 71);
+    // QR — yuqori o'ng burchak
+    doc.image(qrBuffer, M + W - 70, 28, { width: 70 });
 
-    // Sotuvchi / Xaridor — 2 ustun
-    let y = 90;
+    // Kompaniya nomi + rekvizitlar — yuqori chap burchak
+    doc.fontSize(13).font('Arial-Bold').fillColor('#111').text(COMPANY.name, M, 28);
+    let hy = 46;
+    doc.fontSize(7.5).font('Arial').fillColor('#555');
+    doc.text(`Манзил: ${COMPANY.address}`, M, hy, { width: 430 }); hy += 11;
+    doc.text(`Тел: ${COMPANY.phone}      ИНН: ${COMPANY.inn}`, M, hy, { width: 430 }); hy += 11;
+    doc.text(`Х/р: ${COMPANY.account}      МФО: ${COMPANY.mfo}`, M, hy, { width: 430 }); hy += 11;
+    doc.text(`Банк: ${COMPANY.bank}`, M, hy, { width: 430 }); hy += 11;
+
+    // Ajratuvchi chiziq
+    let y = Math.max(hy + 4, 104);
+    doc.moveTo(M, y).lineTo(M + W, y).lineWidth(0.8).stroke('#333');
+    y += 7;
+
+    // Faktura raqami + sana
+    doc.fontSize(10.5).font('Arial-Bold').fillColor('#111')
+      .text(`SCHYOT-FAKTURA  №  ${orderRef}`, M, y);
+    doc.fontSize(8.5).font('Arial').fillColor('#555')
+      .text(`Sana: ${saleDate}`, M, y + 1, { width: W, align: 'right' });
+    y += 18;
+
+    // Sotuvchi xodim / Xaridor — 2 ustun
     doc.fontSize(8.5).font('Arial-Bold').fillColor('#111');
     doc.text('Sotuvchi:', M, y);
-    const sellerName = sale.created_by_name ? `TEKNOPLAST MCHJ (${sale.created_by_name})` : 'TEKNOPLAST MCHJ';
-    doc.font('Arial').text(sellerName, M + 56, y);
+    doc.font('Arial').text(sale.created_by_name || COMPANY.name, M + 50, y, { width: 200 });
     doc.font('Arial-Bold').text("Xaridor:", M + 260, y);
     doc.font('Arial').text(
       (sale.customer_full_name || sale.customer_name || "Noma'lum").slice(0, 32),
-      M + 314, y, { width: 156 }
+      M + 305, y, { width: 165 }
     );
-    y += 14;
+    y += 13;
     const phone = sale.customer_full_phone || sale.customer_phone;
     if (phone) {
       doc.font('Arial-Bold').text('Telefon:', M + 260, y);
-      doc.font('Arial').text(phone, M + 314, y);
-      y += 14;
+      doc.font('Arial').text(phone, M + 305, y);
+      y += 13;
     }
     if (sale.customer_address) {
       doc.font('Arial-Bold').text('Manzil:', M + 260, y);
-      doc.font('Arial').text(sale.customer_address.slice(0, 30), M + 314, y);
-      y += 14;
+      doc.font('Arial').text(sale.customer_address.slice(0, 30), M + 305, y);
+      y += 13;
     }
 
     y += 4;

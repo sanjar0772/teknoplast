@@ -9,6 +9,17 @@ import { RANG_COLORS } from '../constants/colors';
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 const rangLabel = (r) => (r && String(r).trim()) ? r : 'Rangsiz';
 
+// Yetkazib beruvchi rekvizitlari (rasmiy schyot-faktura uchun)
+const COMPANY = {
+  name: 'ТЕХНО-ИННОВАТОР МЧЖ',
+  address: 'АНДИЖОН ТУМАН Найманобод М.Ф.Й. Темир йул куча №2',
+  phone: '+998 99-444-70-99',
+  account: '20208000304436294001',
+  bank: 'АТБ "Хамкорбанк" Андижон булими',
+  mfo: '00083',
+  inn: '205811951',
+};
+
 function groupInvoiceRows(rows) {
   const order = [], map = {};
   rows.forEach(it => {
@@ -118,23 +129,34 @@ export default function InvoicePage() {
 
       {/* Faktura */}
       <div id="invoice-print" className="card p-4 max-w-2xl mx-auto print:shadow-none print:border-none text-[13px]">
-        {/* Header */}
-        <div className="flex items-start justify-between border-b border-gray-200 pb-3 mb-3">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900 leading-tight">TEKNOPLAST</h2>
-            <p className="text-xs text-gray-500">
-              № {sale.order_ref || sale.id} · {new Date(sale.sale_date).toLocaleDateString('uz-UZ')}
-            </p>
+        {/* Header — yetkazib beruvchi rekvizitlari + QR */}
+        <div className="flex items-start justify-between border-b border-gray-200 pb-3 mb-3 gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base font-bold text-gray-900 leading-tight">{COMPANY.name}</h2>
+            <div className="text-[11px] text-gray-500 leading-snug mt-0.5 space-y-px">
+              <div>Манзил: {COMPANY.address}</div>
+              <div>Тел: {COMPANY.phone} · ИНН: {COMPANY.inn}</div>
+              <div>Х/р: {COMPANY.account} · МФО: {COMPANY.mfo}</div>
+              <div>Банк: {COMPANY.bank}</div>
+            </div>
           </div>
-          <QRCodeSVG value={invoiceUrl} size={64} />
+          <div className="flex flex-col items-center flex-shrink-0">
+            <QRCodeSVG value={invoiceUrl} size={64} />
+            <span className="text-[9px] text-gray-400 mt-0.5">Tizimda ko'rish</span>
+          </div>
+        </div>
+
+        {/* Faktura raqami + sana */}
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-bold text-gray-900">SCHYOT-FAKTURA № {sale.order_ref || sale.id}</h3>
+          <span className="text-xs text-gray-500">Sana: {new Date(sale.sale_date).toLocaleDateString('uz-UZ')}</span>
         </div>
 
         {/* Sotuvchi / Xaridor — ixcham 1 qator */}
         <div className="flex justify-between text-xs text-gray-600 mb-3">
           <div>
             <span className="text-gray-400">Sotuvchi: </span>
-            <span className="font-medium text-gray-800">TEKNOPLAST</span>
-            {sale.created_by_name && <span className="text-gray-400"> ({sale.created_by_name})</span>}
+            <span className="font-medium text-gray-800">{sale.created_by_name || COMPANY.name}</span>
           </div>
           <div className="text-right">
             <span className="text-gray-400">Xaridor: </span>

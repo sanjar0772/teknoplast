@@ -294,8 +294,9 @@ try {
   console.log('Ahmad: Anthropic API kaliti topilmadi');
 }
 
-// Ahmad "miyasi" — eng kuchli Opus model (aqlliroq, o'zbekchani ravon tushunadi va yozadi)
-const MODEL = process.env.AHMAD_MODEL || 'claude-opus-4-8';
+// Lola "miyasi" — Sonnet 4.6: tez + aqlli (ovozli yordamchi uchun tezlik muhim).
+// Eng kuchli (lekin sekinroq) variant kerak bo'lsa: env AHMAD_MODEL=claude-opus-4-8.
+const MODEL = process.env.AHMAD_MODEL || 'claude-sonnet-4-6';
 
 // ---------- Yordamchilar ----------
 const fmt = (n) => Number(n || 0).toLocaleString('ru-RU'); // 1 000 000 ko'rinishi
@@ -690,7 +691,7 @@ JAVOBNI DOIM O'ZBEK TILIDA bering (foydalanuvchi matni kirill yoki aralash bo'ls
 
     const msg = await claude.messages.create({
       model: MODEL,
-      max_tokens: 1536,
+      max_tokens: 1024,
       system: systemFull,
       tools: activeTools,
       messages,

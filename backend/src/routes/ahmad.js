@@ -294,7 +294,8 @@ try {
   console.log('Ahmad: Anthropic API kaliti topilmadi');
 }
 
-const MODEL = 'claude-sonnet-4-6';
+// Ahmad "miyasi" — eng kuchli Opus model (aqlliroq, o'zbekchani ravon tushunadi va yozadi)
+const MODEL = process.env.AHMAD_MODEL || 'claude-opus-4-8';
 
 // ---------- Yordamchilar ----------
 const fmt = (n) => Number(n || 0).toLocaleString('ru-RU'); // 1 000 000 ko'rinishi
@@ -658,6 +659,20 @@ Suhbat tarixini esda tuting (6 xabar). Javoblar QISQA va aniq. Raqamlar: 1 000 0
 Siz fayl ham O'QIY OLASIZ (PDF, rasm, Excel, Word) — foydalanuvchi fayl yubormoqchi bo'lsa, biriktirish (qisqich) tugmasidan foydalansin. HECH QACHON "PDF/fayl o'qiy olmayman" demang.
 JAVOBNI DOIM O'ZBEK TILIDA bering (foydalanuvchi matni kirill yoki aralash bo'lsa ham). *, #, emoji, markdown ISHLATMANG — faqat toza matn (ovozda o'qiladi).`;
 
+    // Ahmadni aqlliroq qilamiz: bugungi sana + chuqur niyat + ravon o'zbekcha + faqat yakuniy javob
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const smartAddon = lang === 'ru'
+      ? `\n\nДОПОЛНИТЕЛЬНО (самое важное):
+- Сегодня: ${todayStr}. Периоды «сегодня», «вчера», «за месяц», «май», «с 1 по 15 июня» считайте от этой даты и передавайте в инструмент как start_date/end_date (YYYY-MM-DD).
+- Глубоко понимайте намерение пользователя. Даже короткую или неясную команду трактуйте логично и выбирайте правильный инструмент. Уточняющий вопрос задавайте только если без него действительно никак.
+- Отвечайте кратко, ясно и грамотно. Пишите только ИТОГОВЫЙ ответ — без рассуждений, без фраз вроде «я сделал», без лишних пояснений.`
+      : `\n\nQO'SHIMCHA KO'RSATMALAR (eng muhim):
+- Bugungi sana: ${todayStr}. «bugun», «kecha», «shu oy», «may oyi», «1-iyundan 15-igacha» kabi davrlarni shu sanadan hisoblab, toolga start_date/end_date (YYYY-MM-DD) bering.
+- Foydalanuvchi niyatini chuqur tushuning. Buyruq qisqa yoki noaniq bo'lsa ham mantiqan to'g'ri ma'noni toping va to'g'ri toolni tanlang. Faqat chindan zarur bo'lsagina bitta qisqa aniqlovchi savol bering.
+- Javobni faqat RAVON, tabiiy va grammatik to'g'ri o'zbek tilida bering — xato qilmang.
+- Faqat YAKUNIY javobni yozing: o'ylash bosqichlarini, «men shuni qildim» kabi gaplarni va ortiqcha izohlarni yozmang. Qisqa va aniq.`;
+    const systemFull = system + smartAddon;
+
     // Suhbat xotirasi — oxirgi 6 ta xabar
     const messages = [];
     if (Array.isArray(history)) {
@@ -669,8 +684,8 @@ JAVOBNI DOIM O'ZBEK TILIDA bering (foydalanuvchi matni kirill yoki aralash bo'ls
 
     const msg = await claude.messages.create({
       model: MODEL,
-      max_tokens: 1024,
-      system,
+      max_tokens: 1536,
+      system: systemFull,
       tools: activeTools,
       messages,
     });

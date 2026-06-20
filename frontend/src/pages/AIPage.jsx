@@ -11,6 +11,46 @@ const SEVERITY_COLOR = {
   CRITICAL: 'border-l-4 border-red-500 bg-red-50',
 };
 
+// Float32 PCM -> 16-bit WAV Blob (16 kHz mono)
+function encodeWav(samples, sampleRate) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  writeStr(0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); writeStr(8, 'WAVE');
+  writeStr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  writeStr(36, 'data'); view.setUint32(40, samples.length * 2, true);
+  let off = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    off += 2;
+  }
+  return new Blob([view], { type: 'audio/wav' });
+}
+
+// Yozilgan audio (webm/opus) -> WAV (16 kHz mono).
+// UzbekVoice webm'ni qabul qilmaydi (500), WAV'ni qabul qiladi.
+async function blobToWav(blob) {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC || typeof OfflineAudioContext === 'undefined') return null;
+  const arrayBuf = await blob.arrayBuffer();
+  const ctx = new AC();
+  let decoded;
+  try { decoded = await ctx.decodeAudioData(arrayBuf); }
+  finally { try { ctx.close(); } catch {} }
+  const targetRate = 16000;
+  const length = Math.max(1, Math.round(decoded.duration * targetRate));
+  const offline = new OfflineAudioContext(1, length, targetRate);
+  const src = offline.createBufferSource();
+  src.buffer = decoded;            // OfflineAudioContext mono'ga downmix + 16kHz'ga resample qiladi
+  src.connect(offline.destination);
+  src.start();
+  const rendered = await offline.startRendering();
+  return encodeWav(rendered.getChannelData(0), targetRate);
+}
+
 // Ahmad Avatar
 function AhmadAvatar({ size = 32 }) {
   return (
@@ -328,8 +368,15 @@ export default function AIPage() {
     }
     setTranscribing(true);
     try {
+      // UzbekVoice webm'ni qabul qilmaydi — WAV'ga o'giramiz (o'girib bo'lmasa asl blob)
+      let sendBlob = blob, fname = 'audio.webm';
+      try {
+        const wav = await blobToWav(blob);
+        if (wav && wav.size > 44) { sendBlob = wav; fname = 'audio.wav'; }
+      } catch { /* o'girish muvaffaqiyatsiz — asl blob bilan davom etamiz */ }
+
       const formData = new FormData();
-      formData.append('audio', blob, 'audio.webm');
+      formData.append('audio', sendBlob, fname);
       formData.append('language', language);
       const token = localStorage.getItem('token') || sessionStorage.getItem('token');
       const res = await fetch('/api/ahmad/transcribe', {

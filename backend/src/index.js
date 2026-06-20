@@ -63,7 +63,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'uzbekvoice-stt-errs', commit: 'v34' });
+  res.json({ version: 'uzbekvoice-wav', commit: 'v35' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

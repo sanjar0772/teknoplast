@@ -91,7 +91,7 @@ function extractUzbekVoiceText(data) {
   if (typeof data === 'string') return data;
   const cands = [
     data.text, data.transcript, data.transcription,
-    data.result?.text, data.result?.transcript,
+    data.result?.text, data.result?.conversation_text, data.result?.transcript,
     data.data?.text, data.data?.transcript,
     typeof data.result === 'string' ? data.result : null,
     typeof data.data === 'string' ? data.data : null,
@@ -111,8 +111,15 @@ function extractUzbekVoiceText(data) {
 // Audio buffer -> matn (UzbekVoice.ai). blocking=true => javob darhol qaytadi.
 async function transcribeWithUzbekVoice(buffer, filename, lang) {
   if (!UZBEKVOICE_API_KEY) throw new Error('NO_UZBEKVOICE_KEY');
+  const fn = filename || 'audio.wav';
+  // UzbekVoice fayl turiga e'tibor beradi — to'g'ri content-type beramiz
+  const type = fn.endsWith('.wav') ? 'audio/wav'
+             : fn.endsWith('.mp3') ? 'audio/mpeg'
+             : fn.endsWith('.ogg') ? 'audio/ogg'
+             : fn.endsWith('.m4a') ? 'audio/mp4'
+             : 'application/octet-stream';
   const form = new FormData();
-  form.append('file', new Blob([buffer]), filename || 'audio.webm');
+  form.append('file', new Blob([buffer], { type }), fn);
   form.append('language', lang === 'ru' ? 'ru' : 'uz');
   form.append('model', 'general');
   form.append('blocking', 'true');        // sinxron — javobni darhol oladi (webhook kerak emas)

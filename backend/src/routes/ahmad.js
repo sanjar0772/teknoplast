@@ -1694,19 +1694,28 @@ router.post('/transcribe', audioUpload.single('audio'), async (req, res) => {
 
     let text = '';
     let engine = '';
+    let uvError = '';
     // 1) UzbekVoice (o'zbekka maxsus) — kalit bo'lsa birinchi shu
     if (UZBEKVOICE_API_KEY) {
       try {
         text = await transcribeWithUzbekVoice(buffer, filename, lang);
         engine = 'uzbekvoice';
       } catch (e) {
-        console.error('[ahmad/transcribe] UzbekVoice xato, Whisper sinaladi:', e.message);
+        uvError = e.message;
+        console.error('[ahmad/transcribe] UzbekVoice xato:', e.message);
       }
     }
-    // 2) Natija bo'sh yoki UzbekVoice yo'q bo'lsa — Groq Whisper zaxira
+    // 2) Natija bo'sh yoki UzbekVoice yo'q bo'lsa — Groq Whisper zaxira (agar kalit bo'lsa)
     if (!text && GROQ_API_KEY) {
       text = await transcribeWithGroq(buffer, filename, lang);
       engine = engine ? engine + '+groq' : 'groq';
+    }
+
+    // UzbekVoice xato berdi va zaxira yo'q — sababini ekranda ko'rsatamiz (sozlash uchun)
+    if (!text && uvError) {
+      return res.status(502).json({
+        error: (lang === 'ru' ? 'UzbekVoice xatosi: ' : 'UzbekVoice xatosi: ') + uvError,
+      });
     }
 
     return res.json({ text, engine });

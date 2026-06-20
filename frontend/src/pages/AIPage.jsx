@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Send, User, AlertTriangle, TrendingUp, DollarSign, Factory, X, Mic, MicOff, Camera, Image, Volume2, Paperclip } from 'lucide-react';
+import { Send, User, AlertTriangle, TrendingUp, DollarSign, Factory, X, Mic, MicOff, Camera, Image, Volume2, Paperclip, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { aiAPI, ahmadAPI, reportsAPI } from '../services/api';
 
@@ -27,6 +27,7 @@ export default function AIPage() {
   const [message, setMessage] = useState('');
   const [language, setLanguage] = useState('uz');
   const [listening, setListening] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
   const [chatMessages, setChatMessages] = useState([
     { role: 'assistant', text: language === 'uz'
@@ -37,6 +38,13 @@ export default function AIPage() {
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
+  // Ovoz yozish (MediaRecorder -> Groq Whisper)
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const audioStreamRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const silenceRafRef = useRef(null);
+  const maxRecTimerRef = useRef(null);
 
   // Alerts
   const { data: alerts } = useQuery({
@@ -269,37 +277,140 @@ export default function AIPage() {
   const wakeRef = useRef(null);
   const wakeEnabledRef = useRef(false);
 
-  // Buyruq tinglashni boshlash (dasturiy yoki tugma orqali)
-  const startCommandListening = () => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      toast.error(language === 'uz' ? 'Brauzer ovozni qo\'llab-quvvatlamaydi' : 'Браузер не поддерживает голос');
+  // Mikrofon resurslarini tozalash
+  const stopAudioResources = () => {
+    try { audioStreamRef.current?.getTracks().forEach(t => t.stop()); } catch {}
+    audioStreamRef.current = null;
+    try { audioCtxRef.current?.close(); } catch {}
+    audioCtxRef.current = null;
+    if (silenceRafRef.current) { cancelAnimationFrame(silenceRafRef.current); silenceRafRef.current = null; }
+    if (maxRecTimerRef.current) { clearTimeout(maxRecTimerRef.current); maxRecTimerRef.current = null; }
+  };
+
+  // Yozilgan audioni serverga (Groq Whisper) yuborib, matnga aylantiramiz
+  const sendAudioForTranscription = async (blob) => {
+    // Juda qisqa/bo'sh yozuv — e'tibor bermaymiz
+    if (!blob || blob.size < 1200) {
+      if (wakeEnabledRef.current) setTimeout(startWake, 400);
       return;
     }
-    const recognition = new SR();
-    recognition.lang = language === 'uz' ? 'uz-UZ' : 'ru-RU';
-    recognition.interimResults = false;
-    recognition.continuous = false;
-
-    recognition.onstart = () => setListening(true);
-    recognition.onend = () => {
-      setListening(false);
-      if (wakeEnabledRef.current) setTimeout(startWake, 400); // wake rejimini qayta yoqamiz
-    };
-    recognition.onresult = (event) => {
-      const transcript = Array.from(event.results).map(r => r[0].transcript).join('');
-      if (transcript.trim()) {
+    setTranscribing(true);
+    try {
+      const formData = new FormData();
+      formData.append('audio', blob, 'audio.webm');
+      formData.append('language', language);
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      const res = await fetch('/api/ahmad/transcribe', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+      const transcript = (data.text || '').trim();
+      if (transcript) {
         const detectedLang = detectLang(transcript);
         setChatMessages(prev => [...prev, { role: 'user', text: transcript, time: new Date() }]);
         chatMutation.mutate({ question: transcript, lang: detectedLang });
+      } else {
+        toast(language === 'uz' ? 'Ovoz tushunilmadi, qayta urinib ko\'ring' : 'Голос не распознан, попробуйте снова');
       }
-    };
-    recognition.onerror = () => {
+    } catch (err) {
+      toast.error((language === 'uz' ? 'Ovozni tanishda xato: ' : 'Ошибка распознавания: ') + (err?.message || ''));
+    } finally {
+      setTranscribing(false);
+      if (wakeEnabledRef.current) setTimeout(startWake, 500); // wake rejimini qayta yoqamiz
+    }
+  };
+
+  // Gapirib bo'lgach jimlikni aniqlab avtomatik to'xtatish (wake orqali ishga tushganda)
+  const setupSilenceAutoStop = (stream, mr) => {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      audioCtxRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      const buf = new Uint8Array(analyser.fftSize);
+      const startedAt = Date.now();
+      let spokeAt = 0;
+      const SILENCE_MS = 1500;   // gapirgandan keyin shu qadar jimlik => to'xtat
+      const THRESHOLD = 0.02;    // RMS chegarasi (ovoz/jimlik)
+      const tick = () => {
+        if (!audioCtxRef.current || !mr || mr.state === 'inactive') return;
+        analyser.getByteTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+        const rms = Math.sqrt(sum / buf.length);
+        const now = Date.now();
+        if (rms > THRESHOLD) spokeAt = now;
+        if (spokeAt && now - spokeAt > SILENCE_MS) { try { mr.stop(); } catch {} return; }
+        if (!spokeAt && now - startedAt > 4000) { try { mr.stop(); } catch {} return; } // hech gapirilmasa
+        silenceRafRef.current = requestAnimationFrame(tick);
+      };
+      silenceRafRef.current = requestAnimationFrame(tick);
+    } catch {}
+  };
+
+  // Buyruq tinglashni boshlash — mikrofonni yozib, Groq Whisper'ga yuboramiz.
+  // auto=true: wake ("Ahmad") orqali ishga tushgan — jimlik bo'yicha avto-to'xtaydi.
+  const startCommandListening = async (auto = false) => {
+    if (listening || transcribing) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      toast.error(language === 'uz' ? 'Brauzer ovoz yozishni qo\'llab-quvvatlamaydi' : 'Браузер не поддерживает запись голоса');
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      toast.error(language === 'uz' ? 'Mikrofonga ruxsat berilmadi' : 'Нет доступа к микрофону');
+      if (wakeEnabledRef.current) setTimeout(startWake, 600);
+      return;
+    }
+    audioStreamRef.current = stream;
+    audioChunksRef.current = [];
+
+    // Groq webm/ogg/wav/mp3/m4a qabul qiladi — Chrome/Electron'da webm/opus ishlaydi
+    let mime = '';
+    if (window.MediaRecorder?.isTypeSupported) {
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mime = 'audio/webm;codecs=opus';
+      else if (MediaRecorder.isTypeSupported('audio/webm')) mime = 'audio/webm';
+      else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) mime = 'audio/ogg;codecs=opus';
+    }
+    const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    mediaRecorderRef.current = mr;
+
+    mr.ondataavailable = (e) => { if (e.data && e.data.size) audioChunksRef.current.push(e.data); };
+    mr.onstop = () => {
       setListening(false);
-      if (wakeEnabledRef.current) setTimeout(startWake, 400);
+      stopAudioResources();
+      const type = mr.mimeType || 'audio/webm';
+      const blob = new Blob(audioChunksRef.current, { type });
+      audioChunksRef.current = [];
+      sendAudioForTranscription(blob);
     };
-    recognitionRef.current = recognition;
-    try { recognition.start(); } catch {}
+
+    try { mr.start(); } catch { stopAudioResources(); return; }
+    setListening(true);
+
+    if (auto) {
+      setupSilenceAutoStop(stream, mr);
+      // Xavfsizlik chegarasi: ko'pi bilan 12 soniya
+      maxRecTimerRef.current = setTimeout(() => {
+        try { if (mr.state !== 'inactive') mr.stop(); } catch {}
+      }, 12000);
+    }
+  };
+
+  // Yozishni to'xtatish (tugma orqali)
+  const stopCommandListening = () => {
+    const mr = mediaRecorderRef.current;
+    if (mr && mr.state !== 'inactive') { try { mr.stop(); } catch {} }
+    else { setListening(false); stopAudioResources(); }
   };
 
   // Wake recognition — "Ahmad" so'zini kutadi
@@ -316,7 +427,7 @@ export default function AIPage() {
       const txt = Array.from(event.results).map(r => r[0].transcript).join(' ').toLowerCase();
       if (txt.includes('ahmad') || txt.includes('ахмад') || txt.includes('ahmat') || txt.includes('ахмат')) {
         try { rec.stop(); } catch {}
-        startCommandListening();
+        startCommandListening(true); // wake orqali — jimlik bo'yicha avto-to'xtaydi
       }
     };
     rec.onend = () => {
@@ -347,18 +458,17 @@ export default function AIPage() {
       wakeEnabledRef.current = false;
       try { wakeRef.current?.stop(); } catch {}
       try { recognitionRef.current?.stop(); } catch {}
+      try { if (mediaRecorderRef.current?.state !== 'inactive') mediaRecorderRef.current?.stop(); } catch {}
+      stopAudioResources();
       try { window.speechSynthesis?.cancel(); } catch {}
     };
   }, []);
 
-  // Speech-to-Text (tugma)
+  // Ovozli buyruq tugmasi: bosing — yozadi, qayta bosing — to'xtatib matnga aylantiradi
   const toggleListening = () => {
-    if (listening) {
-      recognitionRef.current?.stop();
-      setListening(false);
-      return;
-    }
-    startCommandListening();
+    if (transcribing) return; // hozir transkripsiya ketyapti
+    if (listening) { stopCommandListening(); return; }
+    startCommandListening(false);
   };
 
   // Image upload handler
@@ -617,14 +727,20 @@ export default function AIPage() {
           <div className="p-4 border-t border-gray-100">
             <div className="flex gap-2">
               {/* Voice button */}
-              <button onClick={toggleListening}
+              <button onClick={toggleListening} disabled={transcribing}
                 className={`w-10 h-10 flex items-center justify-center rounded-lg transition-all ${
-                  listening
-                    ? 'bg-red-500 text-white animate-pulse'
-                    : 'bg-gray-100 text-gray-600 hover:bg-emerald-100 hover:text-emerald-700'
+                  transcribing
+                    ? 'bg-emerald-500 text-white cursor-wait'
+                    : listening
+                      ? 'bg-red-500 text-white animate-pulse'
+                      : 'bg-gray-100 text-gray-600 hover:bg-emerald-100 hover:text-emerald-700'
                 }`}
-                title={language === 'uz' ? 'Ovozli buyruq' : 'Голосовая команда'}>
-                {listening ? <MicOff size={18} /> : <Mic size={18} />}
+                title={transcribing
+                  ? (language === 'uz' ? 'Ovoz matnga aylantirilyapti...' : 'Распознаётся...')
+                  : listening
+                    ? (language === 'uz' ? 'To\'xtatish' : 'Остановить')
+                    : (language === 'uz' ? 'Ovozli buyruq' : 'Голосовая команда')}>
+                {transcribing ? <Loader2 size={18} className="animate-spin" /> : listening ? <MicOff size={18} /> : <Mic size={18} />}
               </button>
 
               {/* Wake word button — "Ahmad" chaqiruvi */}

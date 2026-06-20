@@ -36,6 +36,52 @@ const upload = multer({
   },
 });
 
+// ---------- Ovozdan matnga (STT) — Groq Whisper, o'zbekchani yaxshi tushunadi ----------
+// Audio fayllar uchun alohida multer (rasm filtridan o'tmaydi)
+const audioUpload = multer({
+  dest: '/tmp/ahmad-audio/',
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+// whisper-large-v3 — eng aniq multilingual model (o'zbek tilini qo'llab-quvvatlaydi)
+const GROQ_STT_MODEL = process.env.GROQ_STT_MODEL || 'whisper-large-v3';
+
+// Whisper'ga "kontekst" beruvchi prompt — Teknoplast lug'ati bilan tanishni kuchaytiradi.
+// (Whisper prompt'dagi so'zlar va uslubni hisobga oladi -> o'zbekcha atamalarni aniqroq yozadi)
+const UZ_STT_PROMPT =
+  "Ahmad, Teknoplast zavodi yordamchisi. O'zbek tilidagi buyruq. " +
+  "Atamalar: mahsulot, sotuv, ombor, narx, dona, so'm, qarz, qarzdor, mijoz, xodim, " +
+  "ish haqi, hisobot, prixod, naqd, plastik, quvur, fitting, kran, smena, tarif. " +
+  "Masalan: bugungi sotuvni ayt, omborda nechta bor, qarzdorlar ro'yxatini ko'rsat.";
+const RU_STT_PROMPT =
+  "Ахмад, помощник завода Технопласт. Команда на русском. " +
+  "Термины: товар, продажа, склад, цена, штука, сумма, долг, должник, клиент, сотрудник, отчёт, приход, смена, тариф.";
+
+// Audio buffer -> matn (Groq Whisper, OpenAI-mos endpoint). Node 20: global fetch/FormData/Blob.
+async function transcribeWithGroq(buffer, filename, lang) {
+  if (!GROQ_API_KEY) throw new Error('NO_GROQ_KEY');
+  const form = new FormData();
+  form.append('file', new Blob([buffer]), filename || 'audio.webm');
+  form.append('model', GROQ_STT_MODEL);
+  form.append('language', lang === 'ru' ? 'ru' : 'uz'); // tilni majburlash -> aniqlik oshadi
+  form.append('prompt', lang === 'ru' ? RU_STT_PROMPT : UZ_STT_PROMPT);
+  form.append('temperature', '0');
+  form.append('response_format', 'json');
+
+  const resp = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${GROQ_API_KEY}` },
+    body: form,
+  });
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => '');
+    throw new Error(`GROQ_${resp.status}: ${errText.slice(0, 300)}`);
+  }
+  const data = await resp.json();
+  return (data.text || '').trim();
+}
+
 // ---------- Narx/miqdor tozalash: "5 000", "5,000", "5.000" → 5000 ----------
 function cleanNum(v) {
   if (v == null) return 0;
@@ -1565,5 +1611,36 @@ function executeAction(action, user) {
       .catch(e => resolve({ status: 500, body: { error: e.message } }));
   });
 }
+
+// ---------- Ovozli buyruq: audio yuborish -> matn (Groq Whisper) ----------
+router.post('/transcribe', audioUpload.single('audio'), async (req, res) => {
+  const lang = req.body.language === 'ru' ? 'ru' : 'uz';
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: lang === 'ru' ? 'Аудио не загружено' : 'Audio yuklanmadi' });
+    }
+    if (!GROQ_API_KEY) {
+      try { fs.unlinkSync(req.file.path); } catch {}
+      return res.status(503).json({
+        error: lang === 'ru'
+          ? 'Голосовое распознавание не настроено (нужен GROQ_API_KEY на сервере).'
+          : "Ovoz tanish sozlanmagan (serverda GROQ_API_KEY kerak).",
+      });
+    }
+
+    const buffer = fs.readFileSync(req.file.path);
+    const filename = req.file.originalname || 'audio.webm';
+    try { fs.unlinkSync(req.file.path); } catch {}
+
+    const text = await transcribeWithGroq(buffer, filename, lang);
+    return res.json({ text });
+  } catch (e) {
+    if (req.file) { try { fs.unlinkSync(req.file.path); } catch {} }
+    console.error('[ahmad/transcribe]', e.message);
+    return res.status(500).json({
+      error: lang === 'ru' ? 'Ошибка распознавания голоса' : 'Ovozni tanishda xatolik',
+    });
+  }
+});
 
 module.exports = router;

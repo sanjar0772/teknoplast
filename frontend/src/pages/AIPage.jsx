@@ -196,6 +196,31 @@ export default function AIPage() {
     return () => document.removeEventListener('click', stopOnClick);
   }, []);
 
+  // O'zbek lotin -> kirill o'girish. Tizimda o'zbek TTS ovozi deyarli yo'q,
+  // shuning uchun rus ovozi o'zbek LOTIN matnni buzib o'qiydi ("tentakka o'xshab").
+  // Matnni kirillga o'girsak — rus ovozi ancha tabiiy va to'g'ri talaffuz qiladi.
+  const uzLatinToCyrillic = (input) => {
+    let s = String(input);
+    // Digraflar — tartib muhim (avval shular)
+    s = s
+      .replace(/o['ʻʼ’`]/gi, 'о')
+      .replace(/g['ʻʼ’`]/gi, 'ғ')
+      .replace(/sh/gi, 'ш')
+      .replace(/ch/gi, 'ч')
+      .replace(/yo/gi, 'ё')
+      .replace(/yu/gi, 'ю')
+      .replace(/ya/gi, 'я');
+    const map = {
+      a: 'а', b: 'б', c: 'к', d: 'д', e: 'е', f: 'ф', g: 'г', h: 'ҳ', i: 'и',
+      j: 'ж', k: 'к', l: 'л', m: 'м', n: 'н', o: 'о', p: 'п', q: 'қ', r: 'р',
+      s: 'с', t: 'т', u: 'у', v: 'в', w: 'в', x: 'х', y: 'й', z: 'з',
+    };
+    s = s.replace(/[a-z]/gi, (ch) => map[ch.toLowerCase()] || ch);
+    // Qolgan tutuq belgilari
+    s = s.replace(/['ʻʼ’`]/g, '');
+    return s;
+  };
+
   // Ovoz uchun matnni tozalash — *, #, emoji, belgilarni olib tashlaymiz
   const cleanForSpeech = (raw) => {
     let t = String(raw);
@@ -227,8 +252,8 @@ export default function AIPage() {
     speakStartRef.current = Date.now(); // shu klik to'xtatmasligi uchun
     const spokenLang = forceLang || detectLang(cleanText);
     const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.rate = 1.05;
-    utterance.pitch = 1.7; // Yuqori pitch — o'g'il bola ovozi
+    utterance.rate = 1.0;   // tabiiy tezlik
+    utterance.pitch = 1.0;  // tabiiy ovoz (ilgari 1.7 edi — multfilm/tentak ovozi)
 
     // Ovozlarni olamiz (ref yoki to'g'ridan-to'g'ri)
     let voices = voicesRef.current.length ? voicesRef.current : window.speechSynthesis.getVoices();
@@ -251,6 +276,13 @@ export default function AIPage() {
       v.name.toLowerCase().includes('pavel') ||
       v.name.toLowerCase().includes('artem')
     ) || pool[0];
+
+    // O'zbek matn RUS ovozi bilan o'qilsa — lotinni kirillga o'giramiz,
+    // shunda rus ovozi o'zbekchani tabiiy va to'g'ri talaffuz qiladi
+    // (lotin holida "tentakka o'xshab" buzib o'qirdi).
+    if (spokenLang === 'uz' && chosen && chosen.lang.toLowerCase().startsWith('ru')) {
+      utterance.text = uzLatinToCyrillic(cleanText);
+    }
 
     // MUHIM: utterance.lang ni TANLANGAN ovoz tiliga moslaymiz
     // (uz-UZ qo'ysak, lekin uz ovozi yo'q bo'lsa — brauzer JIM qoladi)
@@ -309,9 +341,11 @@ export default function AIPage() {
       if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
       const transcript = (data.text || '').trim();
       if (transcript) {
-        const detectedLang = detectLang(transcript);
         setChatMessages(prev => [...prev, { role: 'user', text: transcript, time: new Date() }]);
-        chatMutation.mutate({ question: transcript, lang: detectedLang });
+        // Ovozli buyruq — javob tili foydalanuvchi TANLAGAN til bo'yicha.
+        // (Whisper o'zbekchani kirill yozib bersa ham, Ahmad o'zbekcha javob beradi —
+        //  ilgari detectLang kirilni "rus" deb javobni rus tilida berardi)
+        chatMutation.mutate({ question: transcript, lang: language });
       } else {
         toast(language === 'uz' ? 'Ovoz tushunilmadi, qayta urinib ko\'ring' : 'Голос не распознан, попробуйте снова');
       }

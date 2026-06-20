@@ -56,7 +56,7 @@ function AhmadAvatar({ size = 32 }) {
   return (
     <div className={`w-${size/4} h-${size/4} bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center flex-shrink-0`}
       style={{ width: size, height: size }}>
-      <span className="text-white font-bold" style={{ fontSize: size * 0.45 }}>A</span>
+      <span className="text-white font-bold" style={{ fontSize: size * 0.45 }}>L</span>
     </div>
   );
 }
@@ -71,8 +71,8 @@ export default function AIPage() {
   const [pendingAction, setPendingAction] = useState(null);
   const [chatMessages, setChatMessages] = useState([
     { role: 'assistant', text: language === 'uz'
-      ? 'Assalomu alaykum! Men Ahmad — sizning yordamchingizman. Ovozli buyruq bering, rasm yuboring yoki savol yozing.'
-      : 'Здравствуйте! Я Ахмад — ваш помощник. Дайте голосовую команду, отправьте фото или напишите вопрос.',
+      ? 'Assalomu alaykum! Men Lola — sizning yordamchingizman. Ovozli buyruq bering, rasm yuboring yoki savol yozing.'
+      : 'Здравствуйте! Я Лола — ваша помощница. Дайте голосовую команду, отправьте фото или напишите вопрос.',
       time: new Date() }
   ]);
   const chatEndRef = useRef(null);
@@ -518,7 +518,7 @@ export default function AIPage() {
     rec.interimResults = true;
     rec.onresult = (event) => {
       const txt = Array.from(event.results).map(r => r[0].transcript).join(' ').toLowerCase();
-      if (txt.includes('ahmad') || txt.includes('ахмад') || txt.includes('ahmat') || txt.includes('ахмат')) {
+      if (txt.includes('lola') || txt.includes('лола')) {
         try { rec.stop(); } catch {}
         startCommandListening(true); // wake orqali — jimlik bo'yicha avto-to'xtaydi
       }
@@ -541,7 +541,7 @@ export default function AIPage() {
       wakeEnabledRef.current = true;
       setWakeEnabled(true);
       startWake();
-      toast.success(language === 'uz' ? "'Ahmad' deb chaqiring" : "Скажите 'Ахмад'");
+      toast.success(language === 'uz' ? "'Lola' deb chaqiring" : "Скажите 'Лола'");
     }
   };
 
@@ -648,7 +648,7 @@ export default function AIPage() {
   }, [chatMessages]);
 
   const TABS = [
-    { id: 'chat', label: 'Ahmad Chat', icon: '🤖' },
+    { id: 'chat', label: 'Lola Chat', icon: '🤖' },
     { id: 'alerts', label: `Ogohlantirishlar (${alerts?.alerts?.length || 0})`, icon: '⚠️' },
     { id: 'salary', label: 'Maosh Tahlili', icon: '💰' },
     { id: 'sales', label: 'Sotuv Prognozi', icon: '📈' },
@@ -692,7 +692,7 @@ export default function AIPage() {
   return (
     <div className="space-y-4">
       <div className="page-header">
-        <h1 className="page-title">Ahmad</h1>
+        <h1 className="page-title">Lola</h1>
         <div className="flex items-center gap-2">
           <select value={language} onChange={e => setLanguage(e.target.value)}
             className="text-sm border rounded-lg px-2 py-1">
@@ -700,7 +700,7 @@ export default function AIPage() {
             <option value="ru">Русский</option>
           </select>
           <span className="badge bg-emerald-100 text-emerald-800 flex items-center gap-1">
-            Ahmad
+            Lola
           </span>
         </div>
       </div>
@@ -844,8 +844,8 @@ export default function AIPage() {
                     : 'bg-gray-100 text-gray-600 hover:bg-emerald-100 hover:text-emerald-700'
                 }`}
                 title={wakeEnabled
-                  ? (language === 'uz' ? "'Ahmad' chaqiruvi yoniq — o'chirish" : "Вызов 'Ахмад' включён — выключить")
-                  : (language === 'uz' ? "'Ahmad' deb chaqirish (avto-tinglash)" : "Вызов по слову 'Ахмад'")}>
+                  ? (language === 'uz' ? "'Lola' chaqiruvi yoniq — o'chirish" : "Вызов 'Лола' включён — выключить")
+                  : (language === 'uz' ? "'Lola' deb chaqirish (avto-tinglash)" : "Вызов по слову 'Лола'")}>
                 {wakeEnabled ? <Volume2 size={18} /> : <span className="text-xs font-bold">A</span>}
               </button>
 
@@ -863,7 +863,7 @@ export default function AIPage() {
               {/* Text input */}
               <input value={message} onChange={e => setMessage(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                placeholder={language === 'uz' ? 'Ahmad\'ga yozing...' : 'Напишите Ахмаду...'}
+                placeholder={language === 'uz' ? 'Lola\'ga yozing...' : 'Напишите Лоле...'}
                 className="input flex-1" />
 
               <button onClick={sendMessage} disabled={chatMutation.isPending || !message.trim()}
@@ -913,7 +913,7 @@ export default function AIPage() {
       {activeTab === 'salary' && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold">{language === 'uz' ? 'Maosh Tahlili (Ahmad)' : 'Анализ зарплат (Ахмад)'}</h2>
+            <h2 className="font-semibold">{language === 'uz' ? 'Maosh Tahlili (Lola)' : 'Анализ зарплат (Лола)'}</h2>
             <button onClick={() => refetchSalary()} disabled={salaryLoading} className="btn-primary btn-sm bg-emerald-600">
               {salaryLoading ? (language === 'uz' ? 'Tahlil qilinmoqda...' : 'Анализ...') : (language === 'uz' ? 'Tahlil qilish' : 'Анализировать')}
             </button>
@@ -961,7 +961,7 @@ export default function AIPage() {
       {activeTab === 'sales' && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold">{language === 'uz' ? 'Sotuv Prognozi (Ahmad)' : 'Прогноз продаж (Ахмад)'}</h2>
+            <h2 className="font-semibold">{language === 'uz' ? 'Sotuv Prognozi (Lola)' : 'Прогноз продаж (Лола)'}</h2>
             <button onClick={() => refetchSales()} disabled={salesLoading} className="btn-primary btn-sm bg-emerald-600">
               {salesLoading ? (language === 'uz' ? 'Analizlanmoqda...' : 'Анализ...') : (language === 'uz' ? 'Prognoz qilish' : 'Прогнозировать')}
             </button>
@@ -1011,7 +1011,7 @@ export default function AIPage() {
       {activeTab === 'expense' && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold">{language === 'uz' ? 'Xarajat Optimallashtirish (Ahmad)' : 'Оптимизация расходов (Ахмад)'}</h2>
+            <h2 className="font-semibold">{language === 'uz' ? 'Xarajat Optimallashtirish (Lola)' : 'Оптимизация расходов (Лола)'}</h2>
             <button onClick={() => refetchExpense()} disabled={expenseLoading} className="btn-primary btn-sm bg-emerald-600">
               {expenseLoading ? (language === 'uz' ? 'Tahlil qilinmoqda...' : 'Анализ...') : (language === 'uz' ? 'Tahlil qilish' : 'Анализировать')}
             </button>

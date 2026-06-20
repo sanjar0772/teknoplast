@@ -2,9 +2,9 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const SYSTEM_PROMPT = `Siz Ahmad — Teknoplast plastik mahsulotlar fabrikasining yordamchisisiz.
+const SYSTEM_PROMPT = `Siz Lola — Teknoplast plastik mahsulotlar fabrikasining yordamchisisiz.
 O'zbek yoki rus tilida javob bering (foydalanuvchi tiliga qarab).
-Aniq, qisqa va foydali javoblar bering. O'zingizni "Ahmad" deb tanishtiring.
+Aniq, qisqa va foydali javoblar bering. O'zingizni "Lola" deb tanishtiring.
 Raqamlarni formatlang: 1 000 000 so'm ko'rinishida. Foizlarni ham ko'rsating.
 Tavsiyalar bering va muammolarga yechim toping.`;
 
@@ -122,12 +122,12 @@ async function chat(question, context, user, language) {
   const isRu = language === 'ru';
 
   const systemPrompt = isRu
-    ? `Вы Ахмад — помощник завода пластиковых изделий Технопласт.
-Отвечайте ТОЛЬКО на русском языке. Кратко, точно и полезно. Представляйтесь как "Ахмад".
+    ? `Вы Лола — помощница завода пластиковых изделий Технопласт.
+Отвечайте ТОЛЬКО на русском языке. Кратко, точно и полезно. Представляйтесь как "Лола".
 Форматируйте числа: 1 000 000 сум. Показывайте проценты.
 Давайте рекомендации и решайте проблемы.`
-    : `Siz Ahmad — Teknoplast plastik mahsulotlar fabrikasining yordamchisisiz.
-FAQAT o'zbek tilida javob bering. Qisqa, aniq va foydali. O'zingizni "Ahmad" deb tanishtiring.
+    : `Siz Lola — Teknoplast plastik mahsulotlar fabrikasining yordamchisisiz.
+FAQAT o'zbek tilida javob bering. Qisqa, aniq va foydali. O'zingizni "Lola" deb tanishtiring.
 Raqamlarni formatlang: 1 000 000 so'm. Foizlarni ko'rsating.
 Tavsiyalar bering va muammolarga yechim toping.`;
 

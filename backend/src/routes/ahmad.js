@@ -50,12 +50,12 @@ const GROQ_STT_MODEL = process.env.GROQ_STT_MODEL || 'whisper-large-v3';
 // Whisper'ga "kontekst" beruvchi prompt — Teknoplast lug'ati bilan tanishni kuchaytiradi.
 // (Whisper prompt'dagi so'zlar va uslubni hisobga oladi -> o'zbekcha atamalarni aniqroq yozadi)
 const UZ_STT_PROMPT =
-  "Ahmad, Teknoplast zavodi yordamchisi. O'zbek tilidagi buyruq. " +
+  "Lola, Teknoplast zavodi yordamchisi. O'zbek tilidagi buyruq. " +
   "Atamalar: mahsulot, sotuv, ombor, narx, dona, so'm, qarz, qarzdor, mijoz, xodim, " +
   "ish haqi, hisobot, prixod, naqd, plastik, quvur, fitting, kran, smena, tarif. " +
   "Masalan: bugungi sotuvni ayt, omborda nechta bor, qarzdorlar ro'yxatini ko'rsat.";
 const RU_STT_PROMPT =
-  "Ахмад, помощник завода Технопласт. Команда на русском. " +
+  "Лола, помощница завода Технопласт. Команда на русском. " +
   "Термины: товар, продажа, склад, цена, штука, сумма, долг, должник, клиент, сотрудник, отчёт, приход, смена, тариф.";
 
 // Audio buffer -> matn (Groq Whisper, OpenAI-mos endpoint). Node 20: global fetch/FormData/Blob.
@@ -624,23 +624,23 @@ async function commandHandler(req, res) {
     if (!text?.trim()) return res.status(400).json({ error: lang === 'ru' ? 'Текст пустой' : 'Matn bo\'sh' });
 
     if (!claude) {
-      return res.json({ response: lang === 'ru' ? 'Ахмад: нужен API ключ' : 'Ahmad: API kaliti kerak' });
+      return res.json({ response: lang === 'ru' ? 'Лола: нужен API ключ' : 'Lola: API kaliti kerak' });
     }
 
     const isOwner = req.user?.role === 'OWNER';
     const activeTools = isOwner ? ALL_TOOLS : READ_TOOLS;
 
     const system = lang === 'ru'
-      ? `Вы Ахмад — умный голосовой помощник завода Технопласт (пластиковые изделия).
+      ? `Вы Лола — умная голосовая помощница завода Технопласт (пластиковые изделия).
 Роль текущего пользователя: ${isOwner ? 'АДМИНИСТРАТОР (все права)' : 'СОТРУДНИК (только просмотр)'}.
 ${isOwner
   ? 'Вы можете выполнять любые операции: продажи, расходы, приход, сотрудники, производство, цены, склад.'
   : 'Вы можете только просматривать: отчёты, остатки, сотрудников, должников. Изменения — только для администратора.'}
 Инструменты: get_report (отчёт), product_stats (статистика товаров за период), lookup (цена/склад), list_debtors (должники), get_employees (сотрудники), generate_document (PDF/Excel)${isOwner ? ', create_sale, add_expense, add_customer, create_intake, update_price, update_stock, record_payment, add_production, add_employee, remove_employee, update_employee, add_user (создать логин-аккаунт)' : ''}.
-Помните историю разговора (до 6 сообщений). Краткие ответы. Числа: 1 000 000 сум. Представляйтесь как Ахмад.
+Помните историю разговора (до 6 сообщений). Краткие ответы. Числа: 1 000 000 сум. Представляйтесь как Лола.
 Вы УМЕЕТЕ читать файлы (PDF, фото, Excel, Word) — если пользователь хочет прислать файл, пусть нажмёт кнопку прикрепления (скрепка). НИКОГДА не говорите "не могу читать PDF/файлы".
 ВАЖНО: без *, #, эмодзи, маркдауна — только чистый текст (ответ озвучивается).`
-      : `Siz Ahmad — Teknoplast plastik buyumlar zavodining aqlli yordamchisisiz.
+      : `Siz Lola — Teknoplast plastik buyumlar zavodining aqlli yordamchisisiz.
 Joriy foydalanuvchi roli: ${isOwner ? 'ADMIN (to\'liq huquq)' : 'XODIM (faqat ko\'rish)'}.
 ${isOwner
   ? 'Siz har qanday amalni bajara olasiz: sotuv, xarajat, kirim, xodim, ishlab chiqarish, narx, ombor.'
@@ -654,7 +654,7 @@ MUHIM — O'ZBEK TILINI TUSHUNISH:
 - Buyruq biroz noaniq bo'lsa ham — eng ehtimolli amalni tanlang va tegishli toolni chaqiring. Faqat HAQIQATAN tushunarsiz bo'lsa qisqa aniqlovchi savol bering.
 - Mahsulot yoki xodim nomi to'liq/aniq bo'lmasa ham — nomni qanday eshitilgan bo'lsa shundayligicha toolga uzating (tizim qisman nom bo'yicha izlaydi).
 
-Suhbat tarixini esda tuting (6 xabar). Javoblar QISQA va aniq. Raqamlar: 1 000 000 so'm ko'rinishida. O'zingizni Ahmad deb tanishtiring.
+Suhbat tarixini esda tuting (6 xabar). Javoblar QISQA va aniq. Raqamlar: 1 000 000 so'm ko'rinishida. O'zingizni Lola deb tanishtiring.
 Siz fayl ham O'QIY OLASIZ (PDF, rasm, Excel, Word) — foydalanuvchi fayl yubormoqchi bo'lsa, biriktirish (qisqich) tugmasidan foydalansin. HECH QACHON "PDF/fayl o'qiy olmayman" demang.
 JAVOBNI DOIM O'ZBEK TILIDA bering (foydalanuvchi matni kirill yoki aralash bo'lsa ham). *, #, emoji, markdown ISHLATMANG — faqat toza matn (ovozda o'qiladi).`;
 
@@ -993,13 +993,13 @@ router.post('/auto', async (req, res) => {
 
     // 1) Vazifani oddiy qadam-buyruqlarga bo'lamiz
     const planSys = lang === 'ru'
-      ? `Разбейте задачу на ВЫПОЛНИМЫЕ шаги-команды для помощника Ахмада. ВАЖНО:
+      ? `Разбейте задачу на ВЫПОЛНИМЫЕ шаги-команды для ассистента Лолы. ВАЖНО:
 - Каждый шаг — ПОЛНАЯ, самостоятельная команда со ВСЕМИ деталями (название товара, число, сумма внутри шага).
 - НЕ разбивайте одну операцию на "найти" + "изменить" — делайте одной командой. Пример: "измени цену гул тувак на 9000" (один шаг).
 - Если задача — одна операция, верните ОДИН шаг.
 - НЕ удаляйте сотрудников/пользователей.
 Верните ТОЛЬКО JSON-массив строк: ["команда1","команда2"]. Максимум 6.`
-      : `Vazifani BAJARILADIGAN qadam-buyruqlarga bo'ling (Ahmad yordamchi uchun). MUHIM:
+      : `Vazifani BAJARILADIGAN qadam-buyruqlarga bo'ling (Lola yordamchi uchun). MUHIM:
 - Har qadam TO'LIQ, mustaqil buyruq bo'lsin — barcha tafsilot (mahsulot nomi, son, summa) qadam ICHIDA bo'lsin.
 - Bitta amalni "izlash" + "o'zgartirish"ga BO'LMANG — bitta to'liq buyruq qiling. Masalan: "gul tuvak narxini 9000 qil" (bitta qadam).
 - Agar vazifa bitta amaldan iborat bo'lsa — BITTA qadam qaytaring.
@@ -1166,7 +1166,7 @@ router.post('/read-image', upload.single('image'), async (req, res) => {
     try { fs.unlinkSync(req.file.path); } catch {}
 
     if (!claude) {
-      return res.json({ response: lang === 'ru' ? 'Ахмад: нужен API ключ' : 'Ahmad: API kaliti kerak', text: '' });
+      return res.json({ response: lang === 'ru' ? 'Лола: нужен API ключ' : 'Lola: API kaliti kerak', text: '' });
     }
 
     // Faylni Claude uchun content blokiga aylantiramiz (xatosiz)
@@ -1202,7 +1202,7 @@ router.post('/read-image', upload.single('image'), async (req, res) => {
       : (lang === 'ru' ? 'Пользователь — сотрудник (только просмотр).' : 'Foydalanuvchi — xodim (faqat ko\'rish).');
 
     const systemPrompt = lang === 'ru'
-      ? `Вы Ахмад — помощник завода Технопласт. ${roleNote}
+      ? `Вы Лола — помощница завода Технопласт. ${roleNote}
 Внимательно прочитайте предоставленный файл и извлеките ВСЮ информацию.
 
 ПРАВИЛА ВЫБОРА ТИПА (kind):
@@ -1231,7 +1231,7 @@ router.post('/read-image', upload.single('image'), async (req, res) => {
 ВАЖНО: определите ЦВЕТ ("rang": qizil/ko'k/oq/yashil/sariq/qora/pushti/kulrang...) и КОЛИЧЕСТВО ("quantity"). Если цвет в названии ("... кизил") — выведите его в "rang" латиницей.
 
 Отвечайте кратко на русском языке.`
-      : `Siz Ahmad — Teknoplast plastik zavod yordamchisisiz. ${roleNote}
+      : `Siz Lola — Teknoplast plastik zavod yordamchisisiz. ${roleNote}
 Berilgan faylni DIQQAT BILAN o'qing va barcha ma'lumotlarni chiqaring.
 
 TURNING TANLANISH QOIDALARI (kind):
@@ -1365,7 +1365,7 @@ async function confirmActionHandler(req, res) {
         await client.query(
           `INSERT INTO sales (product_id, quantity, unit_price, total_amount, customer_name, sale_date, status, payment_amount, created_by, order_ref)
            VALUES ($1,$2,$3,$4,$5,$6,'PENDING',0,$7,$8)`,
-          [d.product_id, d.quantity, d.unit_price, total, d.customer_name || 'Ahmad', new Date().toISOString().slice(0, 10), req.user.id, genOrderRef()]
+          [d.product_id, d.quantity, d.unit_price, total, d.customer_name || 'Lola', new Date().toISOString().slice(0, 10), req.user.id, genOrderRef()]
         );
         await client.query('UPDATE products SET stock_quantity = stock_quantity - $1, updated_at=NOW() WHERE id=$2', [d.quantity, d.product_id]);
         await client.query('COMMIT');
@@ -1378,7 +1378,7 @@ async function confirmActionHandler(req, res) {
       const d = action.data;
       await query(
         'INSERT INTO expenses (category, amount, description, expense_date, created_by) VALUES ($1,$2,$3,$4,$5)',
-        [d.category || 'OTHER', d.amount, d.description || 'Ahmad orqali', new Date().toISOString().slice(0, 10), req.user.id]
+        [d.category || 'OTHER', d.amount, d.description || 'Lola orqali', new Date().toISOString().slice(0, 10), req.user.id]
       );
       return res.json({ success: true, message: `Xarajat yozildi: ${fmt(d.amount)} so'm` });
     }
@@ -1513,7 +1513,7 @@ async function confirmActionHandler(req, res) {
         await client.query('BEGIN');
         const intakeR = await client.query(
           `INSERT INTO product_intakes (status, notes, created_by) VALUES ('PENDING', $1, $2) RETURNING id`,
-          ['Ahmad orqali', req.user.id]
+          ['Lola orqali', req.user.id]
         );
         const intakeId = intakeR.rows[0].id;
         for (const it of items) {
@@ -1542,7 +1542,7 @@ async function confirmActionHandler(req, res) {
             await client.query(
               `INSERT INTO sales (product_id, quantity, unit_price, total_amount, customer_name, sale_date, status, payment_amount, created_by, order_ref)
                VALUES ($1,$2,$3,$4,$5,$6,'PENDING',0,$7,$8)`,
-              [p.id, qty, price, total, 'Ahmad', new Date().toISOString().slice(0, 10), req.user.id, genOrderRef()]
+              [p.id, qty, price, total, 'Lola', new Date().toISOString().slice(0, 10), req.user.id, genOrderRef()]
             );
             // Ombor yetmasa ham yozamiz (tarixiy hisobot), lekin manfiyga tushirmaymiz
             await client.query('UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at=NOW() WHERE id=$2', [qty, p.id]);
@@ -1579,7 +1579,7 @@ async function confirmActionHandler(req, res) {
           `INSERT INTO employee_production
             (employee_id, product_id, production_date, quantity_produced, daily_tariff, calculated_amount, month, notes, production_type)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-          [d.employee_id, d.product_id || null, d.production_date, d.quantity, d.daily_tariff, d.calculated_amount, d.month, 'Ahmad orqali', d.production_type || 'FINISHED']
+          [d.employee_id, d.product_id || null, d.production_date, d.quantity, d.daily_tariff, d.calculated_amount, d.month, 'Lola orqali', d.production_type || 'FINISHED']
         );
         if (d.product_id) {
           await client.query('UPDATE products SET stock_quantity = stock_quantity + $1, updated_at=NOW() WHERE id=$2', [d.quantity, d.product_id]);

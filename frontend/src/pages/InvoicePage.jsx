@@ -42,12 +42,13 @@ const getPaymentInfo = (sale) => {
 const parsePaymentBreakdown = (sale) => {
   const notes = sale?.notes || '';
   const parts = [];
+  const parseAmt = (m) => parseFloat((m?.[1] || '0').replace(/[^\d.]/g, '')) || 0;
   const cashMatch = notes.match(/Naqd:\s*([\d\s,.]+)/);
   const cardMatch = notes.match(/Karta:\s*([\d\s,.]+)/);
   const bankMatch = notes.match(/Bank:\s*([\d\s,.]+)/);
-  if (cashMatch) parts.push({ label: 'Naqd', amount: parseFloat(cashMatch[1].replace(/\s/g, '').replace(',', '.')) || 0, icon: '💵' });
-  if (cardMatch) parts.push({ label: 'Karta', amount: parseFloat(cardMatch[1].replace(/\s/g, '').replace(',', '.')) || 0, icon: '💳' });
-  if (bankMatch) parts.push({ label: 'Bank', amount: parseFloat(bankMatch[1].replace(/\s/g, '').replace(',', '.')) || 0, icon: '🏦' });
+  if (cashMatch) parts.push({ label: 'Naqd', amount: parseAmt(cashMatch), icon: '💵' });
+  if (cardMatch) parts.push({ label: 'Karta', amount: parseAmt(cardMatch), icon: '💳' });
+  if (bankMatch) parts.push({ label: 'Bank', amount: parseAmt(bankMatch), icon: '🏦' });
   return parts;
 };
 

@@ -435,13 +435,14 @@ function getInvoicePaymentLabel(sale) {
   const notes = sale?.notes || '';
   const total = parseFloat(sale?.total_amount || 0);
   const paid = parseFloat(sale?.payment_amount || 0);
+  const parseAmt = (m) => parseFloat((m?.[1] || '0').replace(/[^\d.]/g, '')) || 0;
   const parts = [];
   const cashMatch = notes.match(/Naqd:\s*([\d\s,.]+)/);
   const cardMatch = notes.match(/Karta:\s*([\d\s,.]+)/);
   const bankMatch = notes.match(/Bank:\s*([\d\s,.]+)/);
-  if (cashMatch) parts.push(`Naqd: ${cashMatch[1].trim()}`);
-  if (cardMatch) parts.push(`Karta: ${cardMatch[1].trim()}`);
-  if (bankMatch) parts.push(`Bank: ${bankMatch[1].trim()}`);
+  if (cashMatch) parts.push(`Naqd: ${formatMoney(parseAmt(cashMatch))}`);
+  if (cardMatch) parts.push(`Karta: ${formatMoney(parseAmt(cardMatch))}`);
+  if (bankMatch) parts.push(`Bank: ${formatMoney(parseAmt(bankMatch))}`);
   if (parts.length) {
     const debt = Math.max(0, total - paid);
     if (debt > 0) parts.push(`Qarz: ${formatMoney(debt)}`);

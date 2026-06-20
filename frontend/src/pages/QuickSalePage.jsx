@@ -239,10 +239,10 @@ export default function QuickSalePage() {
     checkoutRef.current = { idx: activeIdx, customerId: s.customerId, payCash: cashAmt, payCard: cardAmt, payBank: bankAmt };
     lastCartRef.current = s.cart.map(x => ({ name: x.name, qty: parseInt(x.qty), price: parseFloat(x.price), unit: x.unit, rang: x.rang }));
     const noteParts = [];
-    if (cashAmt > 0) noteParts.push(`Naqd: ${fmt(cashAmt)}`);
-    if (cardAmt > 0) noteParts.push(`Karta: ${fmt(cardAmt)}`);
-    if (bankAmt > 0) noteParts.push(`Bank: ${fmt(bankAmt)}`);
-    if (debtAmt > 0) noteParts.push(`Qarz: ${fmt(debtAmt)}`);
+    if (cashAmt > 0) noteParts.push(`Naqd: ${cashAmt}`);
+    if (cardAmt > 0) noteParts.push(`Karta: ${cardAmt}`);
+    if (bankAmt > 0) noteParts.push(`Bank: ${bankAmt}`);
+    if (debtAmt > 0) noteParts.push(`Qarz: ${debtAmt}`);
     if (!noteParts.length) noteParts.push('Qarz');
     saveMutation.mutate({
       customer_id: s.customerId,

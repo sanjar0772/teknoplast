@@ -650,6 +650,7 @@ export default function SalesPage() {
                     </div>
                     {(() => {
                       const notes = sale.notes || '';
+                      const parseAmt = (m) => parseFloat((m?.[1] || '0').replace(/[^\d.]/g, '')) || 0;
                       const cashM = notes.match(/Naqd:\s*([\d\s,.]+)/);
                       const cardM = notes.match(/Karta:\s*([\d\s,.]+)/);
                       const bankM = notes.match(/Bank:\s*([\d\s,.]+)/);
@@ -659,9 +660,9 @@ export default function SalesPage() {
                         <div className="text-[12px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-3">
                           {hasMixed ? (
                             <>
-                              {cashM && <div className="flex justify-between text-green-700"><span>Naqd:</span><span className="font-bold">{cashM[1].trim()} so'm</span></div>}
-                              {cardM && <div className="flex justify-between text-blue-700"><span>Karta:</span><span className="font-bold">{cardM[1].trim()} so'm</span></div>}
-                              {bankM && <div className="flex justify-between text-purple-700"><span>Bank:</span><span className="font-bold">{bankM[1].trim()} so'm</span></div>}
+                              {cashM && <div className="flex justify-between text-green-700"><span>Naqd:</span><span className="font-bold">{fmt(parseAmt(cashM))} so'm</span></div>}
+                              {cardM && <div className="flex justify-between text-blue-700"><span>Karta:</span><span className="font-bold">{fmt(parseAmt(cardM))} so'm</span></div>}
+                              {bankM && <div className="flex justify-between text-purple-700"><span>Bank:</span><span className="font-bold">{fmt(parseAmt(bankM))} so'm</span></div>}
                               {chekDebt > 0 && <div className="flex justify-between text-red-600"><span>Qarz:</span><span className="font-bold">{fmt(chekDebt)} so'm</span></div>}
                             </>
                           ) : (

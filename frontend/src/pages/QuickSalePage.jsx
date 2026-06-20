@@ -19,6 +19,8 @@ const rowAvail = (x) => {
 };
 
 const MAX_TABS = 5;
+const STORAGE_KEY = 'teknoplast_sale_sessions';
+const STORAGE_IDX_KEY = 'teknoplast_sale_activeIdx';
 const freshSession = () => ({
   id: Date.now() + Math.random(),
   cart: [],
@@ -29,6 +31,27 @@ const freshSession = () => ({
   saleDate: new Date().toISOString().slice(0, 10),
 });
 
+const loadSessions = () => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) {
+        parsed.forEach(ses => { ses.cart.forEach(x => { x.key = newRowKey(); }); });
+        return parsed;
+      }
+    }
+  } catch {}
+  return [freshSession()];
+};
+
+const loadActiveIdx = () => {
+  try {
+    const v = parseInt(localStorage.getItem(STORAGE_IDX_KEY), 10);
+    return isNaN(v) ? 0 : v;
+  } catch { return 0; }
+};
+
 export default function QuickSalePage() {
   const qc = useQueryClient();
   const location = useLocation();
@@ -37,10 +60,17 @@ export default function QuickSalePage() {
   const lastCartRef = useRef([]);
   const checkoutRef = useRef({ idx: 0, customerId: '' });
 
-  const [sessions, setSessions] = useState([freshSession()]);
-  const [activeIdx, setActiveIdx] = useState(0);
+  const [sessions, setSessions] = useState(loadSessions);
+  const [activeIdx, setActiveIdx] = useState(loadActiveIdx);
   const [search, setSearch] = useState('');
   const [lastOrder, setLastOrder] = useState(null);
+
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions)); } catch {}
+  }, [sessions]);
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_IDX_KEY, String(activeIdx)); } catch {}
+  }, [activeIdx]);
 
   const s = sessions[activeIdx] || sessions[0];
 
@@ -82,6 +112,19 @@ export default function QuickSalePage() {
   }, [search, products]);
 
   const cartIds = useMemo(() => new Set(s.cart.map(c => c.id)), [s.cart]);
+
+  useEffect(() => {
+    if (!products.length) return;
+    const pMap = new Map(products.map(p => [p.id, p]));
+    setSessions(ss => ss.map(ses => ({
+      ...ses,
+      cart: ses.cart.map(x => {
+        const fresh = pMap.get(x.id);
+        if (!fresh) return x;
+        return { ...x, stock: fresh.stock_quantity, color_stock: fresh.color_stock || x.color_stock, price: x.price || parseFloat(fresh.price) || 0 };
+      }),
+    })));
+  }, [products]);
 
   useEffect(() => { searchRef.current?.focus(); }, []);
 

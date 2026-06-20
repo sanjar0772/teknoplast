@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import useAuthStore from './store/authStore';
+import useAutoUpdate from './hooks/useAutoUpdate';
 import Layout from './components/layout/Layout';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
@@ -35,6 +36,7 @@ function PublicRoute({ children }) {
 }
 
 export default function App() {
+  useAutoUpdate(); // yangi deploy chiqsa ilovani avtomatik yangilaydi
   return (
     <BrowserRouter>
       <Routes>

@@ -46,6 +46,21 @@ async function ensureReturnsSchema() {
   if (_ready) return;
   try {
     await db.query(DDL);
+    // Brak/ziyon uchun yangi ustunlar — idempotent (mavjud bazaga ham qo'shiladi)
+    //  condition: 'GOOD' (yaxshi — omborga qaytadi) | 'DEFECTIVE' (brak — ziyon)
+    //  loss_amount: brak bo'lsa ziyon summasi
+    const addCols = USE_PG
+      ? [
+          `ALTER TABLE sale_returns ADD COLUMN IF NOT EXISTS condition VARCHAR(20) DEFAULT 'GOOD'`,
+          `ALTER TABLE sale_returns ADD COLUMN IF NOT EXISTS loss_amount NUMERIC(18,2) DEFAULT 0`,
+        ]
+      : [
+          `ALTER TABLE sale_returns ADD COLUMN condition TEXT DEFAULT 'GOOD'`,
+          `ALTER TABLE sale_returns ADD COLUMN loss_amount REAL DEFAULT 0`,
+        ];
+    for (const sql of addCols) {
+      try { await db.query(sql); } catch (e) { /* ustun allaqachon mavjud — o'tkazamiz */ }
+    }
     _ready = true;
   } catch (e) {
     console.error('Sale returns DDL xato:', e.message);

@@ -120,11 +120,17 @@ export default function SalesPage() {
     mutationFn: ({ id, data }) => salesAPI.returnSale(id, data),
     onSuccess: (res) => {
       const refund = parseFloat(res?.data?.refund_amount || 0);
-      toast.success(refund > 0 ? `Vozvrat qabul qilindi. Qaytariladigan pul: ${fmt(refund)} so'm` : 'Vozvrat qabul qilindi');
+      const loss = parseFloat(res?.data?.loss_amount || 0);
+      if (loss > 0) {
+        toast.success(`Brak qabul qilindi — ${fmt(loss)} so'm ziyon sifatida qayd etildi`);
+      } else {
+        toast.success(refund > 0 ? `Vozvrat qabul qilindi. Qaytariladigan pul: ${fmt(refund)} so'm` : 'Vozvrat qabul qilindi — tovar omborga qaytdi');
+      }
       qc.invalidateQueries({ queryKey: ['sales'] });
       qc.invalidateQueries({ queryKey: ['sales-summary'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['expenses'] });
       setReturnForm(null);
     },
     onError: (err) => toast.error(err?.response?.data?.error || 'Vozvratda xato'),
@@ -139,6 +145,7 @@ export default function SalesPage() {
       unit_price: parseFloat(sale.unit_price) || 0,
       quantity: parseInt(sale.quantity, 10) || 1,
       reason: '',
+      condition: 'GOOD',
     });
   };
 
@@ -147,7 +154,7 @@ export default function SalesPage() {
     if (!q || q < 1) return toast.error('Miqdor noto\'g\'ri');
     if (q > returnForm.max) return toast.error(`Faqat ${returnForm.max} dona qaytarish mumkin`);
     if (!returnForm.reason.trim()) return toast.error('Vozvrat sababi majburiy');
-    returnMutation.mutate({ id: returnForm.id, data: { quantity: q, reason: returnForm.reason.trim() } });
+    returnMutation.mutate({ id: returnForm.id, data: { quantity: q, reason: returnForm.reason.trim(), condition: returnForm.condition } });
   };
 
   // Bitta chekdagi barcha to'lanmagan mahsulotlarni "To'langan" qilish
@@ -577,6 +584,27 @@ export default function SalesPage() {
               />
             </div>
             <div>
+              <label className="label">Tovar holati *</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setReturnForm(f => ({ ...f, condition: 'GOOD' }))}
+                  className={`rounded-xl border p-2.5 text-sm text-left transition ${returnForm.condition === 'GOOD' ? 'border-emerald-400 bg-emerald-50 ring-1 ring-emerald-300' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <div className="font-medium text-gray-900">✅ Yaxshi</div>
+                  <div className="text-[11px] text-gray-500">Omborga qaytadi</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReturnForm(f => ({ ...f, condition: 'DEFECTIVE' }))}
+                  className={`rounded-xl border p-2.5 text-sm text-left transition ${returnForm.condition === 'DEFECTIVE' ? 'border-red-400 bg-red-50 ring-1 ring-red-300' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <div className="font-medium text-gray-900">⚠️ Brak</div>
+                  <div className="text-[11px] text-gray-500">Ziyon sifatida qayd</div>
+                </button>
+              </div>
+            </div>
+            <div>
               <label className="label">Sabab * (majburiy)</label>
               <textarea
                 className="input" rows={2} placeholder="Masalan: sifatsiz, ortiqcha, mijoz qaytardi..."
@@ -585,11 +613,19 @@ export default function SalesPage() {
               />
             </div>
             <div className="bg-emerald-50 rounded-xl p-3 text-sm flex justify-between">
-              <span className="text-gray-600">Qaytariladigan summa:</span>
+              <span className="text-gray-600">Mijozga qaytariladigan:</span>
               <span className="font-semibold text-emerald-700">
                 {fmt((parseInt(returnForm.quantity, 10) || 0) * returnForm.unit_price)} so'm
               </span>
             </div>
+            {returnForm.condition === 'DEFECTIVE' && (
+              <div className="bg-red-50 rounded-xl p-3 text-sm flex justify-between">
+                <span className="text-gray-600">⚠️ Ziyon (taxminiy):</span>
+                <span className="font-semibold text-red-600">
+                  {fmt((parseInt(returnForm.quantity, 10) || 0) * returnForm.unit_price)} so'm
+                </span>
+              </div>
+            )}
             <div className="flex gap-2 justify-end pt-2">
               <button onClick={() => setReturnForm(null)} className="btn-secondary btn-sm">Bekor</button>
               <button onClick={submitReturn} disabled={returnMutation.isPending} className="btn-primary btn-sm">

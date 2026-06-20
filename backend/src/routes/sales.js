@@ -626,6 +626,8 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
     await saleReturns.ensureReturnsSchema();
     const qty = parseInt(req.body.quantity, 10);
     const reason = (req.body.reason || '').trim();
+    // Holati: GOOD = yaxshi (omborga qaytadi), DEFECTIVE = brak (ziyon, omborga qaytmaydi)
+    const condition = req.body.condition === 'DEFECTIVE' ? 'DEFECTIVE' : 'GOOD';
     if (!qty || qty < 1) return res.status(400).json({ error: 'Qaytariladigan miqdor noto\'g\'ri' });
     if (!reason) return res.status(400).json({ error: 'Vozvrat sababini kiriting (majburiy)' });
 
@@ -640,6 +642,12 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
 
     const unitPrice = parseFloat(sale.unit_price) || 0;
     const amount = qty * unitPrice;
+
+    // Brak bo'lsa ziyon summasi: tannarx (cost_price) bo'lsa undan, aks holda sotuv narxidan
+    const prodR = await query('SELECT name, cost_price FROM products WHERE id = $1', [sale.product_id]);
+    const prodName = prodR.rows[0]?.name || 'Mahsulot';
+    const costUnit = parseFloat(prodR.rows[0]?.cost_price) > 0 ? parseFloat(prodR.rows[0].cost_price) : unitPrice;
+    const lossAmount = condition === 'DEFECTIVE' ? Math.round(costUnit * qty) : 0;
     const newQty = soldQty - qty;
     const newTotal = Math.max(0, (parseFloat(sale.total_amount) || 0) - amount);
 
@@ -659,12 +667,22 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
     try {
       await client.query('BEGIN');
 
-      // Ombor qaytadi (mahsulot + rang bo'yicha)
-      await client.query(
-        'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at = NOW() WHERE id = $2',
-        [qty, sale.product_id]
-      );
-      await addColorStock(client.query, sale.product_id, sale.rang, qty);
+      if (condition === 'GOOD') {
+        // Yaxshi tovar — omborga qaytadi (mahsulot + rang bo'yicha)
+        await client.query(
+          'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at = NOW() WHERE id = $2',
+          [qty, sale.product_id]
+        );
+        await addColorStock(client.query, sale.product_id, sale.rang, qty);
+      } else {
+        // Brak tovar — omborga QAYTMAYDI, ziyon sifatida xarajatga yoziladi
+        await client.query(
+          `INSERT INTO expenses (category, amount, description, expense_date, created_by)
+           VALUES ($1,$2,$3,$4,$5)`,
+          ['OTHER', lossAmount, `Brak tovar (vozvrat): ${prodName} x${qty}${reason ? ' — ' + reason : ''}`,
+           new Date().toISOString().slice(0, 10), req.user.id]
+        );
+      }
 
       // Sotuvni yangilash
       const upd = await client.query(
@@ -672,19 +690,19 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
         [newQty, newTotal, newPayment, newStatus, sale.id]
       );
 
-      // Vozvrat yozuvi
+      // Vozvrat yozuvi (holati + ziyon bilan)
       const retR = await client.query(
-        `INSERT INTO sale_returns (sale_id, product_id, customer_id, quantity, unit_price, amount, refund_amount, rang, reason, return_date, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-        [sale.id, sale.product_id, sale.customer_id || null, qty, unitPrice, amount, refund, sale.rang || null, reason, new Date().toISOString().slice(0, 10), req.user.id]
+        `INSERT INTO sale_returns (sale_id, product_id, customer_id, quantity, unit_price, amount, refund_amount, rang, reason, return_date, created_by, condition, loss_amount)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+        [sale.id, sale.product_id, sale.customer_id || null, qty, unitPrice, amount, refund, sale.rang || null, reason, new Date().toISOString().slice(0, 10), req.user.id, condition, lossAmount]
       );
 
       await client.query('COMMIT');
       logAudit(req, {
         action: 'SALE_RETURN', table: 'sales', recordId: sale.id,
-        newValues: { quantity: qty, amount, refund_amount: refund, reason, new_quantity: newQty, new_total: newTotal },
+        newValues: { quantity: qty, amount, refund_amount: refund, reason, condition, loss_amount: lossAmount, new_quantity: newQty, new_total: newTotal },
       });
-      res.status(201).json({ sale: upd.rows[0], return: retR.rows[0], refund_amount: refund });
+      res.status(201).json({ sale: upd.rows[0], return: retR.rows[0], refund_amount: refund, condition, loss_amount: lossAmount });
     } catch (e) {
       await client.query('ROLLBACK');
       throw e;

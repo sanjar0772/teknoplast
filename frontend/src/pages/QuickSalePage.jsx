@@ -23,8 +23,9 @@ const freshSession = () => ({
   id: Date.now() + Math.random(),
   cart: [],
   customerId: '',
-  paymentType: 'CASH',
-  partialAmount: '',
+  payCash: '',
+  payCard: '',
+  payBank: '',
   saleDate: new Date().toISOString().slice(0, 10),
 });
 
@@ -165,11 +166,20 @@ export default function QuickSalePage() {
         items: lastCartRef.current,
         customer_name: cust?.name || null,
         date: new Date(),
+        pay_cash: checkoutRef.current.payCash || 0,
+        pay_card: checkoutRef.current.payCard || 0,
+        pay_bank: checkoutRef.current.payBank || 0,
       });
-      setSessions(ss => ss.map((ses, i) => i === idx ? { ...ses, cart: [], partialAmount: '' } : ses));
+      setSessions(ss => ss.map((ses, i) => i === idx ? { ...ses, cart: [], payCash: '', payCard: '', payBank: '' } : ses));
       setSearch('');
     },
   });
+
+  const cashAmt = parseFloat(s.payCash) || 0;
+  const cardAmt = parseFloat(s.payCard) || 0;
+  const bankAmt = parseFloat(s.payBank) || 0;
+  const paidTotal = cashAmt + cardAmt + bankAmt;
+  const debtAmt = Math.max(0, grandTotal - paidTotal);
 
   const checkout = () => {
     if (!s.cart.length) return toast.error('Savat bo\'sh');
@@ -182,19 +192,20 @@ export default function QuickSalePage() {
       const avail = rowAvail(x);
       if (parseFloat(x.qty) > avail) return toast.error(`"${x.name}" — ${rangLabel(x.rang)}: faqat ${avail} dona bor`);
     }
-    checkoutRef.current = { idx: activeIdx, customerId: s.customerId };
+    if (paidTotal > grandTotal) return toast.error(`To'lov summasi jami summadan oshib ketdi`);
+    checkoutRef.current = { idx: activeIdx, customerId: s.customerId, payCash: cashAmt, payCard: cardAmt, payBank: bankAmt };
     lastCartRef.current = s.cart.map(x => ({ name: x.name, qty: parseInt(x.qty), price: parseFloat(x.price), unit: x.unit, rang: x.rang }));
-    const paidNow = s.paymentType === 'DEBT'
-      ? 0
-      : (s.partialAmount !== '' ? Math.max(0, parseFloat(s.partialAmount) || 0) : grandTotal);
-    const paymentLabel = s.paymentType === 'CASH' ? 'Naqd'
-      : s.paymentType === 'CARD' ? 'Karta'
-      : s.paymentType === 'BANK' ? 'Bank' : 'Qarz';
+    const noteParts = [];
+    if (cashAmt > 0) noteParts.push(`Naqd: ${fmt(cashAmt)}`);
+    if (cardAmt > 0) noteParts.push(`Karta: ${fmt(cardAmt)}`);
+    if (bankAmt > 0) noteParts.push(`Bank: ${fmt(bankAmt)}`);
+    if (debtAmt > 0) noteParts.push(`Qarz: ${fmt(debtAmt)}`);
+    if (!noteParts.length) noteParts.push('Qarz');
     saveMutation.mutate({
       customer_id: s.customerId,
       sale_date: s.saleDate,
-      payment_amount: paidNow,
-      notes: `To'lov: ${paymentLabel}${paidNow > 0 && paidNow < grandTotal ? ` · ${fmt(paidNow)} so'm` : ''}`,
+      payment_amount: paidTotal,
+      notes: `To'lov: ${noteParts.join(' · ')}`,
       items: s.cart.map(x => ({
         product_id: x.id, quantity: parseInt(x.qty), unit_price: parseFloat(x.price), rang: x.rang,
       })),
@@ -271,19 +282,38 @@ export default function QuickSalePage() {
                   </div>
                 ))}
               </div>
-              <div className={`flex justify-between font-bold text-[15px] ${lastOrder.paid_amount < lastOrder.grand_total ? '' : 'border-b border-dashed border-gray-300'} pb-2 mb-2`}>
+              <div className="flex justify-between font-bold text-[15px] pb-2 mb-2">
                 <span>JAMI:</span><span>{fmt(lastOrder.grand_total)} so'm</span>
               </div>
-              {lastOrder.paid_amount < lastOrder.grand_total && (
-                <div className="text-[12px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-2">
-                  <div className="flex justify-between text-green-700">
-                    <span>To'landi:</span><span className="font-bold">{fmt(lastOrder.paid_amount)} so'm</span>
+              {(() => {
+                const hasMixed = (lastOrder.pay_cash > 0) + (lastOrder.pay_card > 0) + (lastOrder.pay_bank > 0) > 0;
+                const chekDebt = Math.max(0, lastOrder.grand_total - lastOrder.paid_amount);
+                if (!hasMixed && chekDebt <= 0) return null;
+                return (
+                  <div className="text-[12px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-2">
+                    {lastOrder.pay_cash > 0 && (
+                      <div className="flex justify-between text-green-700">
+                        <span>Naqd:</span><span className="font-bold">{fmt(lastOrder.pay_cash)} so'm</span>
+                      </div>
+                    )}
+                    {lastOrder.pay_card > 0 && (
+                      <div className="flex justify-between text-blue-700">
+                        <span>Karta:</span><span className="font-bold">{fmt(lastOrder.pay_card)} so'm</span>
+                      </div>
+                    )}
+                    {lastOrder.pay_bank > 0 && (
+                      <div className="flex justify-between text-purple-700">
+                        <span>Bank:</span><span className="font-bold">{fmt(lastOrder.pay_bank)} so'm</span>
+                      </div>
+                    )}
+                    {chekDebt > 0 && (
+                      <div className="flex justify-between text-red-600">
+                        <span>Qarz:</span><span className="font-bold">{fmt(chekDebt)} so'm</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex justify-between text-red-600">
-                    <span>Qarz:</span><span className="font-bold">{fmt(lastOrder.grand_total - lastOrder.paid_amount)} so'm</span>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
               <div className="flex flex-col items-center pt-1">
                 <QRCodeSVG value={lastOrder.order_ref} size={110} />
                 <div className="text-[10px] text-gray-500 mt-1">Omborchi uchun QR kod</div>
@@ -355,8 +385,8 @@ export default function QuickSalePage() {
 
         {/* O'NG: Savat */}
         <div className="lg:col-span-3 space-y-2">
-          {/* Mijoz / sana / to'lov / to'langan */}
-          <div className="card p-3 grid grid-cols-2 lg:grid-cols-4 gap-2">
+          {/* Mijoz / sana */}
+          <div className="card p-3 grid grid-cols-2 gap-2">
             <div>
               <label className="text-[10px] text-gray-500 font-medium">Mijoz *</label>
               <select
@@ -374,35 +404,69 @@ export default function QuickSalePage() {
               <label className="text-[10px] text-gray-500 font-medium">Sana</label>
               <input type="date" value={s.saleDate} onChange={e => setField('saleDate', e.target.value)} className="input text-xs py-1.5" />
             </div>
-            <div>
-              <label className="text-[10px] text-gray-500 font-medium">To'lov</label>
-              <select
-                value={s.paymentType}
-                onChange={e => { setField('paymentType', e.target.value); if (e.target.value === 'DEBT') setField('partialAmount', ''); }}
-                className="select text-xs py-1.5"
-              >
-                <option value="CASH">Naqd</option>
-                <option value="CARD">Karta</option>
-                <option value="BANK">Bank</option>
-                <option value="DEBT">Qarz</option>
-              </select>
+          </div>
+
+          {/* To'lov — 4 xil usul */}
+          <div className="card p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] text-gray-500 font-medium uppercase">To'lov usullari</span>
+              {grandTotal > 0 && (
+                <span className={`text-[10px] font-semibold ${debtAmt > 0 ? 'text-red-500' : 'text-green-600'}`}>
+                  {debtAmt > 0 ? `Qarz: ${fmt(debtAmt)} so'm` : "To'liq to'langan"}
+                </span>
+              )}
             </div>
-            {s.paymentType !== 'DEBT' && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
               <div>
-                <label className="text-[10px] text-gray-500 font-medium">
-                  To'langan
-                  {s.partialAmount !== '' && parseFloat(s.partialAmount) < grandTotal && grandTotal > 0 && (
-                    <span className="text-red-500 ml-1">qarz: {fmt(grandTotal - (parseFloat(s.partialAmount) || 0))}</span>
-                  )}
-                </label>
+                <label className="text-[10px] text-gray-500 font-medium flex items-center gap-1">💵 Naqd</label>
                 <input
-                  type="number" min="0" max={grandTotal} step="1000"
-                  value={s.partialAmount}
-                  onChange={e => setField('partialAmount', e.target.value)}
-                  placeholder={`${fmt(grandTotal)}`}
-                  className={`input text-xs py-1.5 ${s.partialAmount !== '' && parseFloat(s.partialAmount) < grandTotal && grandTotal > 0 ? 'border-orange-400' : ''}`}
+                  type="number" min="0" step="1000"
+                  value={s.payCash}
+                  onChange={e => setField('payCash', e.target.value)}
+                  onFocus={e => e.target.select()}
+                  placeholder="0"
+                  className="input text-xs py-1.5"
                 />
               </div>
+              <div>
+                <label className="text-[10px] text-gray-500 font-medium flex items-center gap-1">💳 Karta</label>
+                <input
+                  type="number" min="0" step="1000"
+                  value={s.payCard}
+                  onChange={e => setField('payCard', e.target.value)}
+                  onFocus={e => e.target.select()}
+                  placeholder="0"
+                  className="input text-xs py-1.5"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 font-medium flex items-center gap-1">🏦 Bank</label>
+                <input
+                  type="number" min="0" step="1000"
+                  value={s.payBank}
+                  onChange={e => setField('payBank', e.target.value)}
+                  onFocus={e => e.target.select()}
+                  placeholder="0"
+                  className="input text-xs py-1.5"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 font-medium flex items-center gap-1">📝 Qarz</label>
+                <input
+                  type="text" readOnly
+                  value={grandTotal > 0 ? fmt(debtAmt) : '0'}
+                  className="input text-xs py-1.5 bg-gray-50 cursor-not-allowed"
+                />
+              </div>
+            </div>
+            {grandTotal > 0 && (
+              <button
+                type="button"
+                onClick={() => { setField('payCash', String(grandTotal)); setField('payCard', ''); setField('payBank', ''); }}
+                className="text-[10px] text-blue-500 hover:text-blue-700 mt-1"
+              >
+                Hammasini naqd to'lash
+              </button>
             )}
           </div>
 

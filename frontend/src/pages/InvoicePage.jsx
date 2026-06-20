@@ -26,11 +26,6 @@ function groupInvoiceRows(rows) {
   return order;
 }
 
-// To'lov turini sotuv yozuvidan aniqlaymiz:
-//  - status === PAID  va notes ichida "Karta"/"Naqd" bo'lsa — shu nom ko'rsatiladi
-//  - status === PAID  lekin notes'da to'lov turi yo'q bo'lsa — "To'langan"
-//  - status === PARTIALLY_PAID — "Qisman to'langan"
-//  - aks holda (PENDING va h.k.) — "Qarz"
 const getPaymentInfo = (sale) => {
   const notes = sale?.notes || '';
   if (sale?.status === 'PAID') {
@@ -42,6 +37,18 @@ const getPaymentInfo = (sale) => {
     return { label: "Qisman to'langan", cls: 'badge-blue' };
   }
   return { label: '📝 Qarz', cls: 'badge-yellow' };
+};
+
+const parsePaymentBreakdown = (sale) => {
+  const notes = sale?.notes || '';
+  const parts = [];
+  const cashMatch = notes.match(/Naqd:\s*([\d\s,.]+)/);
+  const cardMatch = notes.match(/Karta:\s*([\d\s,.]+)/);
+  const bankMatch = notes.match(/Bank:\s*([\d\s,.]+)/);
+  if (cashMatch) parts.push({ label: 'Naqd', amount: parseFloat(cashMatch[1].replace(/\s/g, '').replace(',', '.')) || 0, icon: '💵' });
+  if (cardMatch) parts.push({ label: 'Karta', amount: parseFloat(cardMatch[1].replace(/\s/g, '').replace(',', '.')) || 0, icon: '💳' });
+  if (bankMatch) parts.push({ label: 'Bank', amount: parseFloat(bankMatch[1].replace(/\s/g, '').replace(',', '.')) || 0, icon: '🏦' });
+  return parts;
 };
 
 // Alohida "Schyot-faktura" ko'rish sahifasi — /invoice/:id
@@ -89,7 +96,10 @@ export default function InvoicePage() {
   const { sale, items } = data;
   const rows = (items && items.length) ? items : [sale];
   const total = rows.reduce((s, it) => s + parseFloat(it.total_amount || 0), 0);
+  const paid = rows.reduce((s, it) => s + parseFloat(it.payment_amount || 0), 0);
+  const debt = Math.max(0, total - paid);
   const paymentInfo = getPaymentInfo(sale);
+  const paymentParts = parsePaymentBreakdown(sale);
   const customerPhone = sale.customer_full_phone || sale.customer_phone;
   const invoiceUrl = `${window.location.origin}/invoice/${sale.order_ref || sale.id}`;
 
@@ -134,6 +144,9 @@ export default function InvoicePage() {
           <div>
             <p className="text-xs text-gray-400 uppercase mb-1">Sotuvchi</p>
             <p className="font-medium text-gray-900">TEKNOPLAST MCHJ</p>
+            {sale.created_by_name && (
+              <p className="text-gray-500">{sale.created_by_name}</p>
+            )}
           </div>
           <div>
             <p className="text-xs text-gray-400 uppercase mb-1">Xaridor</p>
@@ -184,7 +197,26 @@ export default function InvoicePage() {
           </table>
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex justify-between items-end">
+          <div className="space-y-1">
+            {paymentParts.length > 0 ? (
+              <>
+                <p className="text-xs text-gray-400 uppercase">To'lov tafsiloti</p>
+                {paymentParts.map((p, i) => (
+                  <p key={i} className="text-sm text-gray-700">
+                    {p.icon} {p.label}: <span className="font-semibold">{fmt(p.amount)} so'm</span>
+                  </p>
+                ))}
+                {debt > 0 && (
+                  <p className="text-sm text-red-600">
+                    📝 Qarz: <span className="font-semibold">{fmt(debt)} so'm</span>
+                  </p>
+                )}
+              </>
+            ) : (
+              <span className={paymentInfo.cls}>{paymentInfo.label}</span>
+            )}
+          </div>
           <div className="text-right">
             <p className="text-sm text-gray-500">Jami summa</p>
             <p className="text-2xl font-bold text-blue-700">{fmt(total)} so'm</p>

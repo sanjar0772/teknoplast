@@ -433,6 +433,20 @@ async function generateWaybillPDF(order) {
 // To'lov turini sotuv yozuvidan aniqlaymiz
 function getInvoicePaymentLabel(sale) {
   const notes = sale?.notes || '';
+  const total = parseFloat(sale?.total_amount || 0);
+  const paid = parseFloat(sale?.payment_amount || 0);
+  const parts = [];
+  const cashMatch = notes.match(/Naqd:\s*([\d\s,.]+)/);
+  const cardMatch = notes.match(/Karta:\s*([\d\s,.]+)/);
+  const bankMatch = notes.match(/Bank:\s*([\d\s,.]+)/);
+  if (cashMatch) parts.push(`Naqd: ${cashMatch[1].trim()}`);
+  if (cardMatch) parts.push(`Karta: ${cardMatch[1].trim()}`);
+  if (bankMatch) parts.push(`Bank: ${bankMatch[1].trim()}`);
+  if (parts.length) {
+    const debt = Math.max(0, total - paid);
+    if (debt > 0) parts.push(`Qarz: ${formatMoney(debt)}`);
+    return parts.join(' · ');
+  }
   if (sale?.status === 'PAID') {
     if (notes.includes('Karta')) return 'Karta';
     if (notes.includes('Naqd')) return 'Naqd';
@@ -499,7 +513,8 @@ async function generateInvoicePDF(sale, items, viewUrl) {
     let y = 90;
     doc.fontSize(8.5).font('Arial-Bold').fillColor('#111');
     doc.text('Sotuvchi:', M, y);
-    doc.font('Arial').text('TEKNOPLAST MCHJ', M + 56, y);
+    const sellerName = sale.created_by_name ? `TEKNOPLAST MCHJ (${sale.created_by_name})` : 'TEKNOPLAST MCHJ';
+    doc.font('Arial').text(sellerName, M + 56, y);
     doc.font('Arial-Bold').text("Xaridor:", M + 260, y);
     doc.font('Arial').text(
       (sale.customer_full_name || sale.customer_name || "Noma'lum").slice(0, 32),
@@ -609,7 +624,8 @@ async function generateInvoicePDF(sale, items, viewUrl) {
     // ── IMZOLAR ───────────────────────────────────────────
     y += 38;
     doc.fontSize(8.5).fillColor('#111');
-    doc.text("Sotuvchi: ____________________", M, y);
+    const sigSeller = sale.created_by_name ? `Sotuvchi (${sale.created_by_name}): ____________` : 'Sotuvchi: ____________________';
+    doc.text(sigSeller, M, y);
     doc.text("Xaridor: ____________________", M + 285, y);
 
     // ── FOOTER ────────────────────────────────────────────

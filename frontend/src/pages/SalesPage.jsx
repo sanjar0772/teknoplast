@@ -632,6 +632,7 @@ export default function SalesPage() {
                       <div className="flex justify-between"><span>Sana:</span><span>{new Date(sale.sale_date).toLocaleDateString('uz-UZ')}</span></div>
                       <div className="flex justify-between"><span>Mijoz:</span><span>{sale.customer_full_name || sale.customer_name || 'Tasodifiy'}</span></div>
                       {sale.customer_full_phone && <div className="flex justify-between"><span>Tel:</span><span>{sale.customer_full_phone}</span></div>}
+                      {sale.created_by_name && <div className="flex justify-between"><span>Sotuvchi:</span><span>{sale.created_by_name}</span></div>}
                     </div>
                     <div className="border-b border-dashed border-gray-300 pb-2 mb-2">
                       {rows.map((it, i) => (
@@ -644,19 +645,34 @@ export default function SalesPage() {
                         </div>
                       ))}
                     </div>
-                    <div className={`flex justify-between font-bold text-[15px] pb-2 mb-2 ${chekDebt > 0 ? '' : 'border-b border-dashed border-gray-300 mb-3'}`}>
+                    <div className="flex justify-between font-bold text-[15px] pb-2 mb-2">
                       <span>JAMI:</span><span>{fmt(total)} so'm</span>
                     </div>
-                    {chekDebt > 0 && (
-                      <div className="text-[12px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-3">
-                        <div className="flex justify-between text-green-700">
-                          <span>To'landi:</span><span className="font-bold">{fmt(chekPaid)} so'm</span>
+                    {(() => {
+                      const notes = sale.notes || '';
+                      const cashM = notes.match(/Naqd:\s*([\d\s,.]+)/);
+                      const cardM = notes.match(/Karta:\s*([\d\s,.]+)/);
+                      const bankM = notes.match(/Bank:\s*([\d\s,.]+)/);
+                      const hasMixed = cashM || cardM || bankM;
+                      if (!hasMixed && chekDebt <= 0) return null;
+                      return (
+                        <div className="text-[12px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-3">
+                          {hasMixed ? (
+                            <>
+                              {cashM && <div className="flex justify-between text-green-700"><span>Naqd:</span><span className="font-bold">{cashM[1].trim()} so'm</span></div>}
+                              {cardM && <div className="flex justify-between text-blue-700"><span>Karta:</span><span className="font-bold">{cardM[1].trim()} so'm</span></div>}
+                              {bankM && <div className="flex justify-between text-purple-700"><span>Bank:</span><span className="font-bold">{bankM[1].trim()} so'm</span></div>}
+                              {chekDebt > 0 && <div className="flex justify-between text-red-600"><span>Qarz:</span><span className="font-bold">{fmt(chekDebt)} so'm</span></div>}
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex justify-between text-green-700"><span>To'landi:</span><span className="font-bold">{fmt(chekPaid)} so'm</span></div>
+                              <div className="flex justify-between text-red-600"><span>Qarz:</span><span className="font-bold">{fmt(chekDebt)} so'm</span></div>
+                            </>
+                          )}
                         </div>
-                        <div className="flex justify-between text-red-600">
-                          <span>Qarz:</span><span className="font-bold">{fmt(chekDebt)} so'm</span>
-                        </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                     <div className="flex flex-col items-center">
                       <QRCodeSVG value={invoiceUrl} size={110} />
                       <div className="text-[10px] text-gray-500 mt-1">Xaridingiz uchun rahmat!</div>

@@ -7,6 +7,7 @@ import { salesAPI } from '../services/api';
 import { RANG_COLORS } from '../constants/colors';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
+const balfmt = (n) => (parseFloat(n) > 0 ? '+' : '') + fmt(n);
 const rangLabel = (r) => (r && String(r).trim()) ? r : 'Rangsiz';
 
 // Yetkazib beruvchi rekvizitlari (rasmiy schyot-faktura uchun)
@@ -225,6 +226,20 @@ export default function InvoicePage() {
             <span className="text-xl font-bold text-blue-700">{fmt(total)} <span className="text-sm font-medium">so'm</span></span>
           </div>
         </div>
+
+        {/* Mijoz balansi — eski qarzlar bilan */}
+        {sale.balance_after != null && (sale.balance_before !== 0 || sale.balance_after !== 0) && (
+          <div className="mt-3 pt-2 border-t border-dashed border-gray-200 text-xs space-y-0.5">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Savdodan oldingi balans:</span>
+              <span className={`font-semibold ${sale.balance_before < 0 ? 'text-red-600' : 'text-blue-700'}`}>{balfmt(sale.balance_before)} so'm</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Savdodan keyingi balans:</span>
+              <span className={`font-bold ${sale.balance_after < 0 ? 'text-red-600' : 'text-blue-700'}`}>{balfmt(sale.balance_after)} so'm</span>
+            </div>
+          </div>
+        )}
 
         <p className="text-[10px] text-gray-300 mt-4 text-center">
           TEKNOPLAST tizimi · QR kod orqali tekshiring

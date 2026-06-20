@@ -9,6 +9,7 @@ import { salesAPI, productsAPI, reportsAPI, customersAPI } from '../services/api
 import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
+const balfmt = (n) => (parseFloat(n) > 0 ? '+' : '') + fmt(n);
 
 const STATUS_MAP = {
   PAID: { label: "To'langan", cls: 'badge-green' },
@@ -677,6 +678,18 @@ export default function SalesPage() {
                         </div>
                       );
                     })()}
+                    {sale.balance_after != null && (sale.balance_before !== 0 || sale.balance_after !== 0) && (
+                      <div className="text-[12px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-3">
+                        <div className="flex justify-between">
+                          <span>Savdodan oldingi balans:</span>
+                          <span className={`font-semibold ${sale.balance_before < 0 ? 'text-red-600' : 'text-blue-700'}`}>{balfmt(sale.balance_before)} so'm</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Savdodan keyingi balans:</span>
+                          <span className={`font-bold ${sale.balance_after < 0 ? 'text-red-600' : 'text-blue-700'}`}>{balfmt(sale.balance_after)} so'm</span>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex flex-col items-center">
                       <QRCodeSVG value={invoiceUrl} size={110} />
                       <div className="text-[10px] text-gray-500 mt-1">Xaridingiz uchun rahmat!</div>

@@ -10,6 +10,7 @@ import { productsAPI, customersAPI, salesAPI, fulfillmentAPI } from '../services
 import { RANG_COLORS } from '../constants/colors';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
+const balfmt = (n) => (parseFloat(n) > 0 ? '+' : '') + fmt(n); // haqdor uchun +, qarzdor uchun - (fmt o'zi qo'yadi)
 const rangLabel = (r) => (r && r.trim()) ? r : 'Rangsiz';
 let _rowKey = 0;
 const newRowKey = () => ++_rowKey;
@@ -365,6 +366,18 @@ export default function QuickSalePage() {
                   </div>
                 );
               })()}
+              {lastOrder.balance_after != null && (lastOrder.balance_before !== 0 || lastOrder.balance_after !== 0) && (
+                <div className="text-[11px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Savdodan oldingi balans:</span>
+                    <span className={`font-semibold ${lastOrder.balance_before < 0 ? 'text-red-600' : 'text-blue-700'}`}>{balfmt(lastOrder.balance_before)} so'm</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Savdodan keyingi balans:</span>
+                    <span className={`font-bold ${lastOrder.balance_after < 0 ? 'text-red-600' : 'text-blue-700'}`}>{balfmt(lastOrder.balance_after)} so'm</span>
+                  </div>
+                </div>
+              )}
               <div className="flex flex-col items-center pt-1">
                 <QRCodeSVG value={lastOrder.order_ref} size={110} />
                 <div className="text-[10px] text-gray-500 mt-1">Omborchi uchun QR kod</div>

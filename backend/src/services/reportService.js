@@ -646,6 +646,18 @@ async function generateInvoicePDF(sale, items, viewUrl) {
     doc.font('Arial').fontSize(8.5).fillColor('#333')
       .text(`To'lov holati: ${getInvoicePaymentLabel(sale)}`, M, y);
 
+    // ── MIJOZ BALANSI (eski qarzlar bilan) ────────────────
+    if (sale.balance_after != null && (parseFloat(sale.balance_before) !== 0 || parseFloat(sale.balance_after) !== 0)) {
+      const bal = n => (parseFloat(n) > 0 ? '+' : '') + formatMoney(n);
+      y += 16;
+      doc.font('Arial').fontSize(8.5).fillColor('#555')
+        .text(`Savdodan oldingi balans: ${bal(sale.balance_before)}`, M, y);
+      y += 13;
+      doc.font('Arial-Bold').fontSize(8.5)
+        .fillColor(parseFloat(sale.balance_after) < 0 ? '#c0392b' : '#1a5fb4')
+        .text(`Savdodan keyingi balans: ${bal(sale.balance_after)}`, M, y);
+    }
+
     // ── IMZOLAR ───────────────────────────────────────────
     y += 38;
     doc.fontSize(8.5).fillColor('#111');

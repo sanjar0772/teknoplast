@@ -130,6 +130,25 @@ router.get('/:id', async (req, res, next) => {
       if (itemsR.rows.length) items = itemsR.rows;
     }
 
+    // Mijoz balansi (eski qarzlar bilan): shu savdo vaqtigacha bo'lgan SUM(to'lov - summa).
+    // Manfiy = qarzdor, musbat = haqdor.
+    if (sale.customer_id) {
+      const key = sale.order_ref || sale.id;
+      const col = sale.order_ref ? 'order_ref' : 'id';
+      const contribR = await query(
+        `SELECT COALESCE(SUM(payment_amount - total_amount), 0) AS c, MAX(created_at) AS t FROM sales WHERE ${col} = $1`,
+        [key]
+      );
+      const contribution = parseFloat(contribR.rows[0].c) || 0;
+      const lastT = contribR.rows[0].t;
+      const afterR = await query(
+        'SELECT COALESCE(SUM(payment_amount - total_amount), 0) AS b FROM sales WHERE customer_id = $1 AND created_at <= $2',
+        [sale.customer_id, lastT]
+      );
+      sale.balance_after = parseFloat(afterR.rows[0].b) || 0;
+      sale.balance_before = sale.balance_after - contribution;
+    }
+
     res.json({ sale, items });
   } catch (err) { next(err); }
 });
@@ -164,6 +183,23 @@ router.get('/:id/invoice-pdf', async (req, res, next) => {
         [sale.order_ref]
       );
       if (itemsR.rows.length) items = itemsR.rows;
+    }
+
+    // Mijoz balansi (eski qarzlar bilan)
+    if (sale.customer_id) {
+      const key = sale.order_ref || sale.id;
+      const col = sale.order_ref ? 'order_ref' : 'id';
+      const contribR = await query(
+        `SELECT COALESCE(SUM(payment_amount - total_amount), 0) AS c, MAX(created_at) AS t FROM sales WHERE ${col} = $1`,
+        [key]
+      );
+      const contribution = parseFloat(contribR.rows[0].c) || 0;
+      const afterR = await query(
+        'SELECT COALESCE(SUM(payment_amount - total_amount), 0) AS b FROM sales WHERE customer_id = $1 AND created_at <= $2',
+        [sale.customer_id, contribR.rows[0].t]
+      );
+      sale.balance_after = parseFloat(afterR.rows[0].b) || 0;
+      sale.balance_before = sale.balance_after - contribution;
     }
 
     const viewUrl = `${req.protocol}://${req.get('host')}/invoice/${sale.id}`;
@@ -327,7 +363,23 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (re
         newValues: { count: created.length, grand_total: grandTotal, customer_id: customer_id || null, order_ref },
       });
       const finalPaid = paidAmount !== null ? paidAmount : (saleStatus === 'PAID' ? grandTotal : 0);
-      res.status(201).json({ sales: created, count: created.length, grand_total: grandTotal, paid_amount: finalPaid, order_ref, customer_name: custName });
+
+      // Mijozning umumiy balansi (eski qarzlar bilan): SUM(to'lov - summa).
+      // Manfiy = qarzdor, musbat = haqdor. Savdodan oldingi/keyingi balansni qaytaramiz.
+      let balanceAfter = null, balanceBefore = null;
+      if (customer_id) {
+        const balR = await query(
+          'SELECT COALESCE(SUM(payment_amount - total_amount), 0) AS b FROM sales WHERE customer_id = $1',
+          [customer_id]
+        );
+        balanceAfter = parseFloat(balR.rows[0].b) || 0;
+        balanceBefore = balanceAfter - (finalPaid - grandTotal); // shu savdo hissasini ayiramiz
+      }
+
+      res.status(201).json({
+        sales: created, count: created.length, grand_total: grandTotal, paid_amount: finalPaid,
+        order_ref, customer_name: custName, balance_before: balanceBefore, balance_after: balanceAfter,
+      });
     } catch (e) {
       await client.query('ROLLBACK');
       throw e;

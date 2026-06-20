@@ -138,6 +138,11 @@ require('./services/pricelistSeed')
   .ensurePricelist2026()
   .catch(e => console.error('Praysist seed init xato:', e.message));
 
+// bito.online qarzdorlar ro'yxatini avtomatik import qilish (faqat bir marta, sentinel bilan himoyalangan)
+require('./services/debtorsSeed')
+  .ensureDebtors2026()
+  .catch(e => console.error('Qarzdorlar seed init xato:', e.message));
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Teknoplast Backend: http://localhost:${PORT}`);

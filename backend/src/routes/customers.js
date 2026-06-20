@@ -81,6 +81,15 @@ router.get('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/customers/import-debts — bito qarzdorlar ro'yxatini import qilish (faqat OWNER)
+router.post('/import-debts', requireRole('OWNER'), async (req, res, next) => {
+  try {
+    const { importDebtors2026 } = require('../services/debtorsSeed');
+    const result = await importDebtors2026();
+    res.json(result);
+  } catch (err) { next(err); }
+});
+
 // POST /api/customers — yangi mijoz
 router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), [
   body('name').notEmpty().trim().withMessage('Mijoz ismi kerak'),

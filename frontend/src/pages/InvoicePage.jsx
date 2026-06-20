@@ -9,7 +9,6 @@ import { RANG_COLORS } from '../constants/colors';
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 const rangLabel = (r) => (r && String(r).trim()) ? r : 'Rangsiz';
 
-// Bir xil mahsulotni (nom + narx) bitta qatorga birlashtiradi; ranglar ichida ko'rsatiladi
 function groupInvoiceRows(rows) {
   const order = [], map = {};
   rows.forEach(it => {
@@ -26,19 +25,6 @@ function groupInvoiceRows(rows) {
   return order;
 }
 
-const getPaymentInfo = (sale) => {
-  const notes = sale?.notes || '';
-  if (sale?.status === 'PAID') {
-    if (notes.includes('Karta')) return { label: '💳 Karta', cls: 'badge-blue' };
-    if (notes.includes('Naqd')) return { label: '💵 Naqd', cls: 'badge-green' };
-    return { label: "✅ To'langan", cls: 'badge-green' };
-  }
-  if (sale?.status === 'PARTIALLY_PAID') {
-    return { label: "Qisman to'langan", cls: 'badge-blue' };
-  }
-  return { label: '📝 Qarz', cls: 'badge-yellow' };
-};
-
 const parsePaymentBreakdown = (sale) => {
   const notes = sale?.notes || '';
   const parts = [];
@@ -52,9 +38,17 @@ const parsePaymentBreakdown = (sale) => {
   return parts;
 };
 
-// Alohida "Schyot-faktura" ko'rish sahifasi — /invoice/:id
-// Sotuv (chek/buyurtma) bo'yicha to'liq hujjatni ko'rsatadi, PDF yuklab olish
-// va chop etish imkoniyati bilan. PDF ichidagi QR kod ham shu sahifaga olib keladi.
+const getPaymentLabel = (sale) => {
+  const notes = sale?.notes || '';
+  if (sale?.status === 'PAID') {
+    if (notes.includes('Karta')) return '💳 Karta';
+    if (notes.includes('Naqd')) return '💵 Naqd';
+    return "✅ To'langan";
+  }
+  if (sale?.status === 'PARTIALLY_PAID') return "Qisman to'langan";
+  return '📝 Qarz';
+};
+
 export default function InvoicePage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -79,9 +73,7 @@ export default function InvoicePage() {
     }
   };
 
-  if (isLoading) {
-    return <div className="text-center py-20 text-gray-400">Yuklanmoqda...</div>;
-  }
+  if (isLoading) return <div className="text-center py-20 text-gray-400">Yuklanmoqda...</div>;
 
   if (isError || !data?.sale) {
     return (
@@ -99,133 +91,119 @@ export default function InvoicePage() {
   const total = rows.reduce((s, it) => s + parseFloat(it.total_amount || 0), 0);
   const paid = rows.reduce((s, it) => s + parseFloat(it.payment_amount || 0), 0);
   const debt = Math.max(0, total - paid);
-  const paymentInfo = getPaymentInfo(sale);
   const paymentParts = parsePaymentBreakdown(sale);
   const customerPhone = sale.customer_full_phone || sale.customer_phone;
   const invoiceUrl = `${window.location.origin}/invoice/${sale.order_ref || sale.id}`;
+  const grouped = groupInvoiceRows(rows);
 
   return (
-    <div className="space-y-6">
-      <div className="page-header print:hidden">
-        <h1 className="page-title">
+    <div className="space-y-3">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between print:hidden">
+        <h1 className="text-base font-bold text-gray-900">
           Schyot-faktura{sale.order_ref ? ` № ${sale.order_ref}` : ''}
         </h1>
-        <div className="flex gap-2">
-          <button onClick={() => navigate('/sales')} className="btn-secondary btn-sm">
-            <ArrowLeft size={14} /> Orqaga
+        <div className="flex gap-1.5">
+          <button onClick={() => navigate('/sales')} className="btn-secondary btn-sm text-xs">
+            <ArrowLeft size={12} /> Orqaga
           </button>
-          <button onClick={() => window.print()} className="btn-secondary btn-sm">
-            <Printer size={14} /> Chop etish
+          <button onClick={() => window.print()} className="btn-secondary btn-sm text-xs">
+            <Printer size={12} /> Chop
           </button>
-          <button onClick={downloadPdf} className="btn-primary btn-sm">
-            <Download size={14} /> PDF yuklash
+          <button onClick={downloadPdf} className="btn-primary btn-sm text-xs">
+            <Download size={12} /> PDF
           </button>
         </div>
       </div>
 
-      <div id="invoice-print" className="card p-6 max-w-3xl mx-auto print:shadow-none print:border-none">
-        <div className="flex items-start justify-between border-b pb-4 mb-4">
+      {/* Faktura */}
+      <div id="invoice-print" className="card p-4 max-w-2xl mx-auto print:shadow-none print:border-none text-[13px]">
+        {/* Header */}
+        <div className="flex items-start justify-between border-b border-gray-200 pb-3 mb-3">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">TEKNOPLAST</h2>
-            <p className="text-sm text-gray-500">Schyot-faktura № {sale.order_ref || sale.id}</p>
-            <p className="text-sm text-gray-500">
-              Sana: {new Date(sale.sale_date).toLocaleDateString('uz-UZ')}
+            <h2 className="text-lg font-bold text-gray-900 leading-tight">TEKNOPLAST</h2>
+            <p className="text-xs text-gray-500">
+              № {sale.order_ref || sale.id} · {new Date(sale.sale_date).toLocaleDateString('uz-UZ')}
             </p>
           </div>
-          <div className="flex flex-col items-end gap-2">
-            <span className={paymentInfo.cls}>{paymentInfo.label}</span>
-            <div className="flex flex-col items-center">
-              <QRCodeSVG value={invoiceUrl} size={88} />
-              <p className="text-[10px] text-gray-400 mt-1">Tizimda ko'rish</p>
-            </div>
-          </div>
+          <QRCodeSVG value={invoiceUrl} size={64} />
         </div>
 
-        <div className="grid grid-cols-2 gap-6 mb-6 text-sm">
+        {/* Sotuvchi / Xaridor — ixcham 1 qator */}
+        <div className="flex justify-between text-xs text-gray-600 mb-3">
           <div>
-            <p className="text-xs text-gray-400 uppercase mb-1">Sotuvchi</p>
-            <p className="font-medium text-gray-900">TEKNOPLAST MCHJ</p>
-            {sale.created_by_name && (
-              <p className="text-gray-500">{sale.created_by_name}</p>
-            )}
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 uppercase mb-1">Xaridor</p>
-            <p className="font-medium text-gray-900">
-              {sale.customer_full_name || sale.customer_name || "Noma'lum"}
-            </p>
-            {customerPhone && (
-              <p className="text-gray-500">Tel: {customerPhone}</p>
-            )}
-            {sale.customer_address && <p className="text-gray-500">{sale.customer_address}</p>}
-          </div>
-        </div>
-
-        <div className="table-container mb-4">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>№</th><th>Mahsulot</th><th>Birlik</th><th>Miqdor</th><th>Narx</th><th>Summa</th>
-              </tr>
-            </thead>
-            <tbody>
-              {groupInvoiceRows(rows).map((g, i) => {
-                const hasColor = g.items.some(x => x.rang && String(x.rang).trim());
-                return (
-                  <tr key={i}>
-                    <td>{i + 1}</td>
-                    <td className="font-medium">
-                      <div>{g.product_name}</div>
-                      {hasColor && (
-                        <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
-                          {g.items.map((x, j) => (
-                            <span key={j} className="inline-flex items-center gap-1">
-                              <span style={{ width: 8, height: 8, borderRadius: '50%', display: 'inline-block', background: RANG_COLORS[x.rang] || '#999', border: '1px solid #ddd' }} />
-                              {rangLabel(x.rang)}: {x.quantity}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                    <td>{g.unit}</td>
-                    <td>{g.qty}</td>
-                    <td>{fmt(g.unit_price)} so'm</td>
-                    <td className="font-semibold text-blue-700">{fmt(g.sum)} so'm</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="flex justify-between items-end">
-          <div className="space-y-1">
-            {paymentParts.length > 0 ? (
-              <>
-                <p className="text-xs text-gray-400 uppercase">To'lov tafsiloti</p>
-                {paymentParts.map((p, i) => (
-                  <p key={i} className="text-sm text-gray-700">
-                    {p.icon} {p.label}: <span className="font-semibold">{fmt(p.amount)} so'm</span>
-                  </p>
-                ))}
-                {debt > 0 && (
-                  <p className="text-sm text-red-600">
-                    📝 Qarz: <span className="font-semibold">{fmt(debt)} so'm</span>
-                  </p>
-                )}
-              </>
-            ) : (
-              <span className={paymentInfo.cls}>{paymentInfo.label}</span>
-            )}
+            <span className="text-gray-400">Sotuvchi: </span>
+            <span className="font-medium text-gray-800">TEKNOPLAST</span>
+            {sale.created_by_name && <span className="text-gray-400"> ({sale.created_by_name})</span>}
           </div>
           <div className="text-right">
-            <p className="text-sm text-gray-500">Jami summa</p>
-            <p className="text-2xl font-bold text-blue-700">{fmt(total)} so'm</p>
+            <span className="text-gray-400">Xaridor: </span>
+            <span className="font-medium text-gray-800">
+              {sale.customer_full_name || sale.customer_name || "Noma'lum"}
+            </span>
+            {customerPhone && <span className="text-gray-400"> · {customerPhone}</span>}
           </div>
         </div>
 
-        <p className="text-xs text-gray-400 mt-8 text-center">
-          Hujjat Texno Plast tizimi orqali avtomatik generatsiya qilindi. Haqiqiyligini QR kod orqali tekshiring.
+        {/* Jadval */}
+        <table className="w-full text-[13px] mb-3">
+          <thead>
+            <tr className="border-b border-gray-300 text-gray-500 text-xs">
+              <th className="text-left py-1 w-6">#</th>
+              <th className="text-left py-1">Mahsulot</th>
+              <th className="text-center py-1 w-12">Son</th>
+              <th className="text-right py-1 w-20">Narx</th>
+              <th className="text-right py-1 w-24">Summa</th>
+            </tr>
+          </thead>
+          <tbody>
+            {grouped.map((g, i) => {
+              const hasColor = g.items.some(x => x.rang && String(x.rang).trim());
+              return (
+                <tr key={i} className="border-b border-gray-100">
+                  <td className="py-1 text-gray-400">{i + 1}</td>
+                  <td className="py-1">
+                    <span className="font-medium text-gray-900">{g.product_name}</span>
+                    {hasColor && (
+                      <span className="ml-1.5 text-[11px] text-gray-400">
+                        {g.items.map((x, j) => (
+                          <span key={j} className="inline-flex items-center gap-0.5 mr-2">
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', display: 'inline-block', background: RANG_COLORS[x.rang] || '#999', border: '1px solid #ddd' }} />
+                            {rangLabel(x.rang)}:{x.quantity}
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-1 text-center">{g.qty}</td>
+                  <td className="py-1 text-right text-gray-600">{fmt(g.unit_price)}</td>
+                  <td className="py-1 text-right font-semibold text-blue-700">{fmt(g.sum)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        {/* Jami + To'lov */}
+        <div className="flex items-start justify-between pt-1">
+          <div className="text-xs text-gray-500 space-y-0.5">
+            {paymentParts.length > 0 ? (
+              paymentParts.map((p, i) => (
+                <div key={i}>{p.icon} {p.label}: <span className="font-medium text-gray-700">{fmt(p.amount)}</span></div>
+              ))
+            ) : (
+              <div>{getPaymentLabel(sale)}</div>
+            )}
+            {debt > 0 && <div className="text-red-500 font-medium">📝 Qarz: {fmt(debt)}</div>}
+          </div>
+          <div className="text-right">
+            <span className="text-xs text-gray-400">Jami: </span>
+            <span className="text-xl font-bold text-blue-700">{fmt(total)} <span className="text-sm font-medium">so'm</span></span>
+          </div>
+        </div>
+
+        <p className="text-[10px] text-gray-300 mt-4 text-center">
+          TEKNOPLAST tizimi · QR kod orqali tekshiring
         </p>
       </div>
     </div>

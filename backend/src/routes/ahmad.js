@@ -140,6 +140,26 @@ async function transcribeWithUzbekVoice(buffer, filename, lang) {
   return extractUzbekVoiceText(data).trim();
 }
 
+// ---------- UzbekVoice.ai — matndan ovozga (TTS), tabiiy o'zbek ovozi ----------
+// UzbekVoice'da o'zbek ovozlari: "lola", "shoira" (ikkalasi ayol). Erkak ovozi yo'q.
+const UZBEKVOICE_TTS_VOICE = process.env.UZBEKVOICE_TTS_VOICE || 'lola';
+
+// Matn -> audio URL (UzbekVoice WAV faylga presigned havola qaytaradi)
+async function synthesizeWithUzbekVoice(text, voice) {
+  if (!UZBEKVOICE_API_KEY) throw new Error('NO_UZBEKVOICE_KEY');
+  const resp = await fetch('https://uzbekvoice.ai/api/v1/tts', {
+    method: 'POST',
+    headers: { Authorization: UZBEKVOICE_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, model: voice || UZBEKVOICE_TTS_VOICE, blocking: 'true' }),
+  });
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => '');
+    throw new Error(`UZBEKVOICE_TTS_${resp.status}: ${errText.slice(0, 200)}`);
+  }
+  const data = await resp.json();
+  return data?.result?.url || '';
+}
+
 // ---------- Narx/miqdor tozalash: "5 000", "5,000", "5.000" → 5000 ----------
 function cleanNum(v) {
   if (v == null) return 0;
@@ -1732,6 +1752,25 @@ router.post('/transcribe', audioUpload.single('audio'), async (req, res) => {
     return res.status(500).json({
       error: lang === 'ru' ? 'Ошибка распознавания голоса' : 'Ovozni tanishda xatolik',
     });
+  }
+});
+
+// ---------- Matndan ovozga (TTS) — UzbekVoice Lola ovozi ----------
+// { url } qaytaradi (audio WAV havolasi). Frontend o'shani ijro etadi.
+// UzbekVoice'da faqat o'zbek ovozlari bor — rus tili uchun frontend brauzer ovoziga qaytadi.
+router.post('/tts', async (req, res) => {
+  try {
+    const text = String(req.body.text || '').trim().slice(0, 1000);
+    const lang = req.body.language === 'ru' ? 'ru' : 'uz';
+    if (!text) return res.status(400).json({ error: 'Matn bo\'sh' });
+    if (!UZBEKVOICE_API_KEY) return res.status(503).json({ error: "TTS sozlanmagan (UZBEKVOICE_API_KEY kerak)" });
+    // UzbekVoice ovozlari faqat o'zbekcha — rus uchun url bermaymiz (frontend brauzer ovozida o'qiydi)
+    if (lang === 'ru') return res.json({ url: null });
+    const url = await synthesizeWithUzbekVoice(text, UZBEKVOICE_TTS_VOICE);
+    return res.json({ url });
+  } catch (e) {
+    console.error('[ahmad/tts]', e.message);
+    return res.status(502).json({ error: 'TTS xatosi: ' + e.message });
   }
 });
 

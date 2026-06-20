@@ -206,6 +206,7 @@ export default function AIPage() {
   const [speakingMsgId, setSpeakingMsgId] = useState(null);
   const voicesRef = useRef([]);
   const speakStartRef = useRef(0); // speak boshlangan vaqt (klik konflikti uchun)
+  const audioElRef = useRef(null); // UzbekVoice TTS audio (Lola ovozi)
 
   // Ovozlarni oldindan yuklash (brauzer asinxron yuklaydi)
   useEffect(() => {
@@ -225,11 +226,13 @@ export default function AIPage() {
   // Ahmad gapirayotganda — istalgan joyga BITTA klik to'xtatadi
   useEffect(() => {
     const stopOnClick = () => {
-      if (!('speechSynthesis' in window)) return;
-      if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) return;
+      const synthActive = ('speechSynthesis' in window) && (window.speechSynthesis.speaking || window.speechSynthesis.pending);
+      const audioActive = audioElRef.current && !audioElRef.current.paused;
+      if (!synthActive && !audioActive) return;
       // speak endigina boshlangan bo'lsa (shu klik) — to'xtatmaymiz
       if (Date.now() - speakStartRef.current < 400) return;
-      window.speechSynthesis.cancel();
+      try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch {}
+      try { if (audioElRef.current) { audioElRef.current.pause(); audioElRef.current = null; } } catch {}
       setSpeakingMsgId(null);
     };
     document.addEventListener('click', stopOnClick);
@@ -275,12 +278,50 @@ export default function AIPage() {
     return t;
   };
 
-  const speak = (text, msgId = null, forceLang = null) => {
-    if (!('speechSynthesis' in window) || !text) return;
+  // Hamma ovozni to'xtatish (brauzer TTS + UzbekVoice audio)
+  const stopAllSpeech = () => {
+    try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch {}
+    try {
+      if (audioElRef.current) { audioElRef.current.pause(); audioElRef.current = null; }
+    } catch {}
+  };
 
-    // Agar hozir shu xabar gapirilayotgan bo'lsa — to'xtat (ikki marta bosish)
+  // Zaxira: brauzer ovozi (UzbekVoice ishlamasa). O'zbekni rus ovozi uchun kirillga o'giradi.
+  const speakWithBrowser = (cleanText, spokenLang) => {
+    if (!('speechSynthesis' in window)) { setSpeakingMsgId(null); return; }
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    let voices = voicesRef.current.length ? voicesRef.current : window.speechSynthesis.getVoices();
+    const uzVoices = voices.filter(v => v.lang.toLowerCase().startsWith('uz'));
+    const ruVoices = voices.filter(v => v.lang.toLowerCase().startsWith('ru'));
+    let pool;
+    if (spokenLang === 'uz') pool = uzVoices.length ? uzVoices : ruVoices;
+    else pool = ruVoices.length ? ruVoices : voices;
+    const chosen = pool.find(v =>
+      v.name.toLowerCase().includes('male') ||
+      v.name.toLowerCase().includes('dmitr') ||
+      v.name.toLowerCase().includes('pavel') ||
+      v.name.toLowerCase().includes('artem')
+    ) || pool[0];
+    if (spokenLang === 'uz' && chosen && chosen.lang.toLowerCase().startsWith('ru')) {
+      utterance.text = uzLatinToCyrillic(cleanText);
+    }
+    if (chosen) { utterance.voice = chosen; utterance.lang = chosen.lang; }
+    else { utterance.lang = 'ru-RU'; }
+    utterance.onend = () => setSpeakingMsgId(null);
+    utterance.onerror = () => setSpeakingMsgId(null);
+    window.speechSynthesis.speak(utterance);
+    setTimeout(() => { if (window.speechSynthesis.paused) window.speechSynthesis.resume(); }, 100);
+  };
+
+  // Ahmad ovozi: O'ZBEK -> UzbekVoice (Lola) tabiiy ovozi; bo'lmasa/rus -> brauzer ovozi
+  const speak = async (text, msgId = null, forceLang = null) => {
+    if (!text) return;
+
+    // Shu xabar gapirilayotgan bo'lsa — to'xtat (ikki marta bosish)
     if (speakingMsgId === msgId && msgId !== null) {
-      window.speechSynthesis.cancel();
+      stopAllSpeech();
       setSpeakingMsgId(null);
       return;
     }
@@ -288,60 +329,31 @@ export default function AIPage() {
     const cleanText = cleanForSpeech(text);
     if (!cleanText) return;
 
-    window.speechSynthesis.cancel();
+    stopAllSpeech();
     speakStartRef.current = Date.now(); // shu klik to'xtatmasligi uchun
     const spokenLang = forceLang || detectLang(cleanText);
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.rate = 1.0;   // tabiiy tezlik
-    utterance.pitch = 1.0;  // tabiiy ovoz (ilgari 1.7 edi — multfilm/tentak ovozi)
-
-    // Ovozlarni olamiz (ref yoki to'g'ridan-to'g'ri)
-    let voices = voicesRef.current.length ? voicesRef.current : window.speechSynthesis.getVoices();
-
-    // O'zbek ovozi kamdan-kam bor — shuning uchun: uz -> uz topilsa uz, bo'lmasa ru, u ham bo'lmasa default
-    const uzVoices = voices.filter(v => v.lang.toLowerCase().startsWith('uz'));
-    const ruVoices = voices.filter(v => v.lang.toLowerCase().startsWith('ru'));
-
-    let pool;
-    if (spokenLang === 'uz') {
-      pool = uzVoices.length ? uzVoices : ruVoices; // uz yo'q bo'lsa ru ovozda gapiradi
-    } else {
-      pool = ruVoices.length ? ruVoices : voices;
-    }
-
-    // Erkak/bola ovozini afzal ko'ramiz
-    const chosen = pool.find(v =>
-      v.name.toLowerCase().includes('male') ||
-      v.name.toLowerCase().includes('dmitr') ||
-      v.name.toLowerCase().includes('pavel') ||
-      v.name.toLowerCase().includes('artem')
-    ) || pool[0];
-
-    // O'zbek matn RUS ovozi bilan o'qilsa — lotinni kirillga o'giramiz,
-    // shunda rus ovozi o'zbekchani tabiiy va to'g'ri talaffuz qiladi
-    // (lotin holida "tentakka o'xshab" buzib o'qirdi).
-    if (spokenLang === 'uz' && chosen && chosen.lang.toLowerCase().startsWith('ru')) {
-      utterance.text = uzLatinToCyrillic(cleanText);
-    }
-
-    // MUHIM: utterance.lang ni TANLANGAN ovoz tiliga moslaymiz
-    // (uz-UZ qo'ysak, lekin uz ovozi yo'q bo'lsa — brauzer JIM qoladi)
-    if (chosen) {
-      utterance.voice = chosen;
-      utterance.lang = chosen.lang;
-    } else {
-      utterance.lang = spokenLang === 'uz' ? 'ru-RU' : 'ru-RU'; // xavfsiz fallback
-    }
-
     setSpeakingMsgId(msgId);
-    utterance.onend = () => setSpeakingMsgId(null);
-    utterance.onerror = () => setSpeakingMsgId(null);
 
-    // Chrome bug: ba'zan speak ishlamaydi — resume bilan turtki beramiz
-    window.speechSynthesis.speak(utterance);
-    setTimeout(() => {
-      if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-    }, 100);
+    // O'zbek -> UzbekVoice tabiiy ovozi (Lola)
+    if (spokenLang === 'uz') {
+      try {
+        const res = await ahmadAPI.tts(cleanText, 'uz');
+        const url = res?.data?.url;
+        if (url) {
+          const audio = new Audio(url);
+          audioElRef.current = audio;
+          audio.onended = () => { if (audioElRef.current === audio) audioElRef.current = null; setSpeakingMsgId(null); };
+          audio.onerror = () => { if (audioElRef.current === audio) audioElRef.current = null; setSpeakingMsgId(null); };
+          await audio.play();
+          return; // muvaffaqiyatli — Lola ovozida gapiryapti
+        }
+      } catch {
+        audioElRef.current = null; // UzbekVoice ishlamadi — brauzer ovoziga o'tamiz
+      }
+    }
+
+    // Zaxira: brauzer ovozi
+    speakWithBrowser(cleanText, spokenLang);
   };
 
   // ---- Wake word ("Ahmad" chaqiruvi) ----

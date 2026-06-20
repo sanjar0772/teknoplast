@@ -189,6 +189,7 @@ export const aiAPI = {
 // Ahmad — ovozli buyruq, hisobot, amal tasdiqlash
 export const ahmadAPI = {
   command: (text, language, history) => api.post('/ahmad/command', { text, language, history }),
+  tts: (text, language) => api.post('/ahmad/tts', { text, language }),
   dailyReport: (language) => api.get('/ahmad/daily-report', { params: { language } }),
   confirmAction: (action) => api.post('/ahmad/confirm-action', { action }),
   workerBriefing: (language) => api.post('/ahmad/worker-briefing', { language }),

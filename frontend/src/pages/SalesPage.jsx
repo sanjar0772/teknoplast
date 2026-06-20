@@ -619,6 +619,7 @@ export default function SalesPage() {
               const total = rows.reduce((s, it) => s + parseFloat(it.total_amount || 0), 0);
               const chekPaid = rows.reduce((s, it) => s + parseFloat(it.payment_amount || 0), 0);
               const chekDebt = Math.max(0, total - chekPaid);
+              const chekCredit = Math.max(0, chekPaid - total);
               const invoiceUrl = `${window.location.origin}/invoice/${sale.order_ref || sale.id}`;
               return (
                 <>
@@ -655,7 +656,7 @@ export default function SalesPage() {
                       const cardM = notes.match(/Karta:\s*([\d\s,.]+)/);
                       const bankM = notes.match(/Bank:\s*([\d\s,.]+)/);
                       const hasMixed = cashM || cardM || bankM;
-                      if (!hasMixed && chekDebt <= 0) return null;
+                      if (!hasMixed && chekDebt <= 0 && chekCredit <= 0) return null;
                       return (
                         <div className="text-[12px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-3">
                           {hasMixed ? (
@@ -664,11 +665,13 @@ export default function SalesPage() {
                               {cardM && <div className="flex justify-between text-blue-700"><span>Karta:</span><span className="font-bold">{fmt(parseAmt(cardM))} so'm</span></div>}
                               {bankM && <div className="flex justify-between text-purple-700"><span>Bank:</span><span className="font-bold">{fmt(parseAmt(bankM))} so'm</span></div>}
                               {chekDebt > 0 && <div className="flex justify-between text-red-600"><span>Qarz:</span><span className="font-bold">{fmt(chekDebt)} so'm</span></div>}
+                              {chekCredit > 0 && <div className="flex justify-between text-blue-700"><span>Haqdor (oshiqcha):</span><span className="font-bold">+{fmt(chekCredit)} so'm</span></div>}
                             </>
                           ) : (
                             <>
                               <div className="flex justify-between text-green-700"><span>To'landi:</span><span className="font-bold">{fmt(chekPaid)} so'm</span></div>
-                              <div className="flex justify-between text-red-600"><span>Qarz:</span><span className="font-bold">{fmt(chekDebt)} so'm</span></div>
+                              {chekDebt > 0 && <div className="flex justify-between text-red-600"><span>Qarz:</span><span className="font-bold">{fmt(chekDebt)} so'm</span></div>}
+                              {chekCredit > 0 && <div className="flex justify-between text-blue-700"><span>Haqdor (oshiqcha):</span><span className="font-bold">+{fmt(chekCredit)} so'm</span></div>}
                             </>
                           )}
                         </div>

@@ -102,6 +102,7 @@ export default function InvoicePage() {
   const total = rows.reduce((s, it) => s + parseFloat(it.total_amount || 0), 0);
   const paid = rows.reduce((s, it) => s + parseFloat(it.payment_amount || 0), 0);
   const debt = Math.max(0, total - paid);
+  const credit = Math.max(0, paid - total);
   const paymentParts = parsePaymentBreakdown(sale);
   const customerPhone = sale.customer_full_phone || sale.customer_phone;
   const invoiceUrl = `${window.location.origin}/invoice/${sale.order_ref || sale.id}`;
@@ -217,6 +218,7 @@ export default function InvoicePage() {
               <div>{getPaymentLabel(sale)}</div>
             )}
             {debt > 0 && <div className="text-red-500 font-medium">📝 Qarz: {fmt(debt)}</div>}
+            {credit > 0 && <div className="text-blue-600 font-medium">💰 Haqdor (oshiqcha): +{fmt(credit)}</div>}
           </div>
           <div className="text-right">
             <span className="text-xs text-gray-400">Jami: </span>

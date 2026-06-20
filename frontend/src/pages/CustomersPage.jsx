@@ -231,8 +231,12 @@ export default function CustomersPage() {
                   <td><span className={T.cls}>{T.label}</span></td>
                   <td>{c.purchase_count} marta</td>
                   <td className="font-semibold text-blue-700">{fmt(c.total_purchases)} so'm</td>
-                  <td className={parseFloat(c.total_debt) > 0 ? 'font-semibold text-red-600' : 'text-gray-400'}>
-                    {parseFloat(c.total_debt) > 0 ? fmt(c.total_debt) + " so'm" : '—'}
+                  <td className={parseFloat(c.total_debt) > 0 ? 'font-semibold text-red-600' : parseFloat(c.total_debt) < 0 ? 'font-semibold text-blue-600' : 'text-gray-400'}>
+                    {parseFloat(c.total_debt) > 0
+                      ? fmt(c.total_debt) + " so'm"
+                      : parseFloat(c.total_debt) < 0
+                        ? 'Haqdor: +' + fmt(Math.abs(c.total_debt)) + " so'm"
+                        : '—'}
                   </td>
                   <td>
                     <div className="flex gap-1">
@@ -339,9 +343,9 @@ export default function CustomersPage() {
                 <p className="text-lg font-bold text-blue-700">{fmt(detail.stats.total_purchases)}</p>
               </div>
               <div className="card-sm text-center">
-                <p className="text-xs text-gray-500">Qarz</p>
-                <p className={`text-lg font-bold ${parseFloat(detail.stats.total_debt) > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                  {fmt(detail.stats.total_debt)}
+                <p className="text-xs text-gray-500">{parseFloat(detail.stats.total_debt) < 0 ? 'Haqdor' : 'Qarz'}</p>
+                <p className={`text-lg font-bold ${parseFloat(detail.stats.total_debt) > 0 ? 'text-red-600' : parseFloat(detail.stats.total_debt) < 0 ? 'text-blue-600' : 'text-green-600'}`}>
+                  {parseFloat(detail.stats.total_debt) < 0 ? '+' + fmt(Math.abs(detail.stats.total_debt)) : fmt(detail.stats.total_debt)}
                 </p>
               </div>
             </div>

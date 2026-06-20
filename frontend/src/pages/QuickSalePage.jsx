@@ -212,6 +212,7 @@ export default function QuickSalePage() {
         pay_cash: checkoutRef.current.payCash || 0,
         pay_card: checkoutRef.current.payCard || 0,
         pay_bank: checkoutRef.current.payBank || 0,
+        credit: checkoutRef.current.credit || 0,
       });
       setSessions(ss => ss.map((ses, i) => i === idx ? { ...ses, cart: [], payCash: '', payCard: '', payBank: '' } : ses));
       setSearch('');
@@ -223,6 +224,7 @@ export default function QuickSalePage() {
   const bankAmt = parseFloat(s.payBank) || 0;
   const paidTotal = cashAmt + cardAmt + bankAmt;
   const debtAmt = Math.max(0, grandTotal - paidTotal);
+  const creditAmt = Math.max(0, paidTotal - grandTotal); // oshiqcha to'lov — mijoz haqdor bo'ladi
 
   const checkout = () => {
     if (!s.cart.length) return toast.error('Savat bo\'sh');
@@ -235,14 +237,14 @@ export default function QuickSalePage() {
       const avail = rowAvail(x);
       if (parseFloat(x.qty) > avail) return toast.error(`"${x.name}" — ${rangLabel(x.rang)}: faqat ${avail} dona bor`);
     }
-    if (paidTotal > grandTotal) return toast.error(`To'lov summasi jami summadan oshib ketdi`);
-    checkoutRef.current = { idx: activeIdx, customerId: s.customerId, payCash: cashAmt, payCard: cardAmt, payBank: bankAmt };
+    checkoutRef.current = { idx: activeIdx, customerId: s.customerId, payCash: cashAmt, payCard: cardAmt, payBank: bankAmt, credit: creditAmt };
     lastCartRef.current = s.cart.map(x => ({ name: x.name, qty: parseInt(x.qty), price: parseFloat(x.price), unit: x.unit, rang: x.rang }));
     const noteParts = [];
     if (cashAmt > 0) noteParts.push(`Naqd: ${cashAmt}`);
     if (cardAmt > 0) noteParts.push(`Karta: ${cardAmt}`);
     if (bankAmt > 0) noteParts.push(`Bank: ${bankAmt}`);
     if (debtAmt > 0) noteParts.push(`Qarz: ${debtAmt}`);
+    if (creditAmt > 0) noteParts.push(`Haqdor: ${creditAmt}`);
     if (!noteParts.length) noteParts.push('Qarz');
     saveMutation.mutate({
       customer_id: s.customerId,
@@ -331,7 +333,8 @@ export default function QuickSalePage() {
               {(() => {
                 const hasMixed = (lastOrder.pay_cash > 0) + (lastOrder.pay_card > 0) + (lastOrder.pay_bank > 0) > 0;
                 const chekDebt = Math.max(0, lastOrder.grand_total - lastOrder.paid_amount);
-                if (!hasMixed && chekDebt <= 0) return null;
+                const chekCredit = lastOrder.credit > 0 ? lastOrder.credit : Math.max(0, lastOrder.paid_amount - lastOrder.grand_total);
+                if (!hasMixed && chekDebt <= 0 && chekCredit <= 0) return null;
                 return (
                   <div className="text-[12px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-2">
                     {lastOrder.pay_cash > 0 && (
@@ -352,6 +355,11 @@ export default function QuickSalePage() {
                     {chekDebt > 0 && (
                       <div className="flex justify-between text-red-600">
                         <span>Qarz:</span><span className="font-bold">{fmt(chekDebt)} so'm</span>
+                      </div>
+                    )}
+                    {chekCredit > 0 && (
+                      <div className="flex justify-between text-blue-700">
+                        <span>Haqdor (oshiqcha):</span><span className="font-bold">+{fmt(chekCredit)} so'm</span>
                       </div>
                     )}
                   </div>
@@ -454,8 +462,10 @@ export default function QuickSalePage() {
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] text-gray-500 font-medium uppercase">To'lov usullari</span>
               {grandTotal > 0 && (
-                <span className={`text-[10px] font-semibold ${debtAmt > 0 ? 'text-red-500' : 'text-green-600'}`}>
-                  {debtAmt > 0 ? `Qarz: ${fmt(debtAmt)} so'm` : "To'liq to'langan"}
+                <span className={`text-[10px] font-semibold ${creditAmt > 0 ? 'text-blue-600' : debtAmt > 0 ? 'text-red-500' : 'text-green-600'}`}>
+                  {creditAmt > 0
+                    ? `Haqdor: +${fmt(creditAmt)} so'm`
+                    : debtAmt > 0 ? `Qarz: ${fmt(debtAmt)} so'm` : "To'liq to'langan"}
                 </span>
               )}
             </div>
@@ -494,11 +504,13 @@ export default function QuickSalePage() {
                 />
               </div>
               <div>
-                <label className="text-[10px] text-gray-500 font-medium flex items-center gap-1">📝 Qarz</label>
+                <label className={`text-[10px] font-medium flex items-center gap-1 ${creditAmt > 0 ? 'text-blue-600' : 'text-gray-500'}`}>
+                  {creditAmt > 0 ? '💰 Haqdor' : '📝 Qarz'}
+                </label>
                 <input
                   type="text" readOnly
-                  value={grandTotal > 0 ? fmt(debtAmt) : '0'}
-                  className="input text-xs py-1.5 bg-gray-50 cursor-not-allowed"
+                  value={creditAmt > 0 ? `+${fmt(creditAmt)}` : (grandTotal > 0 ? fmt(debtAmt) : '0')}
+                  className={`input text-xs py-1.5 cursor-not-allowed ${creditAmt > 0 ? 'bg-blue-50 text-blue-700 font-semibold' : 'bg-gray-50'}`}
                 />
               </div>
             </div>

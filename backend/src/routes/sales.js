@@ -272,10 +272,11 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (re
     }
 
     const saleDate = sale_date || new Date().toISOString().slice(0, 10);
-    // To'lov summasi: agar reqPayment kelsa — undan foydalaniladi, aks holda status asosida
+    // To'lov summasi: agar reqPayment kelsa — undan foydalaniladi (jami summadan
+    // OSHIB ketishi mumkin — oshiqcha pul mijozning haqdorligi sifatida saqlanadi).
     const preGrand = items.reduce((s, it) => s + (parseInt(it.quantity) * parseFloat(it.unit_price)), 0);
     const paidAmount = reqPayment !== undefined
-      ? Math.max(0, Math.min(parseFloat(reqPayment) || 0, preGrand))
+      ? Math.max(0, parseFloat(reqPayment) || 0)
       : null;
     const saleStatus = paidAmount !== null
       ? (paidAmount >= preGrand ? 'PAID' : paidAmount > 0 ? 'PARTIALLY_PAID' : 'PENDING')
@@ -284,17 +285,28 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (re
     const client = await require('../db').getClient();
     const created = [];
     let grandTotal = 0;
+    let distributedPaid = 0; // taqsimlangan to'lovni kuzatish (oxirgi qatorga qoldiqni berish uchun)
     try {
       await client.query('BEGIN');
-      for (const it of items) {
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
         const qty = parseInt(it.quantity);
         const price = parseFloat(it.unit_price);
         const total = qty * price;
         grandTotal += total;
-        // Har bir mahsulot uchun to'lov proporsional taqsimlanadi
-        const itemPaid = paidAmount !== null
-          ? (preGrand > 0 ? Math.round((total / preGrand) * paidAmount) : 0)
-          : (saleStatus === 'PAID' ? total : 0);
+        // Har bir mahsulot uchun to'lov proporsional taqsimlanadi; oxirgi qator
+        // qoldiqni (shu jumladan oshiqcha to'lov/haqdorlikni) o'ziga oladi — jami aniq bo'lsin.
+        let itemPaid;
+        if (paidAmount !== null) {
+          if (i === items.length - 1) {
+            itemPaid = Math.max(0, Math.round((paidAmount - distributedPaid) * 100) / 100);
+          } else {
+            itemPaid = preGrand > 0 ? Math.round((total / preGrand) * paidAmount) : 0;
+            distributedPaid += itemPaid;
+          }
+        } else {
+          itemPaid = saleStatus === 'PAID' ? total : 0;
+        }
         const r = await client.query(
           `INSERT INTO sales (product_id, customer_id, quantity, unit_price, total_amount,
             customer_name, customer_phone, sale_date, status, payment_amount, notes, created_by, order_ref, rang)

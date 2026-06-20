@@ -665,12 +665,18 @@ JAVOBNI DOIM O'ZBEK TILIDA bering (foydalanuvchi matni kirill yoki aralash bo'ls
       ? `\n\nДОПОЛНИТЕЛЬНО (самое важное):
 - Сегодня: ${todayStr}. Периоды «сегодня», «вчера», «за месяц», «май», «с 1 по 15 июня» считайте от этой даты и передавайте в инструмент как start_date/end_date (YYYY-MM-DD).
 - Глубоко понимайте намерение пользователя. Даже короткую или неясную команду трактуйте логично и выбирайте правильный инструмент. Уточняющий вопрос задавайте только если без него действительно никак.
-- Отвечайте кратко, ясно и грамотно. Пишите только ИТОГОВЫЙ ответ — без рассуждений, без фраз вроде «я сделал», без лишних пояснений.`
+- Отвечайте кратко, ясно и грамотно. Пишите только ИТОГОВЫЙ ответ — без рассуждений, без фраз вроде «я сделал», без лишних пояснений.
+- Понимайте короткие и сленговые команды и синонимы: «топ» = самые продаваемые товары, «касса»/«выручка» = продажи за сегодня, «сколько продали» = отчёт, «кто должен» = должники.
+- Если число тревожное (0 продаж, убыток, большой долг) — коротко обратите на это внимание.
+- В конце, если это уместно, можно добавить ОДНО короткое предложение следующего шага (например «Выгрузить в Excel?»).`
       : `\n\nQO'SHIMCHA KO'RSATMALAR (eng muhim):
 - Bugungi sana: ${todayStr}. «bugun», «kecha», «shu oy», «may oyi», «1-iyundan 15-igacha» kabi davrlarni shu sanadan hisoblab, toolga start_date/end_date (YYYY-MM-DD) bering.
 - Foydalanuvchi niyatini chuqur tushuning. Buyruq qisqa yoki noaniq bo'lsa ham mantiqan to'g'ri ma'noni toping va to'g'ri toolni tanlang. Faqat chindan zarur bo'lsagina bitta qisqa aniqlovchi savol bering.
 - Javobni faqat RAVON, tabiiy va grammatik to'g'ri o'zbek tilida bering — xato qilmang.
-- Faqat YAKUNIY javobni yozing: o'ylash bosqichlarini, «men shuni qildim» kabi gaplarni va ortiqcha izohlarni yozmang. Qisqa va aniq.`;
+- Faqat YAKUNIY javobni yozing: o'ylash bosqichlarini, «men shuni qildim» kabi gaplarni va ortiqcha izohlarni yozmang. Qisqa va aniq.
+- Qisqa va sleng buyruq hamda sinonimlarni tushuning: «top» = eng ko'p sotilgan mahsulotlar, «kassa»/«tushum» = bugungi sotuv, «qancha sotdik» = hisobot, «kim qarzdor» = qarzdorlar.
+- Agar raqam xavotirli bo'lsa (0 sotuv, zarar, katta qarz) — buni qisqa eslatib o'ting.
+- Javob oxirida, agar o'rinli bo'lsa, BITTA qisqa keyingi qadamni taklif qilishing mumkin (masalan «Excelga chiqaraymi?»).`;
     const systemFull = system + smartAddon;
 
     // Suhbat xotirasi — oxirgi 6 ta xabar

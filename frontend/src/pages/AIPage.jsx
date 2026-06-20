@@ -69,12 +69,16 @@ export default function AIPage() {
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
-  const [chatMessages, setChatMessages] = useState([
-    { role: 'assistant', text: language === 'uz'
-      ? 'Assalomu alaykum! Men Lola — sizning yordamchingizman. Ovozli buyruq bering, rasm yuboring yoki savol yozing.'
-      : 'Здравствуйте! Я Лола — ваша помощница. Дайте голосовую команду, отправьте фото или напишите вопрос.',
-      time: new Date() }
-  ]);
+  const [chatMessages, setChatMessages] = useState(() => {
+    const h = new Date().getHours();
+    const salom = language === 'uz'
+      ? (h < 5 ? 'Assalomu alaykum' : h < 11 ? 'Xayrli tong' : h < 17 ? 'Xayrli kun' : h < 22 ? 'Xayrli kech' : 'Assalomu alaykum')
+      : (h < 5 ? 'Здравствуйте' : h < 11 ? 'Доброе утро' : h < 17 ? 'Добрый день' : h < 22 ? 'Добрый вечер' : 'Здравствуйте');
+    return [{ role: 'assistant', text: language === 'uz'
+      ? `${salom}! Men Lola — aqlli yordamchingizman. Pastdagi tezkor tugmalardan foydalaning, ovozda gapiring yoki yozing.`
+      : `${salom}! Я Лола — ваша умная помощница. Используйте быстрые кнопки ниже, говорите голосом или пишите.`,
+      time: new Date() }];
+  });
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -656,8 +660,8 @@ export default function AIPage() {
   ];
 
   const quickQuestions = language === 'uz'
-    ? ['Bugungi hisobot', '50 dona gul tuvak 7000 dan sotildi', 'Elektr uchun 500000 xarajat qo\'sh', 'Kam qolgan mahsulotlar']
-    : ['Отчёт за сегодня', 'Продано 50 цветочных горшков по 7000', 'Добавь расход 500000 за электричество', 'Заканчивающиеся товары'];
+    ? ['Top 5 mahsulot', 'Kam qolgan mahsulotlar', 'Qarzdorlar', 'Oylik foyda', 'Shu oy statistikasi', '50 dona gul tuvak 7000 dan sotildi', 'Elektr uchun 500000 xarajat qo\'sh']
+    : ['Топ 5 товаров', 'Заканчивающиеся товары', 'Должники', 'Прибыль за месяц', 'Статистика за месяц', 'Продано 50 цветочных горшков по 7000', 'Добавь расход 500000 за электричество'];
 
   // Ahmad yaratgan hujjatni yuklab olish
   const downloadDocument = async (doc) => {

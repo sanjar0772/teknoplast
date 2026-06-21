@@ -211,6 +211,8 @@ export default function AIPage() {
   const voicesRef = useRef([]);
   const speakStartRef = useRef(0); // speak boshlangan vaqt (klik konflikti uchun)
   const audioElRef = useRef(null); // UzbekVoice TTS audio (Lola ovozi)
+  const ttsAudioRef = useRef(null);      // doimiy audio element (autoplay uchun unlock qilinadi)
+  const audioUnlockedRef = useRef(false);
 
   // Ovozlarni oldindan yuklash (brauzer asinxron yuklaydi)
   useEffect(() => {
@@ -225,6 +227,26 @@ export default function AIPage() {
     return () => {
       if ('speechSynthesis' in window) window.speechSynthesis.onvoiceschanged = null;
     };
+  }, []);
+
+  // Desktop/Brauzer: audioni foydalanuvchining 1-bosishida "ochamiz" — keyin Lola ovozi to'siqsiz chiqadi
+  useEffect(() => {
+    const unlock = () => {
+      if (audioUnlockedRef.current) return;
+      audioUnlockedRef.current = true;
+      try {
+        const a = ttsAudioRef.current || new Audio();
+        ttsAudioRef.current = a;
+        a.muted = true;
+        a.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=';
+        const p = a.play();
+        if (p && p.then) p.then(() => { try { a.pause(); a.currentTime = 0; } catch {} a.muted = false; }).catch(() => { a.muted = false; });
+        else a.muted = false;
+      } catch {}
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    return () => { window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); };
   }, []);
 
   // Ahmad gapirayotganda — istalgan joyga BITTA klik to'xtatadi
@@ -344,10 +366,13 @@ export default function AIPage() {
         const res = await ahmadAPI.tts(cleanText, 'uz');
         const url = res?.data?.url;
         if (url) {
-          const audio = new Audio(url);
+          const audio = ttsAudioRef.current || new Audio();
+          ttsAudioRef.current = audio;
           audioElRef.current = audio;
+          audio.muted = false;
           audio.onended = () => { if (audioElRef.current === audio) audioElRef.current = null; setSpeakingMsgId(null); };
           audio.onerror = () => { if (audioElRef.current === audio) { audioElRef.current = null; speakWithBrowser(cleanText, spokenLang); } };
+          audio.src = url;
           await audio.play();
           return; // muvaffaqiyatli — Lola ovozida gapiryapti
         }

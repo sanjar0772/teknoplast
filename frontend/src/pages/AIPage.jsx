@@ -138,7 +138,7 @@ export default function AIPage() {
         document: res.data.document || null, // yuklab olinadigan hujjat
       }]);
       // Javob tilini matndan aniqlab gapiramiz
-      speak(answer, newIdx);
+      speak(answer, newIdx, language); // Lola o'z tilida (uz -> UzbekVoice) gapirsin — kirill matn ovozni jim qoldirmasin
 
       // Agar tizimga qo'shish/amal kerak bo'lsa
       if (res.data.action) {
@@ -181,7 +181,7 @@ export default function AIPage() {
         time: new Date(),
         imageData: data.extracted,
       }]);
-      speak(answer, newIdx);
+      speak(answer, newIdx, language); // Lola o'z tilida (uz -> UzbekVoice) gapirsin — kirill matn ovozni jim qoldirmasin
 
       if (data.action) {
         setPendingAction(data.action);
@@ -347,7 +347,7 @@ export default function AIPage() {
           const audio = new Audio(url);
           audioElRef.current = audio;
           audio.onended = () => { if (audioElRef.current === audio) audioElRef.current = null; setSpeakingMsgId(null); };
-          audio.onerror = () => { if (audioElRef.current === audio) audioElRef.current = null; setSpeakingMsgId(null); };
+          audio.onerror = () => { if (audioElRef.current === audio) { audioElRef.current = null; speakWithBrowser(cleanText, spokenLang); } };
           await audio.play();
           return; // muvaffaqiyatli — Lola ovozida gapiryapti
         }
@@ -687,7 +687,7 @@ export default function AIPage() {
       const { data } = await ahmadAPI.dailyReport(language);
       const idx = chatMessages.length;
       setChatMessages(prev => [...prev, { role: 'assistant', text: data.response, time: new Date() }]);
-      speak(data.response, idx);
+      speak(data.response, idx, language);
     } catch {
       toast.error(language === 'uz' ? 'Hisobot olinmadi' : 'Отчёт не получен');
     }

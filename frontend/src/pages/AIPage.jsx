@@ -229,14 +229,20 @@ export default function AIPage() {
     };
   }, []);
 
-  // Desktop/Brauzer: audioni foydalanuvchining 1-bosishida "ochamiz" — keyin Lola ovozi to'siqsiz chiqadi
+  // Desktop/Brauzer: audioni foydalanuvchining 1-bosishida "ochamiz" — keyin Lola ovozi to'siqsiz chiqadi.
+  // MUHIM: Electron'da DOM'ga ulanmagan Audio() ba'zan ovoz chiqarmaydi — shuning uchun
+  // doimiy elementni yaratib document.body'ga qo'shamiz.
   useEffect(() => {
+    const a = new Audio();
+    a.preload = 'auto';
+    a.volume = 1.0;
+    a.style.display = 'none';
+    try { document.body.appendChild(a); } catch {}
+    ttsAudioRef.current = a;
     const unlock = () => {
       if (audioUnlockedRef.current) return;
       audioUnlockedRef.current = true;
       try {
-        const a = ttsAudioRef.current || new Audio();
-        ttsAudioRef.current = a;
         a.muted = true;
         a.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=';
         const p = a.play();
@@ -246,7 +252,11 @@ export default function AIPage() {
     };
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
-    return () => { window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); };
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+      try { a.pause(); a.remove(); } catch {}
+    };
   }, []);
 
   // Ahmad gapirayotganda — istalgan joyga BITTA klik to'xtatadi
@@ -369,16 +379,19 @@ export default function AIPage() {
           ttsAudioRef.current = audio;
           audioElRef.current = audio;
           audio.muted = false;
+          audio.volume = 1.0;
           audio.onended = () => { if (audioElRef.current === audio) audioElRef.current = null; setSpeakingMsgId(null); };
-          audio.onerror = () => { if (audioElRef.current === audio) { audioElRef.current = null; speakWithBrowser(cleanText, spokenLang); } };
+          audio.onerror = () => { if (audioElRef.current === audio) { audioElRef.current = null; toast.error('Lola: audio yuklanmadi'); speakWithBrowser(cleanText, spokenLang); } };
           audio.src = url;
           await audio.play();
+          // TASHXIS: ijro boshlandi. Bu toast chiqsa-yu ovoz eshitilmasa — tovush/qurilma muammosi.
+          toast.success(language === 'uz' ? '🔊 Lola gapirmoqda...' : '🔊 Лола говорит...');
           return; // muvaffaqiyatli — Lola ovozida gapiryapti
         }
       } catch (e) {
         // Sababini ekranda ko'rsatamiz (tashxis uchun), keyin brauzer ovoziga o'tamiz
-        const msg = e?.response?.data?.error || e?.message || '';
-        if (msg) toast.error((language === 'uz' ? 'Lola ovozi chiqmadi: ' : 'Ошибка голоса: ') + msg);
+        const msg = e?.response?.data?.error || e?.message || e?.name || 'noma\'lum';
+        toast.error((language === 'uz' ? 'Lola ovozi chiqmadi: ' : 'Ошибка голоса: ') + msg);
       }
     }
 

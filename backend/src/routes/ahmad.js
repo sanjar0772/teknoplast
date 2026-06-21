@@ -301,23 +301,48 @@ const MODEL = process.env.AHMAD_MODEL || 'claude-sonnet-4-6';
 // ---------- Yordamchilar ----------
 const fmt = (n) => Number(n || 0).toLocaleString('ru-RU'); // 1 000 000 ko'rinishi
 
-// Mahsulotni nom yoki kod bo'yicha topish
+// Kirill <-> lotin: nomni soddalashtirib bir ko'rinishga keltiramiz (ikkala alifboda topish uchun)
+const _CYR2LAT = { 'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'j','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'x','ц':'ts','ч':'ch','ш':'sh','щ':'sh','ъ':'','ь':'','э':'e','ю':'yu','я':'ya','ў':'o','қ':'q','ғ':'g','ҳ':'h','ы':'i' };
+function normUz(s) {
+  if (!s) return '';
+  let t = String(s).toLowerCase();
+  t = t.replace(/[а-яёўқғҳ]/g, c => (_CYR2LAT[c] !== undefined ? _CYR2LAT[c] : c));
+  t = t.replace(/[ʻʼ'’]/g, '');      // lotin apostroflar (o', g')
+  return t.replace(/[^a-z0-9]/g, ''); // faqat harf va raqam qoladi
+}
+
+// Mahsulotni nom yoki kod bo'yicha topish — alifbodan QAT'I NAZAR (kirill yoki lotin)
 async function findProduct(nameOrCode) {
   if (!nameOrCode) return null;
   const term = String(nameOrCode).trim();
-  // Aniq nom
+  // 1) Aniq nom (tez yo'l)
   let r = await query(
     "SELECT id, name, price, stock_quantity FROM products WHERE LOWER(name)=LOWER($1) AND is_active=1 LIMIT 1",
     [term]
   );
   if (r.rows.length) return r.rows[0];
-  // Qisman nom
+  // 2) Qisman nom (bir xil alifbo)
   r = await query(
     "SELECT id, name, price, stock_quantity FROM products WHERE LOWER(name) LIKE LOWER($1) AND is_active=1 ORDER BY length(name) ASC LIMIT 1",
     [`%${term}%`]
   );
   if (r.rows.length) return r.rows[0];
-  // Kod (description ichida "Kod: XX")
+  // 3) Kirill <-> lotin moslik: nomlarni soddalashtirib solishtiramiz
+  const nq = normUz(term);
+  if (nq.length >= 2) {
+    const all = await query("SELECT id, name, price, stock_quantity FROM products WHERE is_active=1", []);
+    let best = null, bestLen = Infinity;
+    for (const p of all.rows) {
+      const np = normUz(p.name);
+      if (!np) continue;
+      if (np === nq) return p;
+      if (np.includes(nq) || nq.includes(np)) {
+        if (p.name.length < bestLen) { best = p; bestLen = p.name.length; }
+      }
+    }
+    if (best) return best;
+  }
+  // 4) Kod (description ichida)
   r = await query(
     "SELECT id, name, price, stock_quantity FROM products WHERE LOWER(description) LIKE LOWER($1) AND is_active=1 LIMIT 1",
     [`%${term}%`]

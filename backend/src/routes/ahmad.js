@@ -302,13 +302,14 @@ const MODEL = process.env.AHMAD_MODEL || 'claude-sonnet-4-6';
 const fmt = (n) => Number(n || 0).toLocaleString('ru-RU'); // 1 000 000 ko'rinishi
 
 // Kirill <-> lotin: nomni soddalashtirib bir ko'rinishga keltiramiz (ikkala alifboda topish uchun)
-const _CYR2LAT = { 'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'j','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'x','ц':'ts','ч':'ch','ш':'sh','щ':'sh','ъ':'','ь':'','э':'e','ю':'yu','я':'ya','ў':'o','қ':'q','ғ':'g','ҳ':'h','ы':'i' };
+const _CYR2LAT = { 'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'j','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sh','ъ':'','ь':'','э':'e','ю':'yu','я':'ya','ў':'o','қ':'k','ғ':'g','ҳ':'h','ы':'i' };
 function normUz(s) {
   if (!s) return '';
   let t = String(s).toLowerCase();
   t = t.replace(/[а-яёўқғҳ]/g, c => (_CYR2LAT[c] !== undefined ? _CYR2LAT[c] : c));
-  t = t.replace(/[ʻʼ'’]/g, '');      // lotin apostroflar (o', g')
-  return t.replace(/[^a-z0-9]/g, ''); // faqat harf va raqam qoladi
+  t = t.replace(/[ʻʼ'’]/g, '');       // lotin apostroflar (o', g')
+  t = t.replace(/[^a-z0-9]/g, '');     // faqat harf va raqam
+  return t.replace(/q/g, 'k').replace(/x/g, 'h'); // fonetik: k/q va h/x birlashtiriladi
 }
 
 // Mahsulotni nom yoki kod bo'yicha topish — alifbodan QAT'I NAZAR (kirill yoki lotin)

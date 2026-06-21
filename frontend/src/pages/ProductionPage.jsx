@@ -151,9 +151,9 @@ export default function ProductionPage() {
   const autoTarif = (empId, prodId, ptype) => {
     const emp = empMap[empId];
     const p = prodMap[prodId];
-    if (!emp) return '';
-    // Komponent — bitta narx (ishlab chiqarish uchun), tayyor/yarim farqi yo'q
+    // Komponent — narxi xodimga bog'liq emas: tanlanishi bilanoq darrov chiqadi
     if (p && p.kind === 'KOMPONENT') return p.price || '';
+    if (!emp) return '';
     if (emp.type === 'STANOKCHI' && p) {
       return ptype === 'SEMI_FINISHED' ? (p.stanokchi_semi_rate || '') : (p.stanokchi_rate || '');
     }

@@ -169,9 +169,13 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
       daily_tariff = parseFloat(custom_tariff);
       calculated_amount = quantity_produced * daily_tariff;
     } else if (product_id) {
-      const prod = await query('SELECT stanokchi_rate, stanokchi_semi_rate, detalchi_rate FROM products WHERE id=$1', [product_id]);
+      const prod = await query('SELECT kind, price, stanokchi_rate, stanokchi_semi_rate, detalchi_rate FROM products WHERE id=$1', [product_id]);
       const product = prod.rows[0] || {};
-      if (employee_type === 'STANOKCHI') {
+      if (product.kind === 'KOMPONENT') {
+        // Komponent ishlab chiqarish — bitta narx (tayyor/yarim farqi yo'q)
+        daily_tariff = product.price || 0;
+        calculated_amount = quantity_produced * daily_tariff;
+      } else if (employee_type === 'STANOKCHI') {
         const rate = ptype === 'SEMI_FINISHED' ? product.stanokchi_semi_rate : product.stanokchi_rate;
         daily_tariff = rate || 0;
         calculated_amount = quantity_produced * daily_tariff;
@@ -258,9 +262,13 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async 
             daily_tariff = parseFloat(entry.daily_tariff);
             calculated_amount = entry.quantity_produced * daily_tariff;
           } else if (entry.product_id) {
-            const prod = await query('SELECT stanokchi_rate, stanokchi_semi_rate, detalchi_rate FROM products WHERE id=$1', [entry.product_id]);
+            const prod = await query('SELECT kind, price, stanokchi_rate, stanokchi_semi_rate, detalchi_rate FROM products WHERE id=$1', [entry.product_id]);
             const product = prod.rows[0] || {};
-            if (employee_type === 'STANOKCHI') {
+            if (product.kind === 'KOMPONENT') {
+              // Komponent ishlab chiqarish — bitta narx (tayyor/yarim farqi yo'q)
+              daily_tariff = product.price || 0;
+              calculated_amount = entry.quantity_produced * daily_tariff;
+            } else if (employee_type === 'STANOKCHI') {
               const rate = ptype === 'SEMI_FINISHED' ? product.stanokchi_semi_rate : product.stanokchi_rate;
               daily_tariff = rate || 0;
               calculated_amount = entry.quantity_produced * daily_tariff;

@@ -304,12 +304,11 @@ export default function AIPage() {
     return t;
   };
 
-  // Hamma ovozni to'xtatish (brauzer TTS + UzbekVoice audio)
+  // Hamma ovozni to'xtatish (brauzer TTS + UzbekVoice audio).
+  // audioElRef DOIMIY element — null qilmaymiz, faqat to'xtatamiz.
   const stopAllSpeech = () => {
     try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch {}
-    try {
-      if (audioElRef.current) { audioElRef.current.pause(); audioElRef.current = null; }
-    } catch {}
+    try { if (audioElRef.current) { audioElRef.current.pause(); } } catch {}
   };
 
   // Zaxira: brauzer ovozi (UzbekVoice ishlamasa). O'zbekni rus ovozi uchun kirillga o'giradi.
@@ -376,8 +375,10 @@ export default function AIPage() {
           await audio.play();
           return; // muvaffaqiyatli — Lola ovozida gapiryapti
         }
-      } catch {
-        audioElRef.current = null; // UzbekVoice ishlamadi — brauzer ovoziga o'tamiz
+      } catch (e) {
+        // Sababini ekranda ko'rsatamiz (tashxis uchun), keyin brauzer ovoziga o'tamiz
+        const msg = e?.response?.data?.error || e?.message || '';
+        if (msg) toast.error((language === 'uz' ? 'Lola ovozi chiqmadi: ' : 'Ошибка голоса: ') + msg);
       }
     }
 

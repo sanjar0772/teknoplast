@@ -48,6 +48,10 @@
   #debts-print .no-print { display: none !important; }
   /* Rang fonlarini chop etishda saqlash (aging va badge'lar) */
   #debts-print * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+  /* Qarz to'lovi cheki chop etilayotganda debts jadvalini yashir */
+  body.printing-receipt #debts-print,
+  body.printing-receipt #debts-print * { visibility: hidden !important; }
 }
 
 @layer base {

@@ -161,12 +161,13 @@ export default function DebtsPage() {
     onSuccess: (_, variables) => {
       const { customer, totalDebt, naqd, karta, bank } = variables;
       const total = (naqd || 0) + (karta || 0) + (bank || 0);
+      setPayFor(null);
       setReceipt({ customer, naqd: naqd || 0, karta: karta || 0, bank: bank || 0, total, remaining: Math.max(0, totalDebt - total), date: new Date() });
+      toast.success('To\'lov saqlandi! Chek tayyor.');
       qc.invalidateQueries({ queryKey: ['debts'] });
       qc.invalidateQueries({ queryKey: ['sales'] });
       qc.invalidateQueries({ queryKey: ['customers'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
-      setPayFor(null);
     },
     onError: (e) => toast.error(e.response?.data?.error || 'To\'lovda xato'),
   });
@@ -433,7 +434,7 @@ export default function DebtsPage() {
 
       {/* To'lov cheki modal */}
       {receipt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50 print:hidden" onClick={() => setReceipt(null)} />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden">
             <button onClick={() => setReceipt(null)}
@@ -470,7 +471,11 @@ export default function DebtsPage() {
             </div>
             <div className="flex gap-2 px-4 pb-4 print:hidden">
               <button onClick={() => setReceipt(null)} className="btn-secondary flex-1 text-sm">Yopish</button>
-              <button onClick={() => window.print()} className="btn-primary flex-1 text-sm">
+              <button onClick={() => {
+                document.body.classList.add('printing-receipt');
+                window.print();
+                setTimeout(() => document.body.classList.remove('printing-receipt'), 1000);
+              }} className="btn-primary flex-1 text-sm">
                 <Printer size={13} /> Chop etish
               </button>
             </div>

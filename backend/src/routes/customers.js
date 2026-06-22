@@ -129,7 +129,9 @@ router.get('/:id/excel', async (req, res, next) => {
       payments: payments.rows,
     });
 
-    const safeName = String(customer.rows[0].name || 'mijoz').replace(/[^\p{L}\p{N}_-]+/gu, '_').slice(0, 40);
+    // MUHIM: fayl nomi faqat ASCII bo'lishi shart — kirill/o'zbek harflari header'da 500 beradi
+    let safeName = String(customer.rows[0].name || '').replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+    if (!safeName) safeName = 'mijoz';
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="mijoz-${safeName}.xlsx"`);
     res.send(Buffer.from(buffer));

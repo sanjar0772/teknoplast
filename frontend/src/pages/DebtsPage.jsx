@@ -98,6 +98,7 @@ export default function DebtsPage() {
   // payFor = { customer, totalDebt, items: [{sale_id, debt}, ...] }
   const [payFor, setPayFor] = useState(null);
   const [payAmounts, setPayAmounts] = useState({ naqd: '', karta: '', bank: '' });
+  const [receipt, setReceipt] = useState(null); // to'lovdan keyin chek
   const [historyFor, setHistoryFor] = useState(null);
   const [remindFor, setRemindFor] = useState(null);
   const [reminderText, setReminderText] = useState('');
@@ -157,8 +158,10 @@ export default function DebtsPage() {
         }
       }
     },
-    onSuccess: () => {
-      toast.success('✅ To\'lov saqlandi!');
+    onSuccess: (_, variables) => {
+      const { customer, totalDebt, naqd, karta, bank } = variables;
+      const total = (naqd || 0) + (karta || 0) + (bank || 0);
+      setReceipt({ customer, naqd: naqd || 0, karta: karta || 0, bank: bank || 0, total, remaining: Math.max(0, totalDebt - total), date: new Date() });
       qc.invalidateQueries({ queryKey: ['debts'] });
       qc.invalidateQueries({ queryKey: ['sales'] });
       qc.invalidateQueries({ queryKey: ['customers'] });
@@ -183,7 +186,7 @@ export default function DebtsPage() {
     if (payTotal <= 0) return toast.error('Kamida bitta usulda summa kiriting');
     if (payFor && payTotal > payFor.totalDebt + 0.01)
       return toast.error(`To'lov ${fmt(payFor.totalDebt)} so'mdan oshmasin`);
-    payMutation.mutate({ items: payFor.items, naqd, karta, bank });
+    payMutation.mutate({ items: payFor.items, naqd, karta, bank, customer: payFor.customer, totalDebt: payFor.totalDebt });
   };
 
   const buckets = data?.buckets || {};
@@ -427,6 +430,53 @@ export default function DebtsPage() {
           </div>
         )}
       </Modal>
+
+      {/* To'lov cheki modal */}
+      {receipt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 print:hidden" onClick={() => setReceipt(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden">
+            <button onClick={() => setReceipt(null)}
+              className="absolute top-3 right-3 z-10 text-gray-400 hover:text-gray-700 bg-white rounded-full p-1 shadow print:hidden">
+              <X size={18} />
+            </button>
+            <div id="chek-print" className="px-5 py-5 font-mono text-[13px] leading-tight text-gray-900">
+              <div className="text-center border-b border-dashed border-gray-300 pb-2 mb-2">
+                <div className="text-lg font-bold tracking-wide">TEKNOPLAST</div>
+                <div className="text-[11px] text-gray-500">Plastik mahsulotlar zavodi</div>
+              </div>
+              <div className="text-[11px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-2">
+                <div className="flex justify-between"><span>Chek turi:</span><span className="font-bold">Qarz to'lovi</span></div>
+                <div className="flex justify-between"><span>Sana:</span><span>{receipt.date.toLocaleDateString('uz-UZ')}</span></div>
+                <div className="flex justify-between"><span>Vaqt:</span><span>{receipt.date.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}</span></div>
+                <div className="flex justify-between"><span>Mijoz:</span><span className="font-bold">{receipt.customer}</span></div>
+              </div>
+              <div className="text-[12px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-2">
+                {receipt.naqd > 0 && <div className="flex justify-between"><span>Naqd:</span><span className="font-bold text-green-700">{fmt(receipt.naqd)} so'm</span></div>}
+                {receipt.karta > 0 && <div className="flex justify-between"><span>Karta:</span><span className="font-bold text-blue-700">{fmt(receipt.karta)} so'm</span></div>}
+                {receipt.bank > 0 && <div className="flex justify-between"><span>Bank:</span><span className="font-bold text-purple-700">{fmt(receipt.bank)} so'm</span></div>}
+              </div>
+              <div className="flex justify-between font-bold text-[15px] pb-2 mb-1">
+                <span>TO'LANDI:</span><span>{fmt(receipt.total)} so'm</span>
+              </div>
+              {receipt.remaining > 0.01 ? (
+                <div className="flex justify-between text-[12px] text-red-600">
+                  <span>Qolgan qarz:</span><span className="font-bold">{fmt(receipt.remaining)} so'm</span>
+                </div>
+              ) : (
+                <div className="text-center text-[12px] text-green-700 font-bold">✅ Qarz to'liq yopildi!</div>
+              )}
+              <div className="text-center text-[10px] text-gray-400 mt-3">Xaridingiz uchun rahmat!</div>
+            </div>
+            <div className="flex gap-2 px-4 pb-4 print:hidden">
+              <button onClick={() => setReceipt(null)} className="btn-secondary flex-1 text-sm">Yopish</button>
+              <button onClick={() => window.print()} className="btn-primary flex-1 text-sm">
+                <Printer size={13} /> Chop etish
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* To'lov tarixi modal */}
       <PaymentHistoryModal group={historyFor} onClose={() => setHistoryFor(null)} />

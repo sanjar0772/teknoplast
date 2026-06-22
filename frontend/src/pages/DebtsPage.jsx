@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Wallet, X, Phone, AlertTriangle, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot, Printer } from 'lucide-react';
+import { Wallet, X, Phone, AlertTriangle, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot, Printer, Search } from 'lucide-react';
 import { reportsAPI, salesAPI, ahmadAPI } from '../services/api';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -36,6 +36,7 @@ export default function DebtsPage() {
   const [remindFor, setRemindFor] = useState(null); // qaysi mijoz uchun eslatma
   const [reminderText, setReminderText] = useState('');
   const [tone, setTone] = useState('soft');
+  const [search, setSearch] = useState(''); // qarzdorni ism/telefon bo'yicha qidirish
   const { register, handleSubmit, reset, watch } = useForm();
 
   const reminderMutation = useMutation({
@@ -88,6 +89,16 @@ export default function DebtsPage() {
   const buckets = data?.buckets || {};
   const enterAmount = parseFloat(watch('amount') || 0);
 
+  // Qidiruv: mijoz ismi yoki telefon bo'yicha (faqat jadvalni filtrlaydi, yuqoridagi
+  // umumiy summa va muddat kartochkalari barcha qarzlarni ko'rsatishda davom etadi)
+  const allItems = data?.items || [];
+  const q = search.trim().toLowerCase();
+  const items = q
+    ? allItems.filter(it =>
+        (it.customer || '').toLowerCase().includes(q) ||
+        String(it.phone || '').toLowerCase().includes(q))
+    : allItems;
+
   return (
     <div className="space-y-6">
       <div id="debts-print" className="space-y-6">
@@ -126,6 +137,28 @@ export default function DebtsPage() {
         })}
       </div>
 
+      {/* Qidiruv — mijoz ismi yoki telefon (chop etishda ko'rinmaydi) */}
+      <div className="no-print">
+        <div className="relative max-w-sm">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Mijoz ismi yoki telefon bo'yicha qidirish..."
+            className="input pl-9 pr-9 w-full"
+          />
+          {search && (
+            <button type="button" onClick={() => setSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" title="Tozalash">
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        {q && (
+          <p className="text-xs text-gray-400 mt-1">{items.length} ta natija topildi</p>
+        )}
+      </div>
+
       {/* Debtors table */}
       <div className="table-container">
         <table className="table">
@@ -143,7 +176,12 @@ export default function DebtsPage() {
                 <CheckCircle size={28} className="mx-auto mb-2 text-green-400" />
                 Qarzdorlar yo'q — hammasi to'langan! 🎉
               </td></tr>
-            ) : data.items.map(item => {
+            ) : !items.length ? (
+              <tr><td colSpan={8} className="text-center py-10 text-gray-400">
+                <Search size={24} className="mx-auto mb-2 text-gray-300" />
+                "{search}" bo'yicha qarzdor topilmadi
+              </td></tr>
+            ) : items.map(item => {
               const info = BUCKET_INFO[item.bucket];
               return (
                 <tr key={item.sale_id}>

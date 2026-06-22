@@ -62,8 +62,23 @@ app.get('/api/health', (req, res) => {
 });
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
-app.get('/api/version', (req, res) => {
-  res.json({ version: 'sales-debts-wiped', commit: 'v41' });
+// VAQTINCHALIK: tozalash haqiqatan ishlaganini tekshirish uchun diagnostika qo'shildi.
+app.get('/api/version', async (req, res) => {
+  const out = { version: 'debts-search-diag', commit: 'v42' };
+  try {
+    const database = require('./db');
+    const s = await database.query('SELECT COUNT(*) AS c FROM sales');
+    out.sales = parseInt(s.rows[0]?.c ?? s.rows[0]?.['COUNT(*)'] ?? 0);
+    const d = await database.query("SELECT COALESCE(SUM(total_amount - payment_amount),0) AS debt FROM sales WHERE status != 'PAID'");
+    out.debt = Math.round(parseFloat(d.rows[0]?.debt ?? 0));
+    try {
+      const f = await database.query("SELECT 1 AS x FROM app_flags WHERE key = 'sales_wiped_2026_06_22' LIMIT 1");
+      out.wiped_flag = f.rows.length > 0;
+    } catch { out.wiped_flag = 'no_table'; }
+  } catch (e) {
+    out.diag_error = e.message;
+  }
+  res.json(out);
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

@@ -223,12 +223,16 @@ export default function SalesPage() {
 
   const canCreate = isOwner() || isSalesHead() || isAccountant();
 
-  // Bitta chek (order_ref) ichidagi mahsulotlarni bitta guruhga yig'amiz —
-  // sotuv tarixida har bir chek bitta qator bo'lib ko'rinadi (qatorlar ko'payib ketmaydi).
+  // Bitta mijoz + bitta kun = bitta qator.
+  // Bir kunda 4 ta yoki 10 ta xarid qilgan bo'lsa ham — 1 ta qator, ichiga kirib ko'rish mumkin.
   const groups = useMemo(() => {
     const map = new Map();
     (data?.sales || []).forEach(s => {
-      const key = s.order_ref || s.id;
+      const dateKey = s.sale_date ? String(s.sale_date).slice(0, 10) : '';
+      const custKey = s.customer_id
+        ? `id:${s.customer_id}`
+        : `name:${(s.customer_name || '').toLowerCase().trim() || 'anon'}`;
+      const key = `${custKey}|${dateKey}`;
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(s);
     });
@@ -246,7 +250,7 @@ export default function SalesPage() {
         paid,
         debt: Math.max(0, total - paid),
         totalQty,
-        status: statuses.size === 1 ? sales[0].status : null, // null = aralash
+        status: statuses.size === 1 ? sales[0].status : null,
       };
     });
   }, [data]);
@@ -332,7 +336,7 @@ export default function SalesPage() {
                         <button onClick={() => toggleExpand(g.key)} className="flex items-center gap-1 text-left hover:text-blue-700">
                           {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                           <span>{first.product_name}</span>
-                          <span className="badge-blue ml-1">+{sales.length - 1} mahsulot</span>
+                          <span className="badge-blue ml-1">+{sales.length - 1} ta xarid</span>
                         </button>
                       ) : first.product_name}
                     </td>
@@ -382,7 +386,7 @@ export default function SalesPage() {
                     </td>
                   </tr>
 
-                  {/* Chek ichidagi mahsulotlar (kengaytirilganda) */}
+                  {/* Mijozning shu kundagi barcha xaridlari (kengaytirilganda) */}
                   {multi && isOpen && sales.map(s => (
                     <tr key={s.id} className="bg-gray-50/60 text-sm">
                       <td></td>
@@ -393,16 +397,26 @@ export default function SalesPage() {
                       <td></td>
                       <td><span className={STATUS_MAP[s.status]?.cls || 'badge-gray'}>{STATUS_MAP[s.status]?.label}</span></td>
                       <td>
-                        {canCreate && (
-                          <button onClick={() => openEdit(s)} className="btn-secondary btn-sm" title="Tahrirlash">
-                            <Pencil size={12} /> Tahrir
+                        <div className="flex gap-1">
+                          <button onClick={() => setChekSaleId(s.id)} className="btn-secondary btn-sm" title="Chekni ko'rish">
+                            <FileText size={12} />
                           </button>
-                        )}
-                        {canCreate && (parseInt(s.quantity, 10) || 0) > 0 && (
-                          <button onClick={() => openReturn(s)} className="btn-secondary btn-sm" title="Vozvrat (qaytarish)">
-                            <RotateCcw size={12} /> Vozvrat
-                          </button>
-                        )}
+                          {canCreate && (
+                            <button onClick={() => openEdit(s)} className="btn-secondary btn-sm" title="Tahrirlash">
+                              <Pencil size={12} />
+                            </button>
+                          )}
+                          {canCreate && (parseInt(s.quantity, 10) || 0) > 0 && (
+                            <button onClick={() => openReturn(s)} className="btn-secondary btn-sm" title="Vozvrat">
+                              <RotateCcw size={12} />
+                            </button>
+                          )}
+                          {s.status !== 'PAID' && canCreate && (
+                            <button onClick={() => statusMutation.mutate({ id: s.id, status: 'PAID' })} className="btn-success btn-sm" title="To'landi">
+                              <CheckCircle size={12} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

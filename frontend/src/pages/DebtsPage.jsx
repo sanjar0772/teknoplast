@@ -1,8 +1,70 @@
 import { useState, useMemo, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { X, Phone, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot, Printer, Search, ChevronDown, ChevronRight } from 'lucide-react';
+import { X, Phone, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot, Printer, Search, ChevronDown, ChevronRight, History } from 'lucide-react';
 import { reportsAPI, salesAPI, ahmadAPI } from '../services/api';
+
+const METHOD_LABEL = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', OTHER: 'Boshqa' };
+
+// To'lov tarixi modal — ichida o'zi fetch qiladi
+function PaymentHistoryModal({ group, onClose }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['debt-payments', group?.key],
+    queryFn: async () => {
+      const results = await Promise.all(
+        group.items.map(item => salesAPI.getPayments(item.sale_id).then(r => r.data.payments || []))
+      );
+      return results.flat().sort((a, b) => new Date(a.payment_date) - new Date(b.payment_date));
+    },
+    enabled: !!group,
+  });
+
+  if (!group) return null;
+  const totalPaid = (data || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-bold text-gray-900">To'lov tarixi</h3>
+            <p className="text-sm text-gray-500">{group.customer}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+        </div>
+
+        {isLoading ? (
+          <p className="text-center py-8 text-gray-400">Yuklanmoqda...</p>
+        ) : !data?.length ? (
+          <p className="text-center py-8 text-gray-400">Hali to'lov qilinmagan</p>
+        ) : (
+          <div className="space-y-2">
+            {data.map((p, i) => (
+              <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                <div>
+                  <div className="text-sm font-medium text-gray-800">
+                    {new Date(p.payment_date).toLocaleDateString('uz-UZ')}
+                  </div>
+                  <div className="text-xs text-gray-400">{METHOD_LABEL[p.method] || p.method}</div>
+                </div>
+                <span className="font-bold text-green-700">{fmt(p.amount)} so'm</span>
+              </div>
+            ))}
+            <div className="flex justify-between items-center pt-2 mt-1 border-t border-gray-200">
+              <span className="text-sm font-semibold text-gray-600">Jami to'langan:</span>
+              <span className="font-bold text-green-700 text-base">{fmt(totalPaid)} so'm</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-semibold text-gray-600">Qolgan qarz:</span>
+              <span className="font-bold text-red-600 text-base">{fmt(group.totalDebt)} so'm</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
@@ -36,6 +98,7 @@ export default function DebtsPage() {
   // payFor = { customer, totalDebt, items: [{sale_id, debt}, ...] }
   const [payFor, setPayFor] = useState(null);
   const [payAmounts, setPayAmounts] = useState({ naqd: '', karta: '', bank: '' });
+  const [historyFor, setHistoryFor] = useState(null);
   const [remindFor, setRemindFor] = useState(null);
   const [reminderText, setReminderText] = useState('');
   const [tone, setTone] = useState('soft');
@@ -261,9 +324,13 @@ export default function DebtsPage() {
                         <button onClick={() => openPay(g)} className="btn-success btn-sm">
                           <Coins size={12} /> To'lov
                         </button>
+                        <button onClick={() => setHistoryFor(g)} title="To'lov tarixi"
+                          className="btn-secondary btn-sm">
+                          <History size={12} /> Tarixi
+                        </button>
                         <button onClick={() => openReminder({ customer: g.customer, debt: g.totalDebt, days_old: g.maxDays, phone: g.phone })}
                           title="AI eslatma" className="btn-secondary btn-sm">
-                          <MessageSquare size={12} /> AI eslatma
+                          <MessageSquare size={12} /> AI
                         </button>
                       </div>
                     </td>
@@ -360,6 +427,9 @@ export default function DebtsPage() {
           </div>
         )}
       </Modal>
+
+      {/* To'lov tarixi modal */}
+      <PaymentHistoryModal group={historyFor} onClose={() => setHistoryFor(null)} />
 
       {/* AI eslatma modal */}
       <Modal open={!!remindFor} onClose={() => setRemindFor(null)} title="AI qarz eslatmasi">

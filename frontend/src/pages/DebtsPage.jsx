@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Wallet, X, Phone, AlertTriangle, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot } from 'lucide-react';
+import { Wallet, X, Phone, AlertTriangle, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot, Printer } from 'lucide-react';
 import { reportsAPI, salesAPI, ahmadAPI } from '../services/api';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -90,11 +90,23 @@ export default function DebtsPage() {
 
   return (
     <div className="space-y-6">
+      <div id="debts-print" className="space-y-6">
+      {/* Faqat chop etishda ko'rinadigan sarlavha */}
+      <div className="hidden print:flex items-center justify-between border-b border-gray-300 pb-2 mb-2">
+        <span className="font-bold text-gray-900">ТЕХНО-ИННОВАТОР МЧЖ — Qarzlar (Debitorlar) hisoboti</span>
+        <span className="text-sm text-gray-600">{new Date().toLocaleDateString('uz-UZ')}</span>
+      </div>
+
       <div className="page-header">
         <h1 className="page-title">Qarzlar (Debitorlar)</h1>
-        <div className="text-right">
-          <p className="text-xs text-gray-500">Umumiy qarz</p>
-          <p className="text-2xl font-bold text-red-600">{fmt(data?.total_debt)} so'm</p>
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <p className="text-xs text-gray-500">Umumiy qarz</p>
+            <p className="text-2xl font-bold text-red-600">{fmt(data?.total_debt)} so'm</p>
+          </div>
+          <button onClick={() => window.print()} className="btn-secondary btn-sm no-print" title="Qarzlar ro'yxatini chop etish">
+            <Printer size={14} /> Chop etish
+          </button>
         </div>
       </div>
 
@@ -120,7 +132,7 @@ export default function DebtsPage() {
           <thead>
             <tr>
               <th>Mijoz</th><th>Sotuv sanasi</th><th>Kun</th>
-              <th>Jami</th><th>To'langan</th><th>Qarz</th><th>Muddat</th><th>Amal</th>
+              <th>Jami</th><th>To'langan</th><th>Qarz</th><th>Muddat</th><th className="no-print">Amal</th>
             </tr>
           </thead>
           <tbody>
@@ -145,7 +157,7 @@ export default function DebtsPage() {
                   <td className="text-green-600">{fmt(item.paid)}</td>
                   <td className="font-bold text-red-600">{fmt(item.debt)}</td>
                   <td><span className={`badge ${info.bg} ${info.cls}`}>{info.label}</span></td>
-                  <td>
+                  <td className="no-print">
                     <div className="flex gap-1">
                       <button onClick={() => openPay(item)} className="btn-success btn-sm">
                         <Coins size={12} /> To'lov
@@ -161,6 +173,7 @@ export default function DebtsPage() {
             })}
           </tbody>
         </table>
+      </div>
       </div>
 
       {/* Payment modal */}

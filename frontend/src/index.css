@@ -35,6 +35,19 @@
     border-radius: 0 !important;
     border: none !important;
   }
+
+  /* Qarzlar (debitorlar) ro'yxatini chop etish */
+  #debts-print, #debts-print * { visibility: visible !important; }
+  #debts-print {
+    position: absolute !important;
+    left: 0; top: 0;
+    width: 100% !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  #debts-print .no-print { display: none !important; }
+  /* Rang fonlarini chop etishda saqlash (aging va badge'lar) */
+  #debts-print * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 }
 
 @layer base {

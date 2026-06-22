@@ -65,6 +65,62 @@ router.get('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/products/:id/history — mahsulot harakatlari tarixi (kirim + ishlab chiqarish + sotuv)
+router.get('/:id/history', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const prod = await query('SELECT id, name, unit, stock_quantity FROM products WHERE id = $1', [id]);
+    if (!prod.rows.length) return res.status(404).json({ error: 'Mahsulot topilmadi' });
+
+    // 1) Sotuvlar — ombordan chiqim
+    const sales = await query(`
+      SELECT id, quantity, total_amount, customer_name, sale_date, created_at
+      FROM sales WHERE product_id = $1
+    `, [id]);
+
+    // 2) Kirimlar — faqat tasdiqlangan (ombor haqiqatan ko'paygan)
+    const intakes = await query(`
+      SELECT ii.id, ii.quantity, ii.rang, pi.approved_at, pi.created_at
+      FROM intake_items ii
+      JOIN product_intakes pi ON ii.intake_id = pi.id
+      WHERE ii.product_id = $1 AND pi.status = 'APPROVED'
+    `, [id]);
+
+    // 3) Ishlab chiqarish — stanok/detalchidan kelgan tayyor mahsulot
+    const production = await query(`
+      SELECT ep.id, ep.quantity_produced, ep.production_date, ep.production_type,
+             ep.created_at, e.name AS employee_name
+      FROM employee_production ep
+      LEFT JOIN employees e ON ep.employee_id = e.id
+      WHERE ep.product_id = $1 AND ep.quantity_produced > 0
+    `, [id]);
+
+    const history = [];
+    sales.rows.forEach(s => history.push({
+      type: 'sotuv',
+      date: s.sale_date || s.created_at,
+      qty: -Math.abs(parseInt(s.quantity) || 0),
+      amount: parseFloat(s.total_amount) || 0,
+      detail: s.customer_name || '',
+    }));
+    intakes.rows.forEach(i => history.push({
+      type: 'kirim',
+      date: i.approved_at || i.created_at,
+      qty: Math.abs(parseInt(i.quantity) || 0),
+      detail: i.rang || '',
+    }));
+    production.rows.forEach(p => history.push({
+      type: 'ishlab_chiqarish',
+      date: p.production_date || p.created_at,
+      qty: Math.abs(parseInt(p.quantity_produced) || 0),
+      detail: p.employee_name || '',
+    }));
+
+    history.sort((a, b) => new Date(b.date) - new Date(a.date));
+    res.json({ product: prod.rows[0], history });
+  } catch (err) { next(err); }
+});
+
 // POST /api/products
 router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
   body('name').notEmpty().trim(),

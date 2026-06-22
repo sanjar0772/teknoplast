@@ -136,6 +136,7 @@ export const salariesAPI = {
 export const productsAPI = {
   getAll: (params) => api.get('/products', { params }),
   getById: (id) => api.get(`/products/${id}`),
+  getHistory: (id) => api.get(`/products/${id}/history`),
   create: (data) => api.post('/products', data),
   update: (id, data) => api.put(`/products/${id}`, data),
   updateBulk: (updates) => api.put('/products/bulk', { updates }),

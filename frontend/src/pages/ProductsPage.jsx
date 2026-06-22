@@ -1,14 +1,89 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Package, DollarSign, Trash2, Layers } from 'lucide-react';
+import { Plus, X, Package, DollarSign, Trash2, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory } from 'lucide-react';
 import clsx from 'clsx';
 import { productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import { RANGLAR, RANG_COLORS } from '../constants/colors';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
+
+// Tarix turi bo'yicha ko'rinish
+const HIST_INFO = {
+  kirim:           { label: 'Kirim',            icon: ArrowDownCircle, cls: 'text-green-600', sign: '+' },
+  ishlab_chiqarish:{ label: 'Ishlab chiqarish', icon: Factory,        cls: 'text-blue-600',  sign: '+' },
+  sotuv:           { label: 'Sotuv',            icon: ArrowUpCircle,   cls: 'text-red-600',   sign: '−' },
+};
+
+// Mahsulot harakatlari tarixi modal — o'zi fetch qiladi
+function ProductHistoryModal({ product, onClose }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['product-history', product?.id],
+    queryFn: () => productsAPI.getHistory(product.id).then(r => r.data),
+    enabled: !!product,
+  });
+
+  if (!product) return null;
+  const history = data?.history || [];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-bold text-gray-900">Mahsulot tarixi</h3>
+            <p className="text-sm text-gray-500">{product.name}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+        </div>
+
+        <div className="bg-gray-50 rounded-xl p-3 mb-4 flex justify-between text-sm">
+          <span className="text-gray-500">Hozirgi ombor:</span>
+          <span className="font-bold text-gray-900">{product.stock_quantity} {product.unit}</span>
+        </div>
+
+        {isLoading ? (
+          <p className="text-center py-8 text-gray-400">Yuklanmoqda...</p>
+        ) : !history.length ? (
+          <div className="text-center py-10 text-gray-400">
+            <History size={28} className="mx-auto mb-2 opacity-30" />
+            Hali harakat yo'q
+          </div>
+        ) : (
+          <div className="space-y-1.5 overflow-y-auto">
+            {history.map((h, i) => {
+              const info = HIST_INFO[h.type] || HIST_INFO.kirim;
+              const Icon = info.icon;
+              return (
+                <div key={i} className="flex items-center justify-between py-2 px-2 rounded-lg hover:bg-gray-50 border-b border-gray-50 last:border-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Icon size={18} className={`${info.cls} flex-shrink-0`} />
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-800">{info.label}</div>
+                      <div className="text-xs text-gray-400 truncate">
+                        {h.date ? new Date(h.date).toLocaleDateString('uz-UZ') : '—'}
+                        {h.detail ? ` · ${h.detail}` : ''}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className={`font-bold ${info.cls}`}>{info.sign}{Math.abs(h.qty)} {product.unit}</div>
+                    {h.type === 'sotuv' && h.amount > 0 && (
+                      <div className="text-xs text-gray-400">{fmt(h.amount)} so'm</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function Modal({ open, onClose, title, children }) {
   if (!open) return null;
@@ -37,6 +112,8 @@ export default function ProductsPage() {
   const [pricingForm, setPricingForm] = useState({ stanokchi_rate: 0, stanokchi_semi_rate: 0, detalchi_rate: 0 });
   const [bomModal, setBomModal] = useState(null); // { id, name } — tarkibni boshqarish
   const [bomAddForm, setBomAddForm] = useState({ component_id: '', qty: 1 });
+  const [historyProduct, setHistoryProduct] = useState(null); // tarix modal
+  const [search, setSearch] = useState(''); // mahsulot qidiruv
 
   const { data, isLoading } = useQuery({
     queryKey: ['products'],
@@ -197,7 +274,17 @@ export default function ProductsPage() {
   // Komponent (KOMPONENT) mahsulotlar — BOM (Tarkib) formasi uchun
   const componentProducts = (data?.products || []).filter(p => p.kind === 'KOMPONENT');
   // Sahifa faqat TAYYOR mahsulotlarni ko'rsatadi (komponentlar alohida sahifada)
-  const shownProducts = (data?.products || []).filter(p => p.kind !== 'KOMPONENT');
+  // Qidiruv — bitta harf yozilsa ham, ichida bo'lsa chiqaveradi (nom/turi/rang bo'yicha)
+  const q = search.trim().toLowerCase();
+  const shownProducts = useMemo(() => {
+    const base = (data?.products || []).filter(p => p.kind !== 'KOMPONENT');
+    if (!q) return base;
+    return base.filter(p =>
+      String(p.name || '').toLowerCase().includes(q) ||
+      String(p.type || '').toLowerCase().includes(q) ||
+      String(p.rang || '').toLowerCase().includes(q)
+    );
+  }, [data, q]);
 
   return (
     <div className="space-y-6">
@@ -236,14 +323,36 @@ export default function ProductsPage() {
         </div>
       </div>
 
+      {/* Qidiruv */}
+      <div className="relative max-w-md">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <input value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Mahsulot nomi, turi yoki rangi bo'yicha qidirish..."
+          className="input pl-9 pr-9 w-full" />
+        {search && (
+          <button type="button" onClick={() => setSearch('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>
+        )}
+      </div>
+      {q && <p className="text-xs text-gray-400 -mt-3">{shownProducts.length} ta mahsulot topildi</p>}
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {isLoading ? (
           <div className="col-span-3 text-center py-12 text-gray-400">Yuklanmoqda...</div>
         ) : !shownProducts.length ? (
           <div className="col-span-3 text-center py-12 text-gray-400">
             <Package size={40} className="mx-auto mb-2 opacity-30" />
-            <p>Mahsulot yo'q</p>
-            <p className="text-xs mt-1">Yuqoridagi "Mahsulot qo'shish" tugmasi bilan qo'shing</p>
+            {q ? (
+              <>
+                <p>"{search}" bo'yicha mahsulot topilmadi</p>
+                <button onClick={() => setSearch('')} className="text-xs text-blue-600 mt-1 hover:underline">Qidiruvni tozalash</button>
+              </>
+            ) : (
+              <>
+                <p>Mahsulot yo'q</p>
+                <p className="text-xs mt-1">Yuqoridagi "Mahsulot qo'shish" tugmasi bilan qo'shing</p>
+              </>
+            )}
           </div>
         ) : shownProducts.map(p => (
           <div key={p.id} className={`card ${!p.is_active ? 'opacity-60' : ''}`}>
@@ -305,6 +414,10 @@ export default function ProductsPage() {
             </div>
 
             <div className="flex gap-2 mt-4 flex-wrap">
+              <button onClick={() => setHistoryProduct(p)}
+                className="btn-sm flex-1 bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200 rounded-lg px-2 flex items-center gap-1 justify-center">
+                <History size={13} /> Tarix
+              </button>
               {canWrite && (
                 <button onClick={() => openEdit(p)} className="btn-secondary btn-sm flex-1">Tahrirlash</button>
               )}
@@ -531,6 +644,9 @@ export default function ProductsPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Mahsulot tarixi modal */}
+      <ProductHistoryModal product={historyProduct} onClose={() => setHistoryProduct(null)} />
 
       {/* Pricing Modal — Bugalter/OWNER uchun */}
       {pricingModal && (

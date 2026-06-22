@@ -4,12 +4,14 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import {
   Plus, Search, X, Phone, Building2, MapPin, Eye,
-  Trash2, Users, Crown, Store, ShoppingBag, AlertTriangle, Pencil
+  Trash2, Users, Crown, Store, ShoppingBag, AlertTriangle, Pencil, Download, Coins
 } from 'lucide-react';
 import { customersAPI, salesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
+
+const PAY_METHOD = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', OTHER: 'Boshqa' };
 
 const TYPE_MAP = {
   RETAIL:    { label: 'Chakana',  cls: 'badge-gray',  icon: ShoppingBag },
@@ -71,6 +73,25 @@ export default function CustomersPage() {
 
   // Mijoz xaridini qo'shish/tahrirlash formasi (null = yopiq, {id} bo'lsa = tahrir)
   const [saleForm, setSaleForm] = useState(null);
+  const [downloading, setDownloading] = useState(false);
+
+  // Mijozning to'liq tarixini Excelda yuklab olish
+  const downloadExcel = async (customer) => {
+    if (!customer?.id) return;
+    setDownloading(true);
+    try {
+      const res = await customersAPI.downloadExcel(customer.id);
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      const safe = String(customer.name || 'mijoz').replace(/[^\w-]+/g, '_').slice(0, 40);
+      a.href = url; a.download = `mijoz-${safe}.xlsx`; a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Excel yuklab bo\'lmadi');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const invalidateSaleData = () => {
     qc.invalidateQueries({ queryKey: ['customer', detailId] });
@@ -330,6 +351,10 @@ export default function CustomersPage() {
                   {detail.customer.address && <div className="flex items-center gap-2"><MapPin size={13} /> {detail.customer.address}</div>}
                 </div>
               </div>
+              <button onClick={() => downloadExcel(detail.customer)} disabled={downloading}
+                className="btn-sm bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-lg px-3 flex items-center gap-1 flex-shrink-0">
+                <Download size={14} /> {downloading ? 'Yuklanmoqda...' : 'Excel'}
+              </button>
             </div>
 
             {/* Stats */}
@@ -475,6 +500,39 @@ export default function CustomersPage() {
                         </td>
                       </tr>
                     ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* To'lovlar tarixi */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Coins size={15} className="text-green-600" />
+                <h5 className="font-semibold text-gray-700 text-sm">To'lovlar tarixi</h5>
+              </div>
+              <div className="border border-gray-100 rounded-xl overflow-hidden">
+                <table className="table text-sm">
+                  <thead>
+                    <tr><th>Sana</th><th>Mahsulot</th><th>Usul</th><th>Summa</th></tr>
+                  </thead>
+                  <tbody>
+                    {!detail.payments?.length ? (
+                      <tr><td colSpan={4} className="text-center py-6 text-gray-400">Hali to'lov yo'q</td></tr>
+                    ) : detail.payments.map(p => (
+                      <tr key={p.id}>
+                        <td className="whitespace-nowrap">{new Date(p.payment_date).toLocaleDateString('uz-UZ')}</td>
+                        <td className="text-gray-600">{p.product_name}</td>
+                        <td><span className="text-xs text-gray-500">{PAY_METHOD[p.method] || p.method}</span></td>
+                        <td className="font-semibold text-green-700">{fmt(p.amount)} so'm</td>
+                      </tr>
+                    ))}
+                    {detail.payments?.length > 0 && (
+                      <tr className="bg-gray-50 font-bold">
+                        <td colSpan={3} className="text-right text-gray-600">Jami to'langan:</td>
+                        <td className="text-green-700">{fmt(detail.payments.reduce((a, p) => a + parseFloat(p.amount || 0), 0))} so'm</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>

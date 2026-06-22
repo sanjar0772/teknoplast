@@ -676,4 +676,118 @@ async function generateInvoicePDF(sale, items, viewUrl) {
   });
 }
 
-module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF };
+// Bitta mijozning to'liq tarixi — xaridlar + to'lovlar (Excel)
+async function generateCustomerExcel(data) {
+  const { customer, stats, sales = [], payments = [] } = data;
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'TEKNOPLAST';
+
+  const BLUE = 'FF1E40AF';
+  const money = '#,##0';
+  const statusLabel = (s) => s === 'PAID' ? "To'langan" : s === 'PENDING' ? 'Kutilmoqda' : 'Qisman';
+  const methodLabel = (m) => ({ CASH: 'Naqd', CARD: 'Karta', TRANSFER: 'Bank', OTHER: 'Boshqa' }[m] || m || '');
+
+  // ---- 1-varaq: Xaridlar ----
+  const s1 = workbook.addWorksheet('Xaridlar');
+  s1.mergeCells('A1:H1');
+  const h1 = s1.getCell('A1');
+  h1.value = `TEKNOPLAST — Mijoz hisoboti: ${customer.name}`;
+  h1.font = { bold: true, size: 15, color: { argb: BLUE } };
+  h1.alignment = { horizontal: 'center', vertical: 'middle' };
+  s1.getRow(1).height = 24;
+
+  s1.mergeCells('A2:H2');
+  const h2 = s1.getCell('A2');
+  const debt = parseFloat(stats?.total_debt || 0);
+  h2.value = `Tel: ${customer.phone || '—'}   |   Xaridlar: ${stats?.purchase_count || 0} ta   |   Jami: ${Math.round(parseFloat(stats?.total_purchases || 0)).toLocaleString('ru-RU')} so'm   |   ` +
+    (debt > 0 ? `Qarz: ${Math.round(debt).toLocaleString('ru-RU')} so'm` : debt < 0 ? `Haqdor: +${Math.round(Math.abs(debt)).toLocaleString('ru-RU')} so'm` : 'Qarz yo\'q');
+  h2.font = { size: 10, color: { argb: 'FF374151' } };
+  h2.alignment = { horizontal: 'center' };
+
+  s1.mergeCells('A3:H3');
+  const h3 = s1.getCell('A3');
+  h3.value = `Tuzildi: ${new Date().toLocaleString('uz-UZ')}`;
+  h3.font = { size: 9, italic: true, color: { argb: 'FF9CA3AF' } };
+  h3.alignment = { horizontal: 'center' };
+
+  const cols1 = ['№', 'Sana', 'Mahsulot', 'Miqdor', 'Birlik narx', 'Jami', "To'langan", 'Qarz', 'Status'];
+  const widths1 = [5, 13, 28, 10, 14, 16, 16, 16, 13];
+  const hr1 = s1.getRow(4);
+  cols1.forEach((c, i) => {
+    const cell = hr1.getCell(i + 1);
+    cell.value = c;
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BLUE } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+  });
+  widths1.forEach((w, i) => { s1.getColumn(i + 1).width = w; });
+
+  let r = 4;
+  sales.forEach((s, i) => {
+    r++;
+    const total = parseFloat(s.total_amount) || 0;
+    const paid = parseFloat(s.payment_amount) || 0;
+    const row = s1.getRow(r);
+    row.getCell(1).value = i + 1;
+    row.getCell(2).value = s.sale_date ? new Date(s.sale_date).toLocaleDateString('uz-UZ') : '';
+    row.getCell(3).value = s.product_name || '';
+    row.getCell(4).value = `${s.quantity || 0} ${s.unit || ''}`.trim();
+    row.getCell(5).value = parseFloat(s.unit_price) || 0;
+    row.getCell(6).value = total;
+    row.getCell(7).value = paid;
+    row.getCell(8).value = Math.max(0, total - paid);
+    row.getCell(9).value = statusLabel(s.status);
+    [5, 6, 7, 8].forEach(c => { row.getCell(c).numFmt = money; });
+  });
+
+  r++;
+  const tot1 = s1.getRow(r);
+  tot1.getCell(2).value = 'JAMI:';
+  tot1.getCell(6).value = sales.reduce((a, s) => a + (parseFloat(s.total_amount) || 0), 0);
+  tot1.getCell(7).value = sales.reduce((a, s) => a + (parseFloat(s.payment_amount) || 0), 0);
+  tot1.getCell(8).value = sales.reduce((a, s) => a + Math.max(0, (parseFloat(s.total_amount) || 0) - (parseFloat(s.payment_amount) || 0)), 0);
+  [6, 7, 8].forEach(c => { tot1.getCell(c).numFmt = money; });
+  tot1.font = { bold: true };
+
+  // ---- 2-varaq: To'lovlar ----
+  const s2 = workbook.addWorksheet("To'lovlar");
+  const cols2 = ['№', 'Sana', 'Summa', 'Usul', 'Mahsulot', 'Izoh'];
+  const widths2 = [5, 14, 16, 12, 28, 30];
+  const hr2 = s2.getRow(1);
+  cols2.forEach((c, i) => {
+    const cell = hr2.getCell(i + 1);
+    cell.value = c;
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF065F46' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+  });
+  widths2.forEach((w, i) => { s2.getColumn(i + 1).width = w; });
+
+  let r2 = 1;
+  payments.forEach((p, i) => {
+    r2++;
+    const row = s2.getRow(r2);
+    row.getCell(1).value = i + 1;
+    row.getCell(2).value = p.payment_date ? new Date(p.payment_date).toLocaleDateString('uz-UZ') : '';
+    row.getCell(3).value = parseFloat(p.amount) || 0;
+    row.getCell(3).numFmt = money;
+    row.getCell(4).value = methodLabel(p.method);
+    row.getCell(5).value = p.product_name || '';
+    row.getCell(6).value = p.notes || '';
+  });
+  if (!payments.length) {
+    s2.getRow(2).getCell(1).value = "To'lov tarixi yo'q";
+  } else {
+    r2++;
+    const tot2 = s2.getRow(r2);
+    tot2.getCell(2).value = 'JAMI:';
+    tot2.getCell(3).value = payments.reduce((a, p) => a + (parseFloat(p.amount) || 0), 0);
+    tot2.getCell(3).numFmt = money;
+    tot2.font = { bold: true };
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return buffer;
+}
+
+module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel };

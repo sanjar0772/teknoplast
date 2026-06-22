@@ -73,11 +73,66 @@ router.get('/:id', async (req, res, next) => {
       FROM sales WHERE customer_id = $1
     `, [req.params.id]);
 
+    // To'lovlar tarixi — shu mijozning barcha sotuvlariga tushgan to'lovlar
+    const payments = await query(`
+      SELECT pm.id, pm.amount, pm.method, pm.payment_date, pm.notes, p.name AS product_name
+      FROM payments pm
+      JOIN sales s ON pm.sale_id = s.id
+      JOIN products p ON s.product_id = p.id
+      WHERE s.customer_id = $1
+      ORDER BY pm.payment_date DESC, pm.created_at DESC
+    `, [req.params.id]);
+
     res.json({
       customer: customer.rows[0],
       sales: sales.rows,
       stats: stats.rows[0],
+      payments: payments.rows,
     });
+  } catch (err) { next(err); }
+});
+
+// GET /api/customers/:id/excel — mijozning to'liq tarixi (xaridlar + to'lovlar) Excelda
+router.get('/:id/excel', async (req, res, next) => {
+  try {
+    const customer = await query('SELECT * FROM customers WHERE id = $1', [req.params.id]);
+    if (!customer.rows.length) return res.status(404).json({ error: 'Mijoz topilmadi' });
+
+    const sales = await query(`
+      SELECT s.*, p.name as product_name, p.unit
+      FROM sales s JOIN products p ON s.product_id = p.id
+      WHERE s.customer_id = $1
+      ORDER BY s.sale_date DESC, s.created_at DESC
+    `, [req.params.id]);
+
+    const stats = await query(`
+      SELECT COUNT(*) as purchase_count,
+             COALESCE(SUM(total_amount), 0) as total_purchases,
+             COALESCE(SUM(total_amount - payment_amount), 0) as total_debt
+      FROM sales WHERE customer_id = $1
+    `, [req.params.id]);
+
+    const payments = await query(`
+      SELECT pm.id, pm.amount, pm.method, pm.payment_date, pm.notes, p.name AS product_name
+      FROM payments pm
+      JOIN sales s ON pm.sale_id = s.id
+      JOIN products p ON s.product_id = p.id
+      WHERE s.customer_id = $1
+      ORDER BY pm.payment_date DESC, pm.created_at DESC
+    `, [req.params.id]);
+
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateCustomerExcel({
+      customer: customer.rows[0],
+      stats: stats.rows[0],
+      sales: sales.rows,
+      payments: payments.rows,
+    });
+
+    const safeName = String(customer.rows[0].name || 'mijoz').replace(/[^\p{L}\p{N}_-]+/gu, '_').slice(0, 40);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="mijoz-${safeName}.xlsx"`);
+    res.send(Buffer.from(buffer));
   } catch (err) { next(err); }
 });
 

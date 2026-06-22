@@ -94,7 +94,7 @@ function ProductIntakeTab({ canCreate, canApprove }) {
   // Har safar yangi qator — bitta mahsulotni bir necha rangda kiritish mumkin
   const addToCart = (p) => {
     setCart(c => [...c, { rowId: newRowId(), product_id: p.id, name: p.name, stock: p.stock_quantity, rang: '', qty: 1 }]);
-    setSearch('');
+    // setSearch ni tozalamaymiz — foydalanuvchi ketma-ket bir nechta mahsulot qo'sha olsin
   };
   const updateRow = (rowId, field, value) => {
     setCart(c => c.map(r => r.rowId === rowId ? { ...r, [field]: value } : r));
@@ -168,15 +168,24 @@ function ProductIntakeTab({ canCreate, canApprove }) {
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Mahsulot qidirish..." className="input pl-8" />
           </div>
-          {search && (
+          {search && filtered.length > 0 && (
             <div className="border border-gray-100 rounded-xl max-h-48 overflow-y-auto divide-y divide-gray-50">
-              {filtered.map(p => (
-                <button key={p.id} onClick={() => addToCart(p)} className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-blue-50 text-sm">
-                  <span>{p.name} <span className="text-xs text-gray-400">(ombor: {p.stock_quantity})</span></span>
-                  <Plus size={14} className="text-blue-600" />
-                </button>
-              ))}
+              {filtered.map(p => {
+                const alreadyAdded = cart.some(r => r.product_id === p.id);
+                return (
+                  <button key={p.id} onClick={() => addToCart(p)}
+                    className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-blue-50 text-sm">
+                    <span>{p.name} <span className="text-xs text-gray-400">(ombor: {p.stock_quantity})</span></span>
+                    {alreadyAdded
+                      ? <span className="text-xs text-green-600 font-medium flex items-center gap-1"><Check size={12} /> Qo'shildi</span>
+                      : <Plus size={14} className="text-blue-600" />}
+                  </button>
+                );
+              })}
             </div>
+          )}
+          {search && filtered.length === 0 && (
+            <p className="text-sm text-gray-400 px-1">"{search}" topilmadi</p>
           )}
           <div className="border border-gray-100 rounded-xl overflow-hidden">
             <table className="table text-sm">

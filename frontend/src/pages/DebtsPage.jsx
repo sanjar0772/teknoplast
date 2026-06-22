@@ -35,6 +35,7 @@ function Modal({ open, onClose, title, children }) {
 export default function DebtsPage() {
   const qc = useQueryClient();
   const [payFor, setPayFor] = useState(null);
+  const [selectDebtGroup, setSelectDebtGroup] = useState(null); // Ko'p qarzli mijoz uchun tanlash
   const [remindFor, setRemindFor] = useState(null);
   const [reminderText, setReminderText] = useState('');
   const [tone, setTone] = useState('soft');
@@ -84,10 +85,21 @@ export default function DebtsPage() {
       qc.invalidateQueries({ queryKey: ['customers'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       setPayFor(null);
+      setSelectDebtGroup(null);
     },
   });
 
   const openPay = (item) => { reset({ amount: Math.round(item.debt), method: 'CASH' }); setPayFor(item); };
+
+  // Ko'p qarzli mijoz uchun: asosiy "To'lov" tugmasi bosilsa — tanlash oynasi
+  const openPayGroup = (g) => {
+    if (!g.multi) {
+      openPay(g.items[0]);
+    } else {
+      setSelectDebtGroup(g);
+    }
+  };
+
   const onSubmit = (form) => {
     payMutation.mutate({
       id: payFor.sale_id,
@@ -116,7 +128,6 @@ export default function DebtsPage() {
       const totalPaid = g.items.reduce((sum, x) => sum + x.paid, 0);
       const maxDays = Math.max(...g.items.map(x => x.days_old));
       const worstBucket = BUCKET_ORDER.find(b => g.items.some(x => x.bucket === b)) || '0-30';
-      // Sanalar bo'yicha eng eskisini oldingi qilib tartiblash
       const sortedItems = [...g.items].sort((a, b) => new Date(a.sale_date) - new Date(b.sale_date));
       return { ...g, items: sortedItems, totalDebt, totalAmount, totalPaid, maxDays, worstBucket, multi: g.items.length > 1 };
     }).sort((a, b) => b.totalDebt - a.totalDebt);
@@ -242,11 +253,10 @@ export default function DebtsPage() {
                     <td><span className={`badge ${info.bg} ${info.cls}`}>{info.label}</span></td>
                     <td className="no-print" onClick={e => e.stopPropagation()}>
                       <div className="flex gap-1">
-                        {!g.multi && (
-                          <button onClick={() => openPay(g.items[0])} className="btn-success btn-sm">
-                            <Coins size={12} /> To'lov
-                          </button>
-                        )}
+                        {/* To'lov FAQAT shu yerda — tariх ichida yo'q */}
+                        <button onClick={() => openPayGroup(g)} className="btn-success btn-sm">
+                          <Coins size={12} /> To'lov
+                        </button>
                         <button onClick={() => openReminder({ customer: g.customer, debt: g.totalDebt, days_old: g.maxDays, phone: g.phone })}
                           title="AI eslatma matni" className="btn-secondary btn-sm">
                           <MessageSquare size={12} /> AI eslatma
@@ -255,7 +265,7 @@ export default function DebtsPage() {
                     </td>
                   </tr>
 
-                  {/* Kengaytirilgan: shu mijozning har bir qarz sanasi */}
+                  {/* Kengaytirilgan: tariх (faqat ko'rish, To'lov yo'q) */}
                   {g.multi && isOpen && g.items.map(item => {
                     const iInfo = BUCKET_INFO[item.bucket];
                     return (
@@ -269,11 +279,7 @@ export default function DebtsPage() {
                         <td className="text-green-600">{fmt(item.paid)}</td>
                         <td className="font-bold text-red-600">{fmt(item.debt)}</td>
                         <td><span className={`badge ${iInfo.bg} ${iInfo.cls}`}>{iInfo.label}</span></td>
-                        <td className="no-print">
-                          <button onClick={() => openPay(item)} className="btn-success btn-sm">
-                            <Coins size={12} /> To'lov
-                          </button>
-                        </td>
+                        <td></td>
                       </tr>
                     );
                   })}
@@ -285,12 +291,50 @@ export default function DebtsPage() {
       </div>
       </div>
 
+      {/* Ko'p qarzli mijoz uchun qaysi qarzni tanlash oynasi */}
+      <Modal open={!!selectDebtGroup} onClose={() => setSelectDebtGroup(null)}
+        title={`To'lov — ${selectDebtGroup?.customer}`}>
+        {selectDebtGroup && (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-500">Qaysi qarz uchun to'lov kiritmoqchisiz?</p>
+            <div className="divide-y divide-gray-100">
+              {selectDebtGroup.items.map(item => {
+                const iInfo = BUCKET_INFO[item.bucket];
+                return (
+                  <div key={item.sale_id} className="flex items-center justify-between py-3">
+                    <div>
+                      <div className="text-sm font-medium text-gray-800">
+                        {new Date(item.sale_date).toLocaleDateString('uz-UZ')}
+                        <span className="text-xs text-gray-400 ml-2">{item.days_old} kun</span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        Jami: {fmt(item.total_amount)} · To'langan: {fmt(item.paid)}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="font-bold text-red-600 text-sm">{fmt(item.debt)} so'm qarz</span>
+                        <span className={`badge ${iInfo.bg} ${iInfo.cls} text-xs`}>{iInfo.label}</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => { setSelectDebtGroup(null); openPay(item); }}
+                      className="btn-success btn-sm ml-4 flex-shrink-0">
+                      <Coins size={12} /> To'lov
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </Modal>
+
       {/* Payment modal */}
       <Modal open={!!payFor} onClose={() => setPayFor(null)} title="To'lov kiritish">
         {payFor && (
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="bg-gray-50 rounded-lg p-3 text-sm">
               <div className="flex justify-between"><span className="text-gray-500">Mijoz:</span><span className="font-medium">{payFor.customer}</span></div>
+              <div className="flex justify-between mt-1"><span className="text-gray-500">Sana:</span><span>{new Date(payFor.sale_date).toLocaleDateString('uz-UZ')}</span></div>
               <div className="flex justify-between mt-1"><span className="text-gray-500">Qolgan qarz:</span><span className="font-bold text-red-600">{fmt(payFor.debt)} so'm</span></div>
             </div>
             <div>

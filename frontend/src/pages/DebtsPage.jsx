@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Wallet, X, Phone, AlertTriangle, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot, Printer, Search } from 'lucide-react';
+import { X, Phone, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot, Printer, Search, ChevronDown, ChevronRight } from 'lucide-react';
 import { reportsAPI, salesAPI, ahmadAPI } from '../services/api';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -13,6 +13,8 @@ const BUCKET_INFO = {
   '61-90': { label: '61–90 kun', cls: 'text-orange-600', bg: 'bg-orange-50' },
   '90+':   { label: '90+ kun',   cls: 'text-red-600',    bg: 'bg-red-50' },
 };
+
+const BUCKET_ORDER = ['90+', '61-90', '31-60', '0-30'];
 
 function Modal({ open, onClose, title, children }) {
   if (!open) return null;
@@ -32,12 +34,19 @@ function Modal({ open, onClose, title, children }) {
 
 export default function DebtsPage() {
   const qc = useQueryClient();
-  const [payFor, setPayFor] = useState(null); // {sale_id, customer, debt}
-  const [remindFor, setRemindFor] = useState(null); // qaysi mijoz uchun eslatma
+  const [payFor, setPayFor] = useState(null);
+  const [remindFor, setRemindFor] = useState(null);
   const [reminderText, setReminderText] = useState('');
   const [tone, setTone] = useState('soft');
-  const [search, setSearch] = useState(''); // qarzdorni ism/telefon bo'yicha qidirish
+  const [search, setSearch] = useState('');
+  const [expanded, setExpanded] = useState(() => new Set());
   const { register, handleSubmit, reset, watch } = useForm();
+
+  const toggleExpand = (key) => setExpanded(prev => {
+    const next = new Set(prev);
+    next.has(key) ? next.delete(key) : next.add(key);
+    return next;
+  });
 
   const reminderMutation = useMutation({
     mutationFn: ({ item, tone }) => ahmadAPI.debtReminder({
@@ -88,16 +97,38 @@ export default function DebtsPage() {
 
   const buckets = data?.buckets || {};
   const enterAmount = parseFloat(watch('amount') || 0);
-
-  // Qidiruv: mijoz ismi yoki telefon bo'yicha (faqat jadvalni filtrlaydi, yuqoridagi
-  // umumiy summa va muddat kartochkalari barcha qarzlarni ko'rsatishda davom etadi)
   const allItems = data?.items || [];
   const q = search.trim().toLowerCase();
-  const items = q
-    ? allItems.filter(it =>
-        (it.customer || '').toLowerCase().includes(q) ||
-        String(it.phone || '').toLowerCase().includes(q))
-    : allItems;
+
+  // Mijoz bo'yicha guruhlash — bir mijozning barcha qarzlari 1 qatorda
+  const customerGroups = useMemo(() => {
+    const map = new Map();
+    allItems.forEach(item => {
+      const key = item.customer_id ? `id:${item.customer_id}` : `name:${item.customer}`;
+      if (!map.has(key)) {
+        map.set(key, { key, customer: item.customer, phone: item.phone, items: [] });
+      }
+      map.get(key).items.push(item);
+    });
+    return Array.from(map.values()).map(g => {
+      const totalDebt = g.items.reduce((sum, x) => sum + x.debt, 0);
+      const totalAmount = g.items.reduce((sum, x) => sum + x.total_amount, 0);
+      const totalPaid = g.items.reduce((sum, x) => sum + x.paid, 0);
+      const maxDays = Math.max(...g.items.map(x => x.days_old));
+      const worstBucket = BUCKET_ORDER.find(b => g.items.some(x => x.bucket === b)) || '0-30';
+      // Sanalar bo'yicha eng eskisini oldingi qilib tartiblash
+      const sortedItems = [...g.items].sort((a, b) => new Date(a.sale_date) - new Date(b.sale_date));
+      return { ...g, items: sortedItems, totalDebt, totalAmount, totalPaid, maxDays, worstBucket, multi: g.items.length > 1 };
+    }).sort((a, b) => b.totalDebt - a.totalDebt);
+  }, [allItems]);
+
+  const filteredGroups = useMemo(() => {
+    if (!q) return customerGroups;
+    return customerGroups.filter(g =>
+      g.customer.toLowerCase().includes(q) ||
+      String(g.phone || '').toLowerCase().includes(q)
+    );
+  }, [customerGroups, q]);
 
   return (
     <div className="space-y-6">
@@ -137,7 +168,7 @@ export default function DebtsPage() {
         })}
       </div>
 
-      {/* Qidiruv — mijoz ismi yoki telefon (chop etishda ko'rinmaydi) */}
+      {/* Qidiruv */}
       <div className="no-print">
         <div className="relative max-w-sm">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -154,9 +185,7 @@ export default function DebtsPage() {
             </button>
           )}
         </div>
-        {q && (
-          <p className="text-xs text-gray-400 mt-1">{items.length} ta natija topildi</p>
-        )}
+        {q && <p className="text-xs text-gray-400 mt-1">{filteredGroups.length} ta mijoz topildi</p>}
       </div>
 
       {/* Debtors table */}
@@ -164,49 +193,91 @@ export default function DebtsPage() {
         <table className="table">
           <thead>
             <tr>
-              <th>Mijoz</th><th>Sotuv sanasi</th><th>Kun</th>
+              <th>Mijoz</th><th>Qarzlar</th><th>Kun</th>
               <th>Jami</th><th>To'langan</th><th>Qarz</th><th>Muddat</th><th className="no-print">Amal</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr><td colSpan={8} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
-            ) : !data?.items?.length ? (
+            ) : !allItems.length ? (
               <tr><td colSpan={8} className="text-center py-10 text-gray-400">
                 <CheckCircle size={28} className="mx-auto mb-2 text-green-400" />
                 Qarzdorlar yo'q — hammasi to'langan! 🎉
               </td></tr>
-            ) : !items.length ? (
+            ) : !filteredGroups.length ? (
               <tr><td colSpan={8} className="text-center py-10 text-gray-400">
                 <Search size={24} className="mx-auto mb-2 text-gray-300" />
                 "{search}" bo'yicha qarzdor topilmadi
               </td></tr>
-            ) : items.map(item => {
-              const info = BUCKET_INFO[item.bucket];
+            ) : filteredGroups.map(g => {
+              const info = BUCKET_INFO[g.worstBucket];
+              const isOpen = expanded.has(g.key);
               return (
-                <tr key={item.sale_id}>
-                  <td>
-                    <div className="font-medium text-gray-900">{item.customer}</div>
-                    {item.phone && <div className="text-xs text-gray-400 flex items-center gap-1"><Phone size={10} /> {item.phone}</div>}
-                  </td>
-                  <td className="whitespace-nowrap">{new Date(item.sale_date).toLocaleDateString('uz-UZ')}</td>
-                  <td>{item.days_old} kun</td>
-                  <td>{fmt(item.total_amount)}</td>
-                  <td className="text-green-600">{fmt(item.paid)}</td>
-                  <td className="font-bold text-red-600">{fmt(item.debt)}</td>
-                  <td><span className={`badge ${info.bg} ${info.cls}`}>{info.label}</span></td>
-                  <td className="no-print">
-                    <div className="flex gap-1">
-                      <button onClick={() => openPay(item)} className="btn-success btn-sm">
-                        <Coins size={12} /> To'lov
-                      </button>
-                      <button onClick={() => openReminder(item)} title="AI eslatma matni"
-                        className="btn-secondary btn-sm">
-                        <MessageSquare size={12} /> AI eslatma
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                <Fragment key={g.key}>
+                  {/* Asosiy qator — bitta mijoz */}
+                  <tr className={g.multi ? 'bg-blue-50/30 cursor-pointer hover:bg-blue-50' : ''} onClick={g.multi ? () => toggleExpand(g.key) : undefined}>
+                    <td>
+                      <div className="flex items-center gap-1">
+                        {g.multi && (
+                          <span className="text-gray-400 flex-shrink-0">
+                            {isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                          </span>
+                        )}
+                        <div>
+                          <div className="font-medium text-gray-900">{g.customer}</div>
+                          {g.phone && <div className="text-xs text-gray-400 flex items-center gap-1"><Phone size={10} /> {g.phone}</div>}
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      {g.multi
+                        ? <span className="badge badge-blue">{g.items.length} ta qarz</span>
+                        : <span className="whitespace-nowrap">{new Date(g.items[0].sale_date).toLocaleDateString('uz-UZ')}</span>}
+                    </td>
+                    <td>{g.maxDays} kun</td>
+                    <td>{fmt(g.totalAmount)}</td>
+                    <td className="text-green-600">{fmt(g.totalPaid)}</td>
+                    <td className="font-bold text-red-600">{fmt(g.totalDebt)}</td>
+                    <td><span className={`badge ${info.bg} ${info.cls}`}>{info.label}</span></td>
+                    <td className="no-print" onClick={e => e.stopPropagation()}>
+                      <div className="flex gap-1">
+                        {!g.multi && (
+                          <button onClick={() => openPay(g.items[0])} className="btn-success btn-sm">
+                            <Coins size={12} /> To'lov
+                          </button>
+                        )}
+                        <button onClick={() => openReminder({ customer: g.customer, debt: g.totalDebt, days_old: g.maxDays, phone: g.phone })}
+                          title="AI eslatma matni" className="btn-secondary btn-sm">
+                          <MessageSquare size={12} /> AI eslatma
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* Kengaytirilgan: shu mijozning har bir qarz sanasi */}
+                  {g.multi && isOpen && g.items.map(item => {
+                    const iInfo = BUCKET_INFO[item.bucket];
+                    return (
+                      <tr key={item.sale_id} className="bg-gray-50/60 text-sm border-l-2 border-blue-200">
+                        <td></td>
+                        <td className="pl-4 whitespace-nowrap text-gray-700">
+                          {new Date(item.sale_date).toLocaleDateString('uz-UZ')}
+                        </td>
+                        <td className="text-gray-500">{item.days_old} kun</td>
+                        <td>{fmt(item.total_amount)}</td>
+                        <td className="text-green-600">{fmt(item.paid)}</td>
+                        <td className="font-bold text-red-600">{fmt(item.debt)}</td>
+                        <td><span className={`badge ${iInfo.bg} ${iInfo.cls}`}>{iInfo.label}</span></td>
+                        <td className="no-print">
+                          <button onClick={() => openPay(item)} className="btn-success btn-sm">
+                            <Coins size={12} /> To'lov
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
               );
             })}
           </tbody>
@@ -255,7 +326,7 @@ export default function DebtsPage() {
         )}
       </Modal>
 
-      {/* AI eslatma modal (call-center) */}
+      {/* AI eslatma modal */}
       <Modal open={!!remindFor} onClose={() => setRemindFor(null)} title="AI qarz eslatmasi">
         {remindFor && (
           <div className="space-y-4">

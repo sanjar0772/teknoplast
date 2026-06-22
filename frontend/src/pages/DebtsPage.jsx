@@ -33,9 +33,9 @@ function Modal({ open, onClose, title, children }) {
 
 export default function DebtsPage() {
   const qc = useQueryClient();
-  const [payFor, setPayFor] = useState(null);              // {sale_id, customer, debt, sale_date}
+  // payFor = { customer, totalDebt, items: [{sale_id, debt}, ...] }
+  const [payFor, setPayFor] = useState(null);
   const [payAmounts, setPayAmounts] = useState({ naqd: '', karta: '', bank: '' });
-  const [selectDebtGroup, setSelectDebtGroup] = useState(null);
   const [remindFor, setRemindFor] = useState(null);
   const [reminderText, setReminderText] = useState('');
   const [tone, setTone] = useState('soft');
@@ -72,11 +72,26 @@ export default function DebtsPage() {
     queryFn: () => reportsAPI.getDebts().then(r => r.data),
   });
 
-  // Har bir usul uchun alohida API chaqiruv — backend bir to'lovda 1 usul qabul qiladi
+  // To'lovni eski qarzdan boshlab taqsimlash (FIFO):
+  // naqd → karta → bank tartibida har bir qarzga yoziladi
   const payMutation = useMutation({
-    mutationFn: async ({ sale_id, calls }) => {
-      for (const call of calls) {
-        await salesAPI.addPayment(sale_id, call);
+    mutationFn: async ({ items, naqd, karta, bank }) => {
+      const pools = [
+        { method: 'CASH',     remaining: naqd  },
+        { method: 'CARD',     remaining: karta },
+        { method: 'TRANSFER', remaining: bank  },
+      ].filter(p => p.remaining > 0.01);
+
+      for (const item of items) {
+        let saleLeft = item.debt;
+        if (saleLeft <= 0.01) continue;
+        for (const pool of pools) {
+          if (pool.remaining <= 0.01 || saleLeft <= 0.01) continue;
+          const pay = Math.min(pool.remaining, saleLeft);
+          await salesAPI.addPayment(item.sale_id, { amount: Math.round(pay * 100) / 100, method: pool.method });
+          pool.remaining -= pay;
+          saleLeft -= pay;
+        }
       }
     },
     onSuccess: () => {
@@ -86,44 +101,33 @@ export default function DebtsPage() {
       qc.invalidateQueries({ queryKey: ['customers'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       setPayFor(null);
-      setSelectDebtGroup(null);
     },
     onError: (e) => toast.error(e.response?.data?.error || 'To\'lovda xato'),
   });
 
-  const openPay = (item) => {
-    setPayAmounts({ naqd: Math.round(item.debt), karta: '', bank: '' });
-    setPayFor(item);
+  // To'lov oynasini ochish — bir yoki ko'p qarz, oraliq modal yo'q
+  const openPay = (g) => {
+    setPayAmounts({ naqd: Math.round(g.totalDebt), karta: '', bank: '' });
+    setPayFor({ customer: g.customer, totalDebt: g.totalDebt, items: g.items });
   };
 
-  const openPayGroup = (g) => {
-    if (!g.multi) {
-      openPay(g.items[0]);
-    } else {
-      setSelectDebtGroup(g);
-    }
-  };
-
-  const naqd = parseFloat(payAmounts.naqd) || 0;
+  const naqd  = parseFloat(payAmounts.naqd)  || 0;
   const karta = parseFloat(payAmounts.karta) || 0;
-  const bank = parseFloat(payAmounts.bank) || 0;
+  const bank  = parseFloat(payAmounts.bank)  || 0;
   const payTotal = naqd + karta + bank;
 
   const submitPay = () => {
     if (payTotal <= 0) return toast.error('Kamida bitta usulda summa kiriting');
-    if (payFor && payTotal > payFor.debt + 0.01) return toast.error(`To'lov ${fmt(payFor.debt)} so'mdan oshmasin`);
-    const calls = [];
-    if (naqd > 0) calls.push({ amount: naqd, method: 'CASH' });
-    if (karta > 0) calls.push({ amount: karta, method: 'CARD' });
-    if (bank > 0) calls.push({ amount: bank, method: 'TRANSFER' });
-    payMutation.mutate({ sale_id: payFor.sale_id, calls });
+    if (payFor && payTotal > payFor.totalDebt + 0.01)
+      return toast.error(`To'lov ${fmt(payFor.totalDebt)} so'mdan oshmasin`);
+    payMutation.mutate({ items: payFor.items, naqd, karta, bank });
   };
 
   const buckets = data?.buckets || {};
   const allItems = data?.items || [];
   const q = search.trim().toLowerCase();
 
-  // Mijoz bo'yicha guruhlash
+  // Mijoz bo'yicha guruhlash — bir mijozning barcha qarzlari 1 qatorda
   const customerGroups = useMemo(() => {
     const map = new Map();
     allItems.forEach(item => {
@@ -134,10 +138,10 @@ export default function DebtsPage() {
       map.get(key).items.push(item);
     });
     return Array.from(map.values()).map(g => {
-      const totalDebt = g.items.reduce((sum, x) => sum + x.debt, 0);
-      const totalAmount = g.items.reduce((sum, x) => sum + x.total_amount, 0);
-      const totalPaid = g.items.reduce((sum, x) => sum + x.paid, 0);
-      const maxDays = Math.max(...g.items.map(x => x.days_old));
+      const totalDebt   = g.items.reduce((s, x) => s + x.debt, 0);
+      const totalAmount = g.items.reduce((s, x) => s + x.total_amount, 0);
+      const totalPaid   = g.items.reduce((s, x) => s + x.paid, 0);
+      const maxDays     = Math.max(...g.items.map(x => x.days_old));
       const worstBucket = BUCKET_ORDER.find(b => g.items.some(x => x.bucket === b)) || '0-30';
       const sortedItems = [...g.items].sort((a, b) => new Date(a.sale_date) - new Date(b.sale_date));
       return { ...g, items: sortedItems, totalDebt, totalAmount, totalPaid, maxDays, worstBucket, multi: g.items.length > 1 };
@@ -167,7 +171,7 @@ export default function DebtsPage() {
             <p className="text-xs text-gray-500">Umumiy qarz</p>
             <p className="text-2xl font-bold text-red-600">{fmt(data?.total_debt)} so'm</p>
           </div>
-          <button onClick={() => window.print()} className="btn-secondary btn-sm no-print" title="Qarzlar ro'yxatini chop etish">
+          <button onClick={() => window.print()} className="btn-secondary btn-sm no-print">
             <Printer size={14} /> Chop etish
           </button>
         </div>
@@ -231,7 +235,8 @@ export default function DebtsPage() {
               const isOpen = expanded.has(g.key);
               return (
                 <Fragment key={g.key}>
-                  <tr className={g.multi ? 'bg-blue-50/30 cursor-pointer hover:bg-blue-50' : ''} onClick={g.multi ? () => toggleExpand(g.key) : undefined}>
+                  <tr className={g.multi ? 'bg-blue-50/30 cursor-pointer hover:bg-blue-50' : ''}
+                    onClick={g.multi ? () => toggleExpand(g.key) : undefined}>
                     <td>
                       <div className="flex items-center gap-1">
                         {g.multi && <span className="text-gray-400 flex-shrink-0">{isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</span>}
@@ -253,7 +258,7 @@ export default function DebtsPage() {
                     <td><span className={`badge ${info.bg} ${info.cls}`}>{info.label}</span></td>
                     <td className="no-print" onClick={e => e.stopPropagation()}>
                       <div className="flex gap-1">
-                        <button onClick={() => openPayGroup(g)} className="btn-success btn-sm">
+                        <button onClick={() => openPay(g)} className="btn-success btn-sm">
                           <Coins size={12} /> To'lov
                         </button>
                         <button onClick={() => openReminder({ customer: g.customer, debt: g.totalDebt, days_old: g.maxDays, phone: g.phone })}
@@ -264,7 +269,7 @@ export default function DebtsPage() {
                     </td>
                   </tr>
 
-                  {/* Kengaytirilgan tarix — faqat ko'rish */}
+                  {/* Kengaytirilgan tarix — faqat ko'rish, To'lov yo'q */}
                   {g.multi && isOpen && g.items.map(item => {
                     const iInfo = BUCKET_INFO[item.bucket];
                     return (
@@ -288,101 +293,57 @@ export default function DebtsPage() {
       </div>
       </div>
 
-      {/* Ko'p qarzli mijoz — qaysi qarzni tanlash */}
-      <Modal open={!!selectDebtGroup} onClose={() => setSelectDebtGroup(null)}
-        title={`To'lov — ${selectDebtGroup?.customer}`}>
-        {selectDebtGroup && (
-          <div className="space-y-3">
-            <p className="text-sm text-gray-500">Qaysi qarz uchun to'lov kiritmoqchisiz?</p>
-            <div className="divide-y divide-gray-100">
-              {selectDebtGroup.items.map(item => {
-                const iInfo = BUCKET_INFO[item.bucket];
-                return (
-                  <div key={item.sale_id} className="flex items-center justify-between py-3">
-                    <div>
-                      <div className="text-sm font-medium text-gray-800">
-                        {new Date(item.sale_date).toLocaleDateString('uz-UZ')}
-                        <span className="text-xs text-gray-400 ml-2">{item.days_old} kun</span>
-                      </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="font-bold text-red-600 text-sm">{fmt(item.debt)} so'm qarz</span>
-                        <span className={`badge ${iInfo.bg} ${iInfo.cls} text-xs`}>{iInfo.label}</span>
-                      </div>
-                    </div>
-                    <button onClick={() => { setSelectDebtGroup(null); openPay(item); }}
-                      className="btn-success btn-sm ml-4 flex-shrink-0">
-                      <Coins size={12} /> To'lov
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </Modal>
-
       {/* To'lov modal — naqd / karta / bank */}
       <Modal open={!!payFor} onClose={() => setPayFor(null)} title="To'lov kiritish">
         {payFor && (
           <div className="space-y-4">
-            {/* Mijoz info */}
             <div className="bg-gray-50 rounded-xl p-3 text-sm space-y-1">
               <div className="flex justify-between">
                 <span className="text-gray-500">Mijoz:</span>
                 <span className="font-medium">{payFor.customer}</span>
               </div>
-              {payFor.sale_date && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Sana:</span>
-                  <span>{new Date(payFor.sale_date).toLocaleDateString('uz-UZ')}</span>
-                </div>
-              )}
               <div className="flex justify-between">
-                <span className="text-gray-500">Qolgan qarz:</span>
-                <span className="font-bold text-red-600">{fmt(payFor.debt)} so'm</span>
+                <span className="text-gray-500">Jami qarz:</span>
+                <span className="font-bold text-red-600">{fmt(payFor.totalDebt)} so'm</span>
               </div>
             </div>
 
-            {/* To'lov usullari */}
             <div className="space-y-3">
               {[
-                { key: 'naqd',  label: '💵 Naqd',  color: 'focus:ring-green-400  border-green-200' },
-                { key: 'karta', label: '💳 Karta', color: 'focus:ring-blue-400   border-blue-200'  },
-                { key: 'bank',  label: '🏦 Bank',  color: 'focus:ring-purple-400 border-purple-200' },
-              ].map(({ key, label, color }) => (
+                { key: 'naqd',  label: '💵 Naqd',  cls: 'border-green-200 focus:ring-green-400'  },
+                { key: 'karta', label: '💳 Karta', cls: 'border-blue-200  focus:ring-blue-400'   },
+                { key: 'bank',  label: '🏦 Bank',  cls: 'border-purple-200 focus:ring-purple-400' },
+              ].map(({ key, label, cls }) => (
                 <div key={key} className="flex items-center gap-3">
                   <label className="w-20 text-sm font-medium text-gray-700 flex-shrink-0">{label}</label>
                   <div className="relative flex-1">
-                    <input
-                      type="number" min="0"
+                    <input type="number" min="0"
                       value={payAmounts[key]}
                       onChange={e => setPayAmounts(p => ({ ...p, [key]: e.target.value }))}
                       onFocus={e => e.target.select()}
                       placeholder="0"
-                      className={`input pr-12 ${color}`}
-                    />
+                      className={`input pr-12 ${cls}`} />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">so'm</span>
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Jami hisobi */}
             <div className={`rounded-xl p-3 text-sm flex justify-between items-center ${
-              payTotal > payFor.debt + 0.01 ? 'bg-red-50 border border-red-200' :
-              payTotal >= payFor.debt - 0.01 && payTotal > 0 ? 'bg-green-50 border border-green-200' :
+              payTotal > payFor.totalDebt + 0.01 ? 'bg-red-50 border border-red-200' :
+              payTotal >= payFor.totalDebt - 0.01 && payTotal > 0 ? 'bg-green-50 border border-green-200' :
               'bg-blue-50 border border-blue-100'
             }`}>
               <span className="text-gray-600 font-medium">Jami to'lov:</span>
               <div className="text-right">
                 <span className="font-bold text-lg">{fmt(payTotal)} so'm</span>
-                {payTotal > 0 && payTotal < payFor.debt - 0.01 && (
-                  <div className="text-xs text-yellow-600">Qisman · qoladi: {fmt(payFor.debt - payTotal)} so'm</div>
+                {payTotal > 0 && payTotal < payFor.totalDebt - 0.01 && (
+                  <div className="text-xs text-yellow-600">Qisman · qoladi: {fmt(payFor.totalDebt - payTotal)} so'm</div>
                 )}
-                {payTotal >= payFor.debt - 0.01 && payTotal <= payFor.debt + 0.01 && payTotal > 0 && (
+                {payTotal >= payFor.totalDebt - 0.01 && payTotal <= payFor.totalDebt + 0.01 && payTotal > 0 && (
                   <div className="text-xs text-green-600">✅ To'liq — qarz yopiladi</div>
                 )}
-                {payTotal > payFor.debt + 0.01 && (
+                {payTotal > payFor.totalDebt + 0.01 && (
                   <div className="text-xs text-red-600">⚠️ Qarzdan ko'p!</div>
                 )}
               </div>
@@ -390,9 +351,8 @@ export default function DebtsPage() {
 
             <div className="flex gap-3 pt-1">
               <button onClick={() => setPayFor(null)} className="btn-secondary flex-1">Bekor</button>
-              <button
-                onClick={submitPay}
-                disabled={payMutation.isPending || payTotal <= 0 || payTotal > payFor.debt + 0.01}
+              <button onClick={submitPay}
+                disabled={payMutation.isPending || payTotal <= 0 || payTotal > payFor.totalDebt + 0.01}
                 className="btn-success flex-1">
                 {payMutation.isPending ? 'Saqlanmoqda...' : 'To\'lovni saqlash'}
               </button>

@@ -116,6 +116,16 @@ async function importDebtors2026() {
 // Server bootda avtomatik — FAQAT BIR MARTA (sentinel: placeholder mahsulotda sotuv bormi).
 async function ensureDebtors2026() {
   try {
+    // Egasi qarzlarni tozalagan bo'lsa — import BUTUNLAY bloklangan (qarzlar qaytmasin).
+    // app_flags'dagi 'debtors_import_disabled' bayrog'i salesReset tomonidan qo'yiladi.
+    try {
+      const f = await db.query("SELECT 1 AS x FROM app_flags WHERE key = 'debtors_import_disabled' LIMIT 1");
+      if (f.rows.length) {
+        console.log("💳 Qarz importi bloklangan (egasi tozalagan) — o'tkazildi");
+        return;
+      }
+    } catch (e) { /* app_flags jadvali hali yo'q bo'lishi mumkin — davom etamiz */ }
+
     const r = await db.query(
       `SELECT COUNT(*) as cnt FROM sales s JOIN products p ON s.product_id = p.id WHERE p.name = $1`,
       [PLACEHOLDER_NAME]

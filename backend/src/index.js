@@ -63,7 +63,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'debts-print-button', commit: 'v40' });
+  res.json({ version: 'sales-debts-wiped', commit: 'v41' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)
@@ -138,9 +138,13 @@ require('./services/pricelistSeed')
   .ensurePricelist2026()
   .catch(e => console.error('Praysist seed init xato:', e.message));
 
-// bito.online qarzdorlar ro'yxatini avtomatik import qilish (faqat bir marta, sentinel bilan himoyalangan)
-require('./services/debtorsSeed')
-  .ensureDebtors2026()
+// BIR MARTALIK sotuv+qarz tozalash (egasi talabi 2026-06-22) — keyin bito qarzdorlar importi.
+// Tartib MUHIM: avval tozalash bayrog'i qo'yiladi, keyin import o'sha bayroqni ko'rib o'zini bloklaydi
+// (aks holda tozalashdan keyin eski qarzlar qayta import bo'lib qolardi).
+require('./services/salesReset')
+  .ensureSalesWiped()
+  .catch(e => console.error('Sotuv tozalash init xato:', e.message))
+  .then(() => require('./services/debtorsSeed').ensureDebtors2026())
   .catch(e => console.error('Qarzdorlar seed init xato:', e.message));
 
 const PORT = process.env.PORT || 5000;

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Users, Trash2 } from 'lucide-react';
+import { Plus, X, Users, Trash2, QrCode, Printer } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { employeesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -17,6 +18,47 @@ const SHIFTS = { '1-SMENA': '1-Smena', '2-SMENA': '2-Smena' };
 // STANOKCHI/DETALCHI — dona haqi (mahsulotga bog'liq). Qolganlari — oylik (belgilangan yoki foiz).
 const PIECE_RATE = ['STANOKCHI', 'DETALCHI'];
 const isPieceRate = (t) => PIECE_RATE.includes(t);
+
+function BadgeCard({ emp }) {
+  return (
+    <div style={{
+      width: '7cm', border: '2px solid #2563eb', borderRadius: '6px',
+      padding: '10px', fontFamily: 'Arial, sans-serif', background: 'white',
+      display: 'inline-block', margin: '4px', verticalAlign: 'top',
+      boxSizing: 'border-box', pageBreakInside: 'avoid',
+    }}>
+      <div style={{ textAlign: 'center', borderBottom: '1px solid #e5e7eb', paddingBottom: '5px', marginBottom: '5px' }}>
+        <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#1d4ed8', letterSpacing: '1px' }}>TEKNOPLAST</div>
+        <div style={{ fontSize: '8px', color: '#9ca3af' }}>Plastik mahsulotlar zavodi</div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '6px' }}>
+        <QRCodeSVG value={`teknoplast-emp-${emp.id}`} size={85} level="M" includeMargin={false} />
+      </div>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#111827', marginBottom: '4px' }}>{emp.name}</div>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '4px', flexWrap: 'wrap' }}>
+          <span style={{
+            background: emp.type === 'STANOKCHI' ? '#dbeafe' : '#fef3c7',
+            color: emp.type === 'STANOKCHI' ? '#1d4ed8' : '#92400e',
+            padding: '1px 7px', borderRadius: '4px', fontSize: '9px', fontWeight: 'bold',
+          }}>
+            {TYPES[emp.type] || emp.type}
+          </span>
+          {emp.type === 'STANOKCHI' && emp.shift && (
+            <span style={{
+              background: emp.shift === '2-SMENA' ? '#ede9fe' : '#e0f2fe',
+              color: emp.shift === '2-SMENA' ? '#7c3aed' : '#0369a1',
+              padding: '1px 7px', borderRadius: '4px', fontSize: '9px',
+            }}>
+              {SHIFTS[emp.shift] || emp.shift}
+            </span>
+          )}
+        </div>
+        <div style={{ fontSize: '8px', color: '#d1d5db', marginTop: '4px' }}>ID: {String(emp.id).slice(0, 8)}</div>
+      </div>
+    </div>
+  );
+}
 
 function Modal({ open, onClose, title, children }) {
   if (!open) return null;
@@ -41,6 +83,8 @@ export default function EmployeesPage() {
   const [showModal, setShowModal] = useState(false);
   const [editEmployee, setEditEmployee] = useState(null);
   const [filter, setFilter] = useState({ type: '', search: '' });
+  const [qrEmployee, setQrEmployee] = useState(null);
+  const [qrBulk, setQrBulk] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['employees', filter],
@@ -132,6 +176,10 @@ export default function EmployeesPage() {
               <Trash2 size={14} /> Hammasini o'chirish
             </button>
           )}
+          <button onClick={() => setQrBulk(true)}
+            className="btn-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 flex items-center gap-1">
+            <QrCode size={14} /> Hamma QR
+          </button>
           {canAdd && (
             <button onClick={openCreate} className="btn-primary btn-sm">
               <Plus size={14} /> Xodim qo'shish
@@ -210,7 +258,14 @@ export default function EmployeesPage() {
                   </span>
                 </td>
                 {canWrite && (
-                  <td className="flex gap-1">
+                  <td className="flex gap-1 flex-wrap">
+                    {(emp.type === 'STANOKCHI' || emp.type === 'DETALCHI') && (
+                      <button onClick={() => setQrEmployee(emp)}
+                        title="QR Begik chop etish"
+                        className="btn-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 flex items-center gap-1">
+                        <QrCode size={12} /> Begik
+                      </button>
+                    )}
                     <button onClick={() => openEdit(emp)} className="btn-secondary btn-sm">Tahrirlash</button>
                     <button
                       onClick={() => {
@@ -236,6 +291,68 @@ export default function EmployeesPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Bitta xodim QR begik */}
+      {qrEmployee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setQrEmployee(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl p-6 max-w-xs w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-gray-900">QR Begik</h3>
+              <button onClick={() => setQrEmployee(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <div className="badge-print-zone flex justify-center">
+              <BadgeCard emp={qrEmployee} />
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setQrEmployee(null)} className="btn-secondary flex-1">Yopish</button>
+              <button onClick={() => {
+                document.body.classList.add('printing-badges');
+                window.print();
+                setTimeout(() => document.body.classList.remove('printing-badges'), 1000);
+              }} className="btn-primary flex-1 flex items-center justify-center gap-1">
+                <Printer size={14} /> Chop etish
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hamma stanokchi+detalchi QR begiklar */}
+      {qrBulk && (() => {
+        const pieceWorkers = (data?.employees || []).filter(e => e.is_active && (e.type === 'STANOKCHI' || e.type === 'DETALCHI'));
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setQrBulk(false)} />
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 max-h-[88vh] flex flex-col">
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h3 className="font-bold text-gray-900">Barcha QR Begiklar</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">{pieceWorkers.length} ta stanokchi/detalchi</p>
+                </div>
+                <button onClick={() => setQrBulk(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+              </div>
+              <div className="badge-print-zone flex flex-wrap gap-1 overflow-y-auto flex-1 justify-center">
+                {pieceWorkers.length === 0 ? (
+                  <p className="text-center text-gray-400 py-8 w-full">Faol stanokchi/detalchi topilmadi</p>
+                ) : pieceWorkers.map(emp => (
+                  <BadgeCard key={emp.id} emp={emp} />
+                ))}
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button onClick={() => setQrBulk(false)} className="btn-secondary flex-1">Yopish</button>
+                <button onClick={() => {
+                  document.body.classList.add('printing-badges');
+                  window.print();
+                  setTimeout(() => document.body.classList.remove('printing-badges'), 1000);
+                }} className="btn-primary flex-1 flex items-center justify-center gap-1">
+                  <Printer size={14} /> Hammasini chop etish
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <Modal open={showModal} onClose={() => { setShowModal(false); setEditEmployee(null); }}
         title={editEmployee ? 'Xodimni tahrirlash' : 'Yangi Xodim'}>

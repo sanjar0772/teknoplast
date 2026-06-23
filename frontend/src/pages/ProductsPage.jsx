@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Package, DollarSign, Trash2, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory } from 'lucide-react';
+import { Plus, X, Package, DollarSign, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory } from 'lucide-react';
 import clsx from 'clsx';
 import { productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
@@ -182,73 +182,6 @@ export default function ProductsPage({ embedded = false }) {
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
-  const deleteAllMutation = useMutation({
-    mutationFn: () => productsAPI.resetAll(),
-    onSuccess: (res) => {
-      const d = res.data;
-      toast.success(`${d.products} ta mahsulot va ${d.sales} ta sotuv o'chirildi`);
-      qc.invalidateQueries({ queryKey: ['products'] });
-      qc.invalidateQueries({ queryKey: ['sales'] });
-      qc.invalidateQueries({ queryKey: ['customers'] });
-    },
-    onError: (e) => toast.error(e?.response?.data?.error || 'O\'chirishda xato'),
-  });
-
-  const resetStockMutation = useMutation({
-    mutationFn: () => productsAPI.resetStock(),
-    onSuccess: (res) => {
-      toast.success(`${res.data.count} ta mahsulot ombori 0 ga tushirildi`);
-      qc.invalidateQueries({ queryKey: ['products'] });
-    },
-    onError: (e) => toast.error(e?.response?.data?.error || 'Xato'),
-  });
-
-  const importPricelistMutation = useMutation({
-    mutationFn: () => productsAPI.importPricelist(),
-    onSuccess: (res) => {
-      const d = res.data;
-      toast.success(`Praysist yuklandi — ${d.created} ta yangi, ${d.updated} ta yangilandi (kirill + kod)`);
-      qc.invalidateQueries({ queryKey: ['products'] });
-    },
-    onError: (e) => toast.error(e?.response?.data?.error || 'Xato'),
-  });
-
-  const importPricelist = () => {
-    const ok = confirm(
-      'PRAYSLIST yuklash — Texno Innovator 04.05.2026 narxlari\n\n' +
-      '• 214 ta mahsulot kirill alifbosida (Бачок, Яшик, Унитаз...)\n' +
-      '• Har bir nomga to\'liq kod qo\'shiladi (masalan: Kod 72-A)\n' +
-      '• Rangi — Оқ\n' +
-      '• Yangi mahsulotga 1000 dona ombor\n' +
-      '• Mavjud (lotin) mahsulotlar kirillga YANGILANADI — ombor/narx saqlanadi\n\n' +
-      'Davom etilsinmi?'
-    );
-    if (ok) importPricelistMutation.mutate();
-  };
-
-  const resetStock = () => {
-    const n = (data?.products || []).length;
-    if (!n) return toast.error('Mahsulot yo\'q');
-    const ok = confirm(
-      `DIQQAT! Barcha ${n} ta mahsulotning ombordagi soni 0 ga tushiriladi.\n\n` +
-      `Mahsulotlar o'chmaydi — faqat ombor soni 0 bo'ladi.\n\n` +
-      `Davom etilsinmi?`
-    );
-    if (ok) resetStockMutation.mutate();
-  };
-
-  const deleteAll = () => {
-    const ids = (data?.products || []).map(p => p.id);
-    if (!ids.length) return toast.error('O\'chiriladigan mahsulot yo\'q');
-    const ok = confirm(
-      `DIQQAT! Barcha ${ids.length} ta mahsulot VA barcha sotuvlar o'chiriladi.\n\n` +
-      `• Barcha mahsulotlar butunlay o'chadi\n` +
-      `• Barcha sotuv cheklari ham o'chadi\n\n` +
-      `Bu amalni ORQAGA QAYTARIB BO'LMAYDI! Davom etilsinmi?`
-    );
-    if (ok) deleteAllMutation.mutate();
-  };
-
   const { register, handleSubmit, reset, setValue } = useForm();
 
   const openEdit = (p) => {
@@ -291,23 +224,6 @@ export default function ProductsPage({ embedded = false }) {
       <div className="page-header">
         {!embedded && <h1 className="page-title">Mahsulotlar</h1>}
         <div className="flex gap-2 flex-wrap">
-          {isOwner() && (
-            <button onClick={importPricelist} disabled={importPricelistMutation.isPending}
-              className="btn-sm border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg px-3 flex items-center gap-1 font-medium">
-              {importPricelistMutation.isPending ? 'Yuklanmoqda...' : '📋 Praysist yuklash (214 ta)'}
-            </button>
-          )}
-          {isOwner() && data?.products?.length > 0 && (
-            <button onClick={resetStock} disabled={resetStockMutation.isPending}
-              className="btn-sm border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 rounded-lg px-3 flex items-center gap-1">
-              {resetStockMutation.isPending ? 'Tushirilmoqda...' : 'Omborni 0 ga tushirish'}
-            </button>
-          )}
-          {isOwner() && data?.products?.length > 0 && (
-            <button onClick={deleteAll} disabled={deleteAllMutation.isPending} className="btn-danger btn-sm">
-              <Trash2 size={14} /> {deleteAllMutation.isPending ? 'O\'chirilmoqda...' : 'Hammasini o\'chirish'}
-            </button>
-          )}
           {canAdd && (
             <button
               onClick={() => {

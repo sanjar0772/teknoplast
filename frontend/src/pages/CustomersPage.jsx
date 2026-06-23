@@ -41,7 +41,7 @@ function Modal({ open, onClose, title, children, wide }) {
   );
 }
 
-export default function CustomersPage() {
+export default function CustomersPage({ embedded = false }) {
   const { isOwner } = useAuthStore();
   const qc = useQueryClient();
   const [filter, setFilter] = useState({ search: '', type: '' });
@@ -184,7 +184,7 @@ export default function CustomersPage() {
   return (
     <div className="space-y-6">
       <div className="page-header">
-        <h1 className="page-title">Mijozlar</h1>
+        {!embedded && <h1 className="page-title">Mijozlar</h1>}
         <button onClick={openCreate} className="btn-primary btn-sm">
           <Plus size={14} /> Mijoz qo'shish
         </button>

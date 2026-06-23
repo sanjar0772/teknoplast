@@ -33,7 +33,7 @@ function Modal({ open, onClose, title, children }) {
   );
 }
 
-export default function SalesPage() {
+export default function SalesPage({ embedded = false }) {
   const { isSalesHead, isAccountant, isOwner } = useAuthStore();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -258,7 +258,7 @@ export default function SalesPage() {
   return (
     <div className="space-y-6">
       <div className="page-header">
-        <h1 className="page-title">Sotuv</h1>
+        {!embedded && <h1 className="page-title">Sotuv</h1>}
         <div className="flex gap-2">
           <button onClick={downloadExcel} className="btn-secondary btn-sm">
             <Download size={14} /> Excel

@@ -101,7 +101,7 @@ function Modal({ open, onClose, title, children }) {
   );
 }
 
-export default function ProductsPage() {
+export default function ProductsPage({ embedded = false }) {
   const { isOwner, isProductionHead, isAccountant, isKirimchi } = useAuthStore();
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
@@ -289,7 +289,7 @@ export default function ProductsPage() {
   return (
     <div className="space-y-6">
       <div className="page-header">
-        <h1 className="page-title">Mahsulotlar</h1>
+        {!embedded && <h1 className="page-title">Mahsulotlar</h1>}
         <div className="flex gap-2 flex-wrap">
           {isOwner() && (
             <button onClick={importPricelist} disabled={importPricelistMutation.isPending}

@@ -63,7 +63,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'customer-excel-fix-bigger-modal', commit: 'v55' });
+  res.json({ version: 'unified-history-tabs', commit: 'v56' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

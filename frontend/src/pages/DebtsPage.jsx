@@ -1,8 +1,8 @@
 import { useState, useMemo, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { X, Phone, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot, Printer, Search, ChevronDown, ChevronRight, History } from 'lucide-react';
-import { reportsAPI, salesAPI, ahmadAPI } from '../services/api';
+import { X, Phone, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot, Printer, Search, ChevronDown, ChevronRight, History, Plus } from 'lucide-react';
+import { reportsAPI, salesAPI, ahmadAPI, customersAPI } from '../services/api';
 
 const METHOD_LABEL = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', OTHER: 'Boshqa' };
 
@@ -107,6 +107,39 @@ export default function DebtsPage() {
   const [expanded, setExpanded] = useState(() => new Set());
   const [dateFilter, setDateFilter] = useState({ date_from: '', date_to: '' });
   const [datePreset, setDatePreset] = useState('all');
+  // Qo'lda qarz qo'shish formasi
+  const [addDebt, setAddDebt] = useState(null); // null = yopiq
+
+  const { data: customersData } = useQuery({
+    queryKey: ['customers-list'],
+    queryFn: () => customersAPI.getAll().then(r => r.data),
+  });
+
+  const addDebtMutation = useMutation({
+    mutationFn: (d) => reportsAPI.addDebt(d),
+    onSuccess: () => {
+      toast.success('Qarz qo\'shildi');
+      setAddDebt(null);
+      qc.invalidateQueries({ queryKey: ['debts'] });
+      qc.invalidateQueries({ queryKey: ['customers'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Qarz qo\'shishda xato'),
+  });
+
+  const openAddDebt = () => setAddDebt({
+    customer_id: '', amount: '', sale_date: new Date().toISOString().slice(0, 10), notes: '',
+  });
+  const submitAddDebt = () => {
+    if (!addDebt.customer_id) return toast.error('Mijozni tanlang');
+    if (!addDebt.amount || parseFloat(addDebt.amount) <= 0) return toast.error('Qarz summasini kiriting');
+    addDebtMutation.mutate({
+      customer_id: addDebt.customer_id,
+      amount: parseFloat(addDebt.amount),
+      sale_date: addDebt.sale_date,
+      notes: addDebt.notes || undefined,
+    });
+  };
 
   const applyPreset = (preset) => {
     setDatePreset(preset);
@@ -262,6 +295,9 @@ export default function DebtsPage() {
             <p className="text-xs text-gray-500">Umumiy qarz</p>
             <p className="text-2xl font-bold text-red-600">{fmt(data?.total_debt)} so'm</p>
           </div>
+          <button onClick={openAddDebt} className="btn-primary btn-sm no-print">
+            <Plus size={14} /> Qarz qo'shish
+          </button>
           <button onClick={() => window.print()} className="btn-secondary btn-sm no-print">
             <Printer size={14} /> Chop etish
           </button>
@@ -577,6 +613,60 @@ export default function DebtsPage() {
               )}
             </div>
             <p className="text-xs text-gray-400 text-center">AI faqat matn yozadi — siz tekshirib, o'zingiz yuborasiz.</p>
+          </div>
+        )}
+      </Modal>
+
+      {/* Qo'lda qarz qo'shish modal */}
+      <Modal open={!!addDebt} onClose={() => setAddDebt(null)} title="Qarz qo'shish">
+        {addDebt && (
+          <div className="space-y-4">
+            <div>
+              <label className="label text-sm">Mijoz *</label>
+              <select
+                value={addDebt.customer_id}
+                onChange={e => setAddDebt(d => ({ ...d, customer_id: e.target.value }))}
+                className={`select ${!addDebt.customer_id ? 'border-red-300' : ''}`}
+              >
+                <option value="" disabled>— Mijozni tanlang —</option>
+                {customersData?.customers?.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ''}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label text-sm">Qarz summasi *</label>
+              <div className="relative">
+                <input type="number" min="0" step="1000"
+                  value={addDebt.amount}
+                  onChange={e => setAddDebt(d => ({ ...d, amount: e.target.value }))}
+                  onFocus={e => e.target.select()}
+                  placeholder="0"
+                  className="input pr-12" />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">so'm</span>
+              </div>
+            </div>
+            <div>
+              <label className="label text-sm">Sana</label>
+              <input type="date" value={addDebt.sale_date}
+                onChange={e => setAddDebt(d => ({ ...d, sale_date: e.target.value }))}
+                className="input" />
+            </div>
+            <div>
+              <label className="label text-sm">Izoh (ixtiyoriy)</label>
+              <input type="text" value={addDebt.notes}
+                onChange={e => setAddDebt(d => ({ ...d, notes: e.target.value }))}
+                placeholder="Masalan: oldingi qarz qoldig'i"
+                className="input" />
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setAddDebt(null)} className="btn-secondary flex-1">Bekor</button>
+              <button onClick={submitAddDebt}
+                disabled={addDebtMutation.isPending}
+                className="btn-primary flex-1">
+                {addDebtMutation.isPending ? 'Saqlanmoqda...' : 'Qarz qo\'shish'}
+              </button>
+            </div>
           </div>
         )}
       </Modal>

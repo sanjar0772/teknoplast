@@ -109,6 +109,44 @@ router.get('/debts', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/reports/debts — qo'lda yangi qarz qo'shish (mahsulotsiz, ombor kamaymaydi)
+const MANUAL_DEBT_PRODUCT = 'Qo\'lda qarz';
+router.post('/debts', requireRole('OWNER', 'ACCOUNTANT', 'SALES_HEAD'), async (req, res, next) => {
+  try {
+    const { customer_id, amount, sale_date, notes } = req.body;
+    const debt = Math.round(parseFloat(amount) || 0);
+    if (!customer_id) return res.status(400).json({ error: 'Mijozni tanlang' });
+    if (debt <= 0) return res.status(400).json({ error: 'Qarz summasi 0 dan katta bo\'lsin' });
+
+    const c = await query('SELECT name, phone FROM customers WHERE id = $1', [customer_id]);
+    if (!c.rows.length) return res.status(404).json({ error: 'Mijoz topilmadi' });
+
+    // Qo'lda qarz uchun maxsus placeholder mahsulot (omborga ta'sir qilmaydi)
+    let p = await query('SELECT id FROM products WHERE name = $1 LIMIT 1', [MANUAL_DEBT_PRODUCT]);
+    let productId;
+    if (p.rows.length) {
+      productId = p.rows[0].id;
+    } else {
+      const ins = await query(
+        `INSERT INTO products (name, type, description, price, daily_production, stock_quantity, unit, rang, kind)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+        [MANUAL_DEBT_PRODUCT, 'Хизмат', 'MANUAL_DEBT', 0, 0, 0, 'dona', null, 'KOMPONENT']
+      );
+      productId = ins.rows[0].id;
+    }
+
+    await query(
+      `INSERT INTO sales (product_id, customer_id, quantity, unit_price, total_amount,
+        customer_name, customer_phone, sale_date, status, payment_amount, notes, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [productId, customer_id, 1, debt, debt, c.rows[0].name, c.rows[0].phone || null,
+       sale_date || new Date().toISOString().slice(0, 10), 'PENDING', 0, notes || 'Qo\'lda qo\'shilgan qarz', req.user.id]
+    );
+
+    res.status(201).json({ success: true });
+  } catch (err) { next(err); }
+});
+
 // GET /api/reports/monthly?month=2024-01
 router.get('/monthly', async (req, res, next) => {
   try {

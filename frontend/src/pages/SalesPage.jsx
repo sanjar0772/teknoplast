@@ -796,7 +796,8 @@ export default function SalesPage({ embedded = false }) {
                       const cashM = notes.match(/Naqd:\s*([\d\s,.]+)/);
                       const cardM = notes.match(/Karta:\s*([\d\s,.]+)/);
                       const bankM = notes.match(/Bank:\s*([\d\s,.]+)/);
-                      const hasMixed = cashM || cardM || bankM;
+                      const paymeM = notes.match(/Payme:\s*([\d\s,.]+)/);
+                      const hasMixed = cashM || cardM || bankM || paymeM;
                       if (!hasMixed && chekDebt <= 0 && chekCredit <= 0) return null;
                       return (
                         <div className="text-[12px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-3">
@@ -805,6 +806,7 @@ export default function SalesPage({ embedded = false }) {
                               {cashM && <div className="flex justify-between text-green-700"><span>Naqd:</span><span className="font-bold">{fmt(parseAmt(cashM))} so'm</span></div>}
                               {cardM && <div className="flex justify-between text-blue-700"><span>Karta:</span><span className="font-bold">{fmt(parseAmt(cardM))} so'm</span></div>}
                               {bankM && <div className="flex justify-between text-purple-700"><span>Bank:</span><span className="font-bold">{fmt(parseAmt(bankM))} so'm</span></div>}
+                              {paymeM && <div className="flex justify-between text-cyan-700"><span>Pay Me:</span><span className="font-bold">{fmt(parseAmt(paymeM))} so'm</span></div>}
                               {chekDebt > 0 && <div className="flex justify-between text-red-600"><span>Qarz:</span><span className="font-bold">{fmt(chekDebt)} so'm</span></div>}
                               {chekCredit > 0 && <div className="flex justify-between text-blue-700"><span>Haqdor (oshiqcha):</span><span className="font-bold">+{fmt(chekCredit)} so'm</span></div>}
                             </>

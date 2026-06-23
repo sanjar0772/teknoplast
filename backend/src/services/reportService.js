@@ -440,9 +440,11 @@ function getInvoicePaymentLabel(sale) {
   const cashMatch = notes.match(/Naqd:\s*([\d\s,.]+)/);
   const cardMatch = notes.match(/Karta:\s*([\d\s,.]+)/);
   const bankMatch = notes.match(/Bank:\s*([\d\s,.]+)/);
+  const paymeMatch = notes.match(/Payme:\s*([\d\s,.]+)/);
   if (cashMatch) parts.push(`Naqd: ${formatMoney(parseAmt(cashMatch))}`);
   if (cardMatch) parts.push(`Karta: ${formatMoney(parseAmt(cardMatch))}`);
   if (bankMatch) parts.push(`Bank: ${formatMoney(parseAmt(bankMatch))}`);
+  if (paymeMatch) parts.push(`Pay Me: ${formatMoney(parseAmt(paymeMatch))}`);
   if (parts.length) {
     const debt = Math.max(0, total - paid);
     if (debt > 0) parts.push(`Qarz: ${formatMoney(debt)}`);

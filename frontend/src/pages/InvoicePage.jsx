@@ -45,9 +45,11 @@ const parsePaymentBreakdown = (sale) => {
   const cashMatch = notes.match(/Naqd:\s*([\d\s,.]+)/);
   const cardMatch = notes.match(/Karta:\s*([\d\s,.]+)/);
   const bankMatch = notes.match(/Bank:\s*([\d\s,.]+)/);
+  const paymeMatch = notes.match(/Payme:\s*([\d\s,.]+)/);
   if (cashMatch) parts.push({ label: 'Naqd', amount: parseAmt(cashMatch), icon: '💵' });
   if (cardMatch) parts.push({ label: 'Karta', amount: parseAmt(cardMatch), icon: '💳' });
   if (bankMatch) parts.push({ label: 'Bank', amount: parseAmt(bankMatch), icon: '🏦' });
+  if (paymeMatch) parts.push({ label: 'Pay Me', amount: parseAmt(paymeMatch), icon: '📱' });
   return parts;
 };
 

@@ -21,7 +21,7 @@ function rebuildName(base_name, razmer, rang) {
 // GET /api/products
 router.get('/', async (req, res, next) => {
   try {
-    const { is_active = 'true', search, type } = req.query;
+    const { is_active = 'true', search, type, start_date, end_date } = req.query;
     let sql = `
       SELECT p.*, rm.name as raw_material_name, rm.stock_balance as rm_stock
       FROM products p LEFT JOIN raw_materials rm ON p.raw_material_id = rm.id
@@ -40,7 +40,23 @@ router.get('/', async (req, res, next) => {
     for (const row of cs.rows) {
       (byProduct[row.product_id] = byProduct[row.product_id] || []).push({ rang: row.rang || '', quantity: parseFloat(row.quantity) });
     }
-    const products = result.rows.map(p => ({ ...p, color_stock: byProduct[p.id] || [] }));
+    let periodStats = {};
+    if (start_date || end_date) {
+      let pSql = `SELECT product_id, COALESCE(SUM(quantity), 0) AS sold_qty, COALESCE(SUM(total_amount), 0) AS sold_amount, COUNT(*) AS sold_count FROM sales WHERE 1=1`;
+      const pParams = [];
+      let pIdx = 1;
+      if (start_date) { pSql += ` AND sale_date >= $${pIdx++}`; pParams.push(start_date); }
+      if (end_date) { pSql += ` AND sale_date <= $${pIdx++}`; pParams.push(end_date); }
+      pSql += ' GROUP BY product_id';
+      const pR = await query(pSql, pParams);
+      for (const r of pR.rows) {
+        periodStats[r.product_id] = { sold_qty: parseInt(r.sold_qty) || 0, sold_amount: parseFloat(r.sold_amount) || 0, sold_count: parseInt(r.sold_count) || 0 };
+      }
+    }
+    const products = result.rows.map(p => ({
+      ...p, color_stock: byProduct[p.id] || [],
+      ...(start_date || end_date ? { period: periodStats[p.id] || { sold_qty: 0, sold_amount: 0, sold_count: 0 } } : {}),
+    }));
     res.json({ products });
   } catch (err) { next(err); }
 });

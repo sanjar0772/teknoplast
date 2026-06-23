@@ -193,10 +193,26 @@ export default function ProductsPage({ embedded = false }) {
   const [bomAddForm, setBomAddForm] = useState({ component_id: '', qty: 1 });
   const [historyProduct, setHistoryProduct] = useState(null); // tarix modal
   const [search, setSearch] = useState(''); // mahsulot qidiruv
+  const [datePreset, setDatePreset] = useState('all');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+
+  const dateParams = useMemo(() => {
+    if (datePreset === 'all') return {};
+    if (datePreset === 'custom') {
+      const p = {};
+      if (customStart) p.start_date = customStart;
+      if (customEnd) p.end_date = customEnd;
+      return p;
+    }
+    const pr = DATE_PRESETS.find(p => p.key === datePreset);
+    if (!pr || !pr.start) return {};
+    return { start_date: pr.start(), end_date: pr.end() };
+  }, [datePreset, customStart, customEnd]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['products'],
-    queryFn: () => productsAPI.getAll({ is_active: 'all' }).then(r => r.data),
+    queryKey: ['products', dateParams],
+    queryFn: () => productsAPI.getAll({ is_active: 'all', ...dateParams }).then(r => r.data),
   });
 
   const { data: rawMats } = useQuery({
@@ -332,6 +348,30 @@ export default function ProductsPage({ embedded = false }) {
       </div>
       {q && <p className="text-xs text-gray-400 -mt-3">{shownProducts.length} ta mahsulot topildi</p>}
 
+      {/* Sana filtri tugmalari */}
+      <div className="flex flex-wrap items-center gap-2 -mt-2">
+        <span className="text-xs text-gray-500 font-medium flex items-center gap-1"><Calendar size={13} /> Davr:</span>
+        {DATE_PRESETS.map(p => (
+          <button key={p.key} onClick={() => setDatePreset(p.key)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              datePreset === p.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}>{p.label}</button>
+        ))}
+        <button onClick={() => setDatePreset('custom')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
+            datePreset === 'custom' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}><Calendar size={11} /> Boshqa</button>
+        {datePreset === 'custom' && (
+          <div className="flex gap-2 items-center">
+            <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
+              className="input text-xs py-1 px-2 w-32" placeholder="Dan" />
+            <span className="text-gray-400 text-xs">—</span>
+            <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
+              className="input text-xs py-1 px-2 w-32" placeholder="Gacha" />
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {isLoading ? (
           <div className="col-span-3 text-center py-12 text-gray-400">Yuklanmoqda...</div>
@@ -379,6 +419,18 @@ export default function ProductsPage({ embedded = false }) {
                   {p.stock_quantity} {p.unit}
                 </span>
               </div>
+              {p.period && (
+                <div className="border-t pt-2 mt-1 space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-orange-600">Sotildi:</span>
+                    <span className="font-semibold text-orange-700">{p.period.sold_qty} {p.unit} ({p.period.sold_count} ta)</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-orange-600">Tushum:</span>
+                    <span className="font-semibold text-orange-700">{fmt(p.period.sold_amount)} so'm</span>
+                  </div>
+                </div>
+              )}
               {(p.stanokchi_rate > 0 || p.stanokchi_semi_rate > 0 || p.detalchi_rate > 0) && (
                 <div className="border-t pt-2 mt-2 space-y-1">
                   {p.stanokchi_rate > 0 && (

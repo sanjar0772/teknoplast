@@ -576,9 +576,9 @@ export default function QuickSalePage() {
                         Chapdan mahsulot qo'shing
                       </td>
                     </tr>
-                  ) : s.cart.map((x, i) => (
+                  ) : s.cart.map((x, i) => ({ x, num: i + 1 })).reverse().map(({ x, num }) => (
                     <tr key={x.key}>
-                      <td className="text-gray-400">{i + 1}</td>
+                      <td className="text-gray-400">{num}</td>
                       <td>
                         <div className="font-medium text-gray-900 truncate max-w-[160px]">{x.name}</div>
                         <div className="text-[10px] text-gray-400">

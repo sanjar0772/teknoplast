@@ -44,7 +44,7 @@ router.get('/:ref', async (req, res, next) => {
              p.name as product_name, p.razmer, p.rang, p.unit
       FROM sales s JOIN products p ON s.product_id = p.id
       WHERE s.order_ref = $1
-      ORDER BY p.name`, [req.params.ref]);
+      ORDER BY s.created_at, s.rowid`, [req.params.ref]);
     if (!items.rows.length) return res.status(404).json({ error: 'Buyurtma topilmadi' });
 
     const first = items.rows[0];
@@ -84,7 +84,7 @@ router.get('/:ref/nakladnoy', async (req, res, next) => {
       SELECT s.quantity, s.total_amount, s.customer_name, s.customer_phone, s.sale_date, s.order_ref,
              p.name as product_name, p.razmer, p.rang, p.unit
       FROM sales s JOIN products p ON s.product_id = p.id
-      WHERE s.order_ref = $1 ORDER BY p.name`, [req.params.ref])).rows;
+      WHERE s.order_ref = $1 ORDER BY s.created_at, s.rowid`, [req.params.ref])).rows;
     if (!items.length) return res.status(404).json({ error: 'Buyurtma topilmadi' });
 
     const order = {

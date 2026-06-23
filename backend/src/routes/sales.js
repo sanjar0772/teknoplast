@@ -124,7 +124,7 @@ router.get('/:id', async (req, res, next) => {
       const itemsR = await query(
         `SELECT s.*, COALESCE(p.name, '[O''chirilgan mahsulot]') as product_name, COALESCE(p.unit, 'dona') as unit
          FROM sales s LEFT JOIN products p ON s.product_id = p.id
-         WHERE s.order_ref = $1 ORDER BY s.created_at`,
+         WHERE s.order_ref = $1 ORDER BY s.created_at, s.rowid`,
         [sale.order_ref]
       );
       if (itemsR.rows.length) items = itemsR.rows;
@@ -179,7 +179,7 @@ router.get('/:id/invoice-pdf', async (req, res, next) => {
       const itemsR = await query(
         `SELECT s.*, COALESCE(p.name, '[O''chirilgan mahsulot]') as product_name, COALESCE(p.unit, 'dona') as unit
          FROM sales s LEFT JOIN products p ON s.product_id = p.id
-         WHERE s.order_ref = $1 ORDER BY s.created_at`,
+         WHERE s.order_ref = $1 ORDER BY s.created_at, s.rowid`,
         [sale.order_ref]
       );
       if (itemsR.rows.length) items = itemsR.rows;

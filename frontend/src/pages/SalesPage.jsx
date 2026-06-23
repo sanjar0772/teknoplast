@@ -787,6 +787,20 @@ export default function SalesPage({ embedded = false }) {
                         </div>
                       ))}
                     </div>
+                    {(() => {
+                      const dM = (sale.notes || '').match(/Chegirma:\s*([\d\s,.]+)/);
+                      const dAmt = dM ? parseFloat(dM[1].replace(/[^\d.]/g, '')) || 0 : 0;
+                      return dAmt > 0 ? (
+                        <>
+                          <div className="flex justify-between text-[12px] text-gray-600 pb-0.5">
+                            <span>Oraliq:</span><span>{fmt(total + dAmt)} so'm</span>
+                          </div>
+                          <div className="flex justify-between text-[12px] text-rose-600 pb-1">
+                            <span>Chegirma:</span><span className="font-bold">−{fmt(dAmt)} so'm</span>
+                          </div>
+                        </>
+                      ) : null;
+                    })()}
                     <div className="flex justify-between font-bold text-[15px] pb-2 mb-2">
                       <span>JAMI:</span><span>{fmt(total)} so'm</span>
                     </div>

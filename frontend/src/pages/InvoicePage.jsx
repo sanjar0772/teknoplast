@@ -108,6 +108,8 @@ export default function InvoicePage() {
   const debt = Math.max(0, total - paid);
   const credit = Math.max(0, paid - total);
   const paymentParts = parsePaymentBreakdown(sale);
+  const discMatch = (sale.notes || '').match(/Chegirma:\s*([\d\s,.]+)/);
+  const discountAmt = discMatch ? parseFloat(discMatch[1].replace(/[^\d.]/g, '')) || 0 : 0;
   const customerPhone = sale.customer_full_phone || sale.customer_phone;
   const invoiceUrl = `${window.location.origin}/invoice/${sale.order_ref || sale.id}`;
   const grouped = groupInvoiceRows(rows);
@@ -229,6 +231,12 @@ export default function InvoicePage() {
             {credit > 0 && <div className="text-blue-600 font-medium">💰 Haqdor (oshiqcha): +{fmt(credit)}</div>}
           </div>
           <div className="text-right">
+            {discountAmt > 0 && (
+              <>
+                <div className="text-[11px] text-gray-500">Oraliq: {fmt(total + discountAmt)} so'm</div>
+                <div className="text-[11px] text-rose-600 mb-0.5">Chegirma: −{fmt(discountAmt)} so'm</div>
+              </>
+            )}
             <span className="text-xs text-gray-400">Jami: </span>
             <span className="text-xl font-bold text-blue-700">{fmt(total)} <span className="text-sm font-medium">so'm</span></span>
           </div>

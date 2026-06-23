@@ -445,9 +445,11 @@ function getInvoicePaymentLabel(sale) {
   if (cardMatch) parts.push(`Karta: ${formatMoney(parseAmt(cardMatch))}`);
   if (bankMatch) parts.push(`Bank: ${formatMoney(parseAmt(bankMatch))}`);
   if (paymeMatch) parts.push(`Pay Me: ${formatMoney(parseAmt(paymeMatch))}`);
+  const discMatch = notes.match(/Chegirma:\s*([\d\s,.]+)/);
   if (parts.length) {
     const debt = Math.max(0, total - paid);
     if (debt > 0) parts.push(`Qarz: ${formatMoney(debt)}`);
+    if (discMatch) parts.push(`Chegirma: ${formatMoney(parseAmt(discMatch))}`);
     return parts.join(' · ');
   }
   if (sale?.status === 'PAID') {

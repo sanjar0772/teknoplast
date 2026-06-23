@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Search, Plus, Trash2, ShoppingCart, X, Package, CheckCircle, Eraser, FileDown, QrCode, FileText
+  Search, Plus, Trash2, ShoppingCart, X, Package, CheckCircle, Eraser, FileDown, QrCode, FileText, Tag
 } from 'lucide-react';
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import { productsAPI, customersAPI, salesAPI, fulfillmentAPI } from '../services/api';
@@ -31,6 +31,8 @@ const freshSession = () => ({
   payCard: '',
   payBank: '',
   payPayme: '',
+  discount: '',
+  discountMode: 'sum', // 'sum' = so'm, 'pct' = foiz
   saleDate: new Date().toISOString().slice(0, 10),
 });
 
@@ -216,9 +218,10 @@ export default function QuickSalePage() {
         pay_card: checkoutRef.current.payCard || 0,
         pay_bank: checkoutRef.current.payBank || 0,
         pay_payme: checkoutRef.current.payPayme || 0,
+        discount: checkoutRef.current.discount || 0,
         credit: checkoutRef.current.credit || 0,
       });
-      setSessions(ss => ss.map((ses, i) => i === idx ? { ...ses, cart: [], payCash: '', payCard: '', payBank: '', payPayme: '' } : ses));
+      setSessions(ss => ss.map((ses, i) => i === idx ? { ...ses, cart: [], payCash: '', payCard: '', payBank: '', payPayme: '', discount: '' } : ses));
       setSearch('');
     },
   });
@@ -228,8 +231,13 @@ export default function QuickSalePage() {
   const bankAmt = parseFloat(s.payBank) || 0;
   const paymeAmt = parseFloat(s.payPayme) || 0;
   const paidTotal = cashAmt + cardAmt + bankAmt + paymeAmt;
-  const debtAmt = Math.max(0, grandTotal - paidTotal);
-  const creditAmt = Math.max(0, paidTotal - grandTotal); // oshiqcha to'lov — mijoz haqdor bo'ladi
+  // Chegirma (skidka) — so'm yoki foiz; jami summadan oshmaydi
+  const discountInput = parseFloat(s.discount) || 0;
+  const discountRaw = s.discountMode === 'pct' ? grandTotal * discountInput / 100 : discountInput;
+  const discountAmt = Math.min(Math.max(0, Math.round(discountRaw)), grandTotal);
+  const finalTotal = grandTotal - discountAmt; // chegirmadan keyingi yakuniy summa
+  const debtAmt = Math.max(0, finalTotal - paidTotal);
+  const creditAmt = Math.max(0, paidTotal - finalTotal); // oshiqcha to'lov — mijoz haqdor bo'ladi
 
   const checkout = () => {
     if (!s.cart.length) return toast.error('Savat bo\'sh');
@@ -242,8 +250,27 @@ export default function QuickSalePage() {
       const avail = rowAvail(x);
       if (parseFloat(x.qty) > avail) return toast.error(`"${x.name}" — ${rangLabel(x.rang)}: faqat ${avail} dona bor`);
     }
-    checkoutRef.current = { idx: activeIdx, customerId: s.customerId, payCash: cashAmt, payCard: cardAmt, payBank: bankAmt, payPayme: paymeAmt, credit: creditAmt };
-    lastCartRef.current = s.cart.map(x => ({ name: x.name, qty: parseInt(x.qty), price: parseFloat(x.price), unit: x.unit, rang: x.rang }));
+    // Chegirmani har bir mahsulot narxiga proporsional taqsimlaymiz (yig'indi = finalTotal).
+    // Oxirgi qator yaxlitlash qoldig'ini o'ziga oladi — jami aniq bo'lsin.
+    let itemsOut;
+    if (discountAmt > 0 && grandTotal > 0) {
+      let allocated = 0;
+      itemsOut = s.cart.map((x, i) => {
+        const qty = parseInt(x.qty);
+        const origTotal = qty * (parseFloat(x.price) || 0);
+        const itemTotal = (i === s.cart.length - 1)
+          ? (finalTotal - allocated)
+          : Math.round(origTotal * finalTotal / grandTotal);
+        if (i !== s.cart.length - 1) allocated += itemTotal;
+        return { product_id: x.id, quantity: qty, unit_price: qty > 0 ? itemTotal / qty : 0, rang: x.rang };
+      });
+    } else {
+      itemsOut = s.cart.map(x => ({ product_id: x.id, quantity: parseInt(x.qty), unit_price: parseFloat(x.price), rang: x.rang }));
+    }
+
+    checkoutRef.current = { idx: activeIdx, customerId: s.customerId, payCash: cashAmt, payCard: cardAmt, payBank: bankAmt, payPayme: paymeAmt, credit: creditAmt, discount: discountAmt };
+    // Chekда ko'rsatish uchun — chegirma qo'llangan (net) narxlar
+    lastCartRef.current = itemsOut.map((it, idx) => ({ name: s.cart[idx].name, qty: it.quantity, price: it.unit_price, unit: s.cart[idx].unit, rang: it.rang }));
     const noteParts = [];
     if (cashAmt > 0) noteParts.push(`Naqd: ${cashAmt}`);
     if (cardAmt > 0) noteParts.push(`Karta: ${cardAmt}`);
@@ -252,14 +279,13 @@ export default function QuickSalePage() {
     if (debtAmt > 0) noteParts.push(`Qarz: ${debtAmt}`);
     if (creditAmt > 0) noteParts.push(`Haqdor: ${creditAmt}`);
     if (!noteParts.length) noteParts.push('Qarz');
+    if (discountAmt > 0) noteParts.push(`Chegirma: ${discountAmt}`);
     saveMutation.mutate({
       customer_id: s.customerId,
       sale_date: s.saleDate,
       payment_amount: paidTotal,
       notes: `To'lov: ${noteParts.join(' · ')}`,
-      items: s.cart.map(x => ({
-        product_id: x.id, quantity: parseInt(x.qty), unit_price: parseFloat(x.price), rang: x.rang,
-      })),
+      items: itemsOut,
     });
   };
 
@@ -333,6 +359,16 @@ export default function QuickSalePage() {
                   </div>
                 ))}
               </div>
+              {lastOrder.discount > 0 && (
+                <>
+                  <div className="flex justify-between text-[12px] text-gray-600 pb-0.5">
+                    <span>Oraliq:</span><span>{fmt(lastOrder.grand_total + lastOrder.discount)} so'm</span>
+                  </div>
+                  <div className="flex justify-between text-[12px] text-rose-600 pb-1">
+                    <span>Chegirma:</span><span className="font-bold">−{fmt(lastOrder.discount)} so'm</span>
+                  </div>
+                </>
+              )}
               <div className="flex justify-between font-bold text-[15px] pb-2 mb-2">
                 <span>JAMI:</span><span>{fmt(lastOrder.grand_total)} so'm</span>
               </div>
@@ -553,7 +589,7 @@ export default function QuickSalePage() {
             {grandTotal > 0 && (
               <button
                 type="button"
-                onClick={() => { setField('payCash', String(grandTotal)); setField('payCard', ''); setField('payBank', ''); setField('payPayme', ''); }}
+                onClick={() => { setField('payCash', String(finalTotal)); setField('payCard', ''); setField('payBank', ''); setField('payPayme', ''); }}
                 className="text-[10px] text-blue-500 hover:text-blue-700 mt-1"
               >
                 Hammasini naqd to'lash
@@ -658,20 +694,47 @@ export default function QuickSalePage() {
               </table>
             </div>
 
-            {/* Jami va yakunlash */}
-            <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 bg-gray-50">
-              <div>
-                <p className="text-[10px] text-gray-500">Umumiy summa</p>
-                <p className="text-lg font-bold text-gray-900">{fmt(grandTotal)} <span className="text-xs font-medium text-gray-400">so'm</span></p>
+            {/* Jami, chegirma va yakunlash */}
+            <div className="px-3 py-2 border-t border-gray-100 bg-gray-50 space-y-2">
+              {/* Chegirma (skidka) qatori */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="text-[11px] text-gray-600 font-medium flex items-center gap-1">
+                  <Tag size={12} className="text-rose-500" /> Chegirma
+                </label>
+                <input
+                  type="number" min="0"
+                  value={s.discount}
+                  onChange={e => setField('discount', e.target.value)}
+                  onFocus={e => e.target.select()}
+                  placeholder="0"
+                  className="input text-xs py-1 w-24"
+                />
+                <div className="flex rounded-lg overflow-hidden border border-gray-200">
+                  <button type="button" onClick={() => setField('discountMode', 'sum')}
+                    className={`px-2 py-1 text-[11px] font-medium ${s.discountMode !== 'pct' ? 'bg-rose-500 text-white' : 'bg-white text-gray-500'}`}>so'm</button>
+                  <button type="button" onClick={() => setField('discountMode', 'pct')}
+                    className={`px-2 py-1 text-[11px] font-medium ${s.discountMode === 'pct' ? 'bg-rose-500 text-white' : 'bg-white text-gray-500'}`}>%</button>
+                </div>
+                {discountAmt > 0 && <span className="text-[11px] text-rose-600 font-medium">−{fmt(discountAmt)} so'm</span>}
               </div>
-              <button
-                onClick={checkout}
-                disabled={!s.cart.length || saveMutation.isPending}
-                className="btn-primary px-4 py-2 text-sm disabled:opacity-40"
-              >
-                <CheckCircle size={15} />
-                {saveMutation.isPending ? 'Saqlanmoqda...' : 'Sotish'}
-              </button>
+              {/* Yakuniy summa + Sotish */}
+              <div className="flex items-center justify-between">
+                <div>
+                  {discountAmt > 0 && (
+                    <p className="text-[10px] text-gray-400 line-through">{fmt(grandTotal)} so'm</p>
+                  )}
+                  <p className="text-[10px] text-gray-500">{discountAmt > 0 ? 'Yakuniy summa' : 'Umumiy summa'}</p>
+                  <p className="text-lg font-bold text-gray-900">{fmt(finalTotal)} <span className="text-xs font-medium text-gray-400">so'm</span></p>
+                </div>
+                <button
+                  onClick={checkout}
+                  disabled={!s.cart.length || saveMutation.isPending}
+                  className="btn-primary px-4 py-2 text-sm disabled:opacity-40"
+                >
+                  <CheckCircle size={15} />
+                  {saveMutation.isPending ? 'Saqlanmoqda...' : 'Sotish'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

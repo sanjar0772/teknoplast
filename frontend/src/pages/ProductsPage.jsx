@@ -193,26 +193,34 @@ export default function ProductsPage({ embedded = false }) {
   const [bomAddForm, setBomAddForm] = useState({ component_id: '', qty: 1 });
   const [historyProduct, setHistoryProduct] = useState(null); // tarix modal
   const [search, setSearch] = useState(''); // mahsulot qidiruv
+  const [dateFilter, setDateFilter] = useState({ date_from: '', date_to: '' });
   const [datePreset, setDatePreset] = useState('all');
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
 
-  const dateParams = useMemo(() => {
-    if (datePreset === 'all') return {};
-    if (datePreset === 'custom') {
-      const p = {};
-      if (customStart) p.start_date = customStart;
-      if (customEnd) p.end_date = customEnd;
-      return p;
+  const applyPreset = (preset) => {
+    setDatePreset(preset);
+    const today = new Date();
+    const iso = d => d.toISOString().slice(0, 10);
+    if (preset === 'today') {
+      setDateFilter({ date_from: iso(today), date_to: iso(today) });
+    } else if (preset === 'week') {
+      const mon = new Date(today);
+      mon.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+      setDateFilter({ date_from: iso(mon), date_to: iso(today) });
+    } else if (preset === 'month') {
+      const first = new Date(today.getFullYear(), today.getMonth(), 1);
+      setDateFilter({ date_from: iso(first), date_to: iso(today) });
+    } else if (preset === 'lastmonth') {
+      const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const last  = new Date(today.getFullYear(), today.getMonth(), 0);
+      setDateFilter({ date_from: iso(first), date_to: iso(last) });
+    } else {
+      setDateFilter({ date_from: '', date_to: '' });
     }
-    const pr = DATE_PRESETS.find(p => p.key === datePreset);
-    if (!pr || !pr.start) return {};
-    return { start_date: pr.start(), end_date: pr.end() };
-  }, [datePreset, customStart, customEnd]);
+  };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['products', dateParams],
-    queryFn: () => productsAPI.getAll({ is_active: 'all', ...dateParams }).then(r => r.data),
+    queryKey: ['products', dateFilter],
+    queryFn: () => productsAPI.getAll({ is_active: 'all', ...dateFilter }).then(r => r.data),
   });
 
   const { data: rawMats } = useQuery({
@@ -335,18 +343,54 @@ export default function ProductsPage({ embedded = false }) {
         </div>
       </div>
 
-      {/* Qidiruv */}
-      <div className="relative max-w-md">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-        <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Mahsulot nomi, turi yoki rangi bo'yicha qidirish..."
-          className="input pl-9 pr-9 w-full" />
-        {search && (
-          <button type="button" onClick={() => setSearch('')}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>
-        )}
+      {/* Qidiruv + Sana filtri */}
+      <div className="card p-4 space-y-3">
+        <div className="relative max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Mahsulot nomi, turi yoki rangi bo'yicha qidirish..."
+            className="input pl-9 pr-9 w-full" />
+          {search && (
+            <button type="button" onClick={() => setSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>
+          )}
+        </div>
+        {q && <p className="text-xs text-gray-400">{shownProducts.length} ta mahsulot topildi</p>}
+        {/* Sana tugmalari */}
+        <div className="flex gap-2 flex-wrap items-center">
+          {[
+            { key: 'all',       label: 'Barchasi' },
+            { key: 'today',     label: 'Bugun' },
+            { key: 'week',      label: 'Bu hafta' },
+            { key: 'month',     label: 'Bu oy' },
+            { key: 'lastmonth', label: "O'tgan oy" },
+          ].map(p => (
+            <button key={p.key}
+              onClick={() => applyPreset(p.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                datePreset === p.key
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-600'
+              }`}>
+              {p.label}
+            </button>
+          ))}
+          <span className="text-gray-300 text-xs">|</span>
+          <input type="date" value={dateFilter.date_from}
+            onChange={e => { setDatePreset('custom'); setDateFilter(f => ({ ...f, date_from: e.target.value })); }}
+            className="input text-xs py-1.5 w-36" title="Dan" />
+          <span className="text-gray-400 text-xs">—</span>
+          <input type="date" value={dateFilter.date_to}
+            onChange={e => { setDatePreset('custom'); setDateFilter(f => ({ ...f, date_to: e.target.value })); }}
+            className="input text-xs py-1.5 w-36" title="Gacha" />
+          {(dateFilter.date_from || dateFilter.date_to) && (
+            <button onClick={() => applyPreset('all')}
+              className="text-gray-400 hover:text-red-500" title="Tozalash">
+              <X size={14} />
+            </button>
+          )}
+        </div>
       </div>
-      {q && <p className="text-xs text-gray-400 -mt-3">{shownProducts.length} ta mahsulot topildi</p>}
 
       {/* Sana filtri tugmalari */}
       <div className="flex flex-wrap items-center gap-2 -mt-2">

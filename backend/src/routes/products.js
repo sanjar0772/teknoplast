@@ -21,7 +21,7 @@ function rebuildName(base_name, razmer, rang) {
 // GET /api/products
 router.get('/', async (req, res, next) => {
   try {
-    const { is_active = 'true', search, type, start_date, end_date } = req.query;
+    const { is_active = 'true', search, type, start_date, end_date, date_from, date_to } = req.query;
     let sql = `
       SELECT p.*, rm.name as raw_material_name, rm.stock_balance as rm_stock
       FROM products p LEFT JOIN raw_materials rm ON p.raw_material_id = rm.id
@@ -30,8 +30,10 @@ router.get('/', async (req, res, next) => {
     const params = [];
     let idx = 1;
     if (is_active !== 'all') { sql += ` AND p.is_active = $${idx++}`; params.push(is_active === 'true'); }
-    if (search) { sql += ` AND p.name ILIKE $${idx++}`; params.push(`%${search}%`); }
-    if (type)   { sql += ` AND p.type = $${idx++}`; params.push(type); }
+    if (search)    { sql += ` AND p.name ILIKE $${idx++}`; params.push(`%${search}%`); }
+    if (type)      { sql += ` AND p.type = $${idx++}`; params.push(type); }
+    if (date_from) { sql += ` AND DATE(p.created_at) >= $${idx++}`; params.push(date_from); }
+    if (date_to)   { sql += ` AND DATE(p.created_at) <= $${idx++}`; params.push(date_to); }
     sql += ' ORDER BY p.name';
     const result = await query(sql, params);
     // Rang bo'yicha ombor — har bir mahsulotga biriktiramiz

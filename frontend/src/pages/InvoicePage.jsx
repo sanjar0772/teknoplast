@@ -1,10 +1,10 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import { ArrowLeft, Download, Printer } from 'lucide-react';
 import { salesAPI } from '../services/api';
-import { downloadQRById } from '../utils/qr';
+import { downloadQR } from '../utils/qr';
 import { RANG_COLORS } from '../constants/colors';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -124,7 +124,7 @@ export default function InvoicePage() {
           <button onClick={() => window.print()} className="btn-secondary btn-sm text-xs">
             <Printer size={12} /> Chop
           </button>
-          <button onClick={() => downloadQRById('invoice-qr', `qr-${sale.order_ref || sale.id}`)} className="btn-secondary btn-sm text-xs">
+          <button onClick={() => { downloadQR('invoice-qr-canvas', `qr-${sale.order_ref || sale.id}`); toast.success('QR kod yuklab olindi'); }} className="btn-secondary btn-sm text-xs">
             <Download size={12} /> QR
           </button>
           <button onClick={downloadPdf} className="btn-primary btn-sm text-xs">
@@ -148,6 +148,7 @@ export default function InvoicePage() {
           </div>
           <div className="flex flex-col items-center flex-shrink-0">
             <QRCodeSVG id="invoice-qr" value={invoiceUrl} size={64} />
+            <QRCodeCanvas id="invoice-qr-canvas" value={invoiceUrl} size={512} className="hidden" />
             <span className="text-[9px] text-gray-400 mt-0.5">Tizimda ko'rish</span>
           </div>
         </div>

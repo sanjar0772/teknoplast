@@ -5,10 +5,10 @@ import toast from 'react-hot-toast';
 import {
   Search, Plus, Trash2, ShoppingCart, X, Package, CheckCircle, Eraser, FileDown, QrCode, FileText
 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import { productsAPI, customersAPI, salesAPI, fulfillmentAPI } from '../services/api';
 import { RANG_COLORS } from '../constants/colors';
-import { downloadQRById } from '../utils/qr';
+import { downloadQR } from '../utils/qr';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 const balfmt = (n) => (parseFloat(n) > 0 ? '+' : '') + fmt(n); // haqdor uchun +, qarzdor uchun - (fmt o'zi qo'yadi)
@@ -381,6 +381,7 @@ export default function QuickSalePage() {
               )}
               <div className="flex flex-col items-center pt-1">
                 <QRCodeSVG id="chek-qr" value={lastOrder.order_ref} size={110} />
+                <QRCodeCanvas id="chek-qr-canvas" value={lastOrder.order_ref} size={512} className="hidden" />
                 <div className="text-[10px] text-gray-500 mt-1">Omborchi uchun QR kod</div>
                 <div className="text-center text-[11px] mt-1 font-sans">Xaridingiz uchun rahmat!</div>
               </div>
@@ -391,7 +392,7 @@ export default function QuickSalePage() {
               </button>
               <div className="flex gap-2">
                 <button onClick={() => window.print()} className="btn-secondary flex-1 text-sm"><QrCode size={14} /> Chop</button>
-                <button onClick={() => downloadQRById('chek-qr', `qr-${lastOrder.order_ref}`)} className="btn-secondary flex-1 text-sm"><FileDown size={14} /> QR</button>
+                <button onClick={() => { downloadQR('chek-qr-canvas', `qr-${lastOrder.order_ref}`); toast.success('QR kod yuklab olindi'); }} className="btn-secondary flex-1 text-sm"><FileDown size={14} /> QR</button>
                 <button onClick={() => downloadNakladnoy(lastOrder.order_ref)} className="btn-secondary flex-1 text-sm"><FileDown size={14} /> Nakladnoy</button>
               </div>
               <button onClick={() => { setLastOrder(null); searchRef.current?.focus(); }} className="btn-secondary w-full text-sm">Yangi savdo</button>

@@ -42,7 +42,8 @@ export default function ComponentsPage() {
   });
 
   const components = useMemo(() => {
-    const list = (data?.products || []).filter(p => p.kind === 'KOMPONENT');
+    // Faqat faol komponentlar — o'chirilgan/nofaol qilinganlar ro'yxatda ko'rinmaydi
+    const list = (data?.products || []).filter(p => p.kind === 'KOMPONENT' && p.is_active);
     if (!q.trim()) return list;
     const s = q.toLowerCase();
     return list.filter(p =>
@@ -82,6 +83,16 @@ export default function ComponentsPage() {
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
+  // Barcha komponentlarni o'chirish (faqat OWNER)
+  const resetMutation = useMutation({
+    mutationFn: () => productsAPI.resetComponents().then(r => r.data),
+    onSuccess: (res) => {
+      toast.success(`${res.total} ta komponent o'chirildi` + (res.deactivated ? ` (${res.deactivated} tasi tarixi borligi uchun yashirildi)` : ''));
+      qc.invalidateQueries({ queryKey: ['products'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'O\'chirishda xato'),
+  });
+
   const openNew = () => {
     reset();
     setEditItem(null);
@@ -108,12 +119,25 @@ export default function ComponentsPage() {
             Ishlab chiqarish detallari va komponentlarini ro'yxatga olish
           </p>
         </div>
-        {canAdd && (
-          <button onClick={openNew}
-            className="btn-sm bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg px-3 flex items-center gap-1">
-            <Plus size={14} /> Komponent qo'shish
-          </button>
-        )}
+        <div className="flex gap-2">
+          {isOwner() && components.length > 0 && (
+            <button
+              onClick={() => {
+                if (window.confirm(`HAMMA komponentni (${components.length} ta) o'chirasizmi?\n\nFaqat komponentlar ro'yxati tozalanadi. Ishlab chiqarish/maosh tarixiga tegmaydi.\nKeyin hammasini qaytadan kiritasiz.`))
+                  resetMutation.mutate();
+              }}
+              disabled={resetMutation.isPending}
+              className="btn-sm bg-red-600 text-white hover:bg-red-700 rounded-lg px-3 flex items-center gap-1">
+              <Trash2 size={14} /> {resetMutation.isPending ? 'O\'chirilmoqda...' : 'Hammasini o\'chirish'}
+            </button>
+          )}
+          {canAdd && (
+            <button onClick={openNew}
+              className="btn-sm bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg px-3 flex items-center gap-1">
+              <Plus size={14} /> Komponent qo'shish
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Stats */}

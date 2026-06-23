@@ -266,6 +266,39 @@ router.post('/reset-stock', requireRole('OWNER'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/products/components/reset — barcha KOMPONENTlarni o'chirish (OWNER only)
+// Faqat komponentlar o'chadi; ishlab chiqarish/maosh tarixiga tegmaydi.
+// Tarixi yo'q komponent butunlay o'chadi, tarixi bori nofaol qilinadi (FK saqlanadi).
+router.post('/components/reset', requireRole('OWNER'), async (req, res, next) => {
+  try {
+    const comps = await query("SELECT id FROM products WHERE kind = 'KOMPONENT'", []);
+    const ids = comps.rows.map(r => r.id);
+    let deleted = 0, deactivated = 0;
+    for (const id of ids) {
+      // BOM bog'lanishlari va rang ombori — FK yo'q, xavfsiz tozalanadi
+      await query('DELETE FROM product_bom WHERE component_id = $1 OR product_id = $1', [id]);
+      await query('DELETE FROM product_color_stock WHERE product_id = $1', [id]);
+
+      // Ishlab chiqarish / kirim / sotuv tarixi bormi? (FK — bo'lsa butunlay o'chmaydi)
+      const prod = await query('SELECT COUNT(*) c FROM employee_production WHERE product_id = $1', [id]);
+      const intk = await query('SELECT COUNT(*) c FROM intake_items WHERE product_id = $1', [id]);
+      const sale = await query('SELECT COUNT(*) c FROM sales WHERE product_id = $1', [id]);
+      const hasHistory =
+        (parseInt(prod.rows[0].c) || 0) + (parseInt(intk.rows[0].c) || 0) + (parseInt(sale.rows[0].c) || 0) > 0;
+
+      if (hasHistory) {
+        await query('UPDATE products SET is_active = 0, updated_at = NOW() WHERE id = $1', [id]);
+        deactivated++;
+      } else {
+        await query('DELETE FROM products WHERE id = $1', [id]);
+        deleted++;
+      }
+    }
+    logAudit(req, { action: 'RESET_ALL_COMPONENTS', table: 'products', recordId: 'KOMPONENT', newValues: { deleted, deactivated } });
+    res.json({ total: ids.length, deleted, deactivated });
+  } catch (err) { next(err); }
+});
+
 // POST /api/products/reset-all — barcha mahsulot VA sotuvlarni to'liq o'chirish (OWNER only)
 router.post('/reset-all', requireRole('OWNER'), async (req, res, next) => {
   try {

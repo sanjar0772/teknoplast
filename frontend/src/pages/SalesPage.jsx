@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { QRCodeSVG } from 'qrcode.react';
 import { Plus, Download, Search, X, CheckCircle, Clock, AlertCircle, FileText, Printer, Pencil, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
 import { salesAPI, productsAPI, reportsAPI, customersAPI } from '../services/api';
+import { downloadQRById } from '../utils/qr';
 import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -741,16 +742,19 @@ export default function SalesPage({ embedded = false }) {
                       </div>
                     )}
                     <div className="flex flex-col items-center">
-                      <QRCodeSVG value={invoiceUrl} size={110} />
+                      <QRCodeSVG id="sales-chek-qr" value={invoiceUrl} size={110} />
                       <div className="text-[10px] text-gray-500 mt-1">Xaridingiz uchun rahmat!</div>
                     </div>
                   </div>
                   <div className="flex gap-2 px-4 pb-4">
                     <button onClick={() => window.print()} className="btn-secondary flex-1 text-sm">
-                      <Printer size={13} /> Chop etish
+                      <Printer size={13} /> Chop
+                    </button>
+                    <button onClick={() => downloadQRById('sales-chek-qr', `qr-${sale.order_ref || sale.id}`)} className="btn-secondary flex-1 text-sm">
+                      <Download size={13} /> QR
                     </button>
                     <button onClick={() => navigate(`/invoice/${sale.order_ref || sale.id}`)} className="btn-primary flex-1 text-sm">
-                      <FileText size={13} /> Schyot-faktura
+                      <FileText size={13} /> Faktura
                     </button>
                   </div>
                 </>

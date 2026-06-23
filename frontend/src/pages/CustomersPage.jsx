@@ -168,8 +168,8 @@ export default function CustomersPage({ embedded = false }) {
     },
   });
 
-  const openCreate = () => { setEditing(null); reset({ customer_type: 'RETAIL' }); setShowForm(true); };
-  const openEdit = (c) => { setEditing(c); reset(c); setShowForm(true); };
+  const openCreate = () => { setEditing(null); reset({ customer_type: 'RETAIL', created_at: new Date().toISOString().slice(0, 10) }); setShowForm(true); };
+  const openEdit = (c) => { setEditing(c); reset({ ...c, created_at: c.created_at ? String(c.created_at).slice(0, 10) : '' }); setShowForm(true); };
   const closeForm = () => { setShowForm(false); setEditing(null); };
 
   const onSubmit = (d) => saveMutation.mutate({ ...d, credit_limit: parseFloat(d.credit_limit || 0) });
@@ -310,9 +310,15 @@ export default function CustomersPage({ embedded = false }) {
             <label className="label">Manzil</label>
             <input {...register('address')} className="input" placeholder="Ixtiyoriy" />
           </div>
-          <div>
-            <label className="label">Kredit limiti (so'm)</label>
-            <input {...register('credit_limit')} type="number" min="0" className="input" placeholder="0" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Kredit limiti (so'm)</label>
+              <input {...register('credit_limit')} type="number" min="0" className="input" placeholder="0" />
+            </div>
+            <div>
+              <label className="label">Qo'shilgan sana</label>
+              <input {...register('created_at')} type="date" className="input" />
+            </div>
           </div>
           <div>
             <label className="label">Izoh</label>

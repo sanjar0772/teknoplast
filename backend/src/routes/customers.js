@@ -157,12 +157,14 @@ router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), [
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { name, phone, company_name, address, customer_type, credit_limit, notes } = req.body;
+    const { name, phone, company_name, address, customer_type, credit_limit, notes, created_at } = req.body;
+    // Qo'shilgan sana — qo'lda kiritilsa o'sha sana, aks holda bugun
+    const createdAt = created_at ? String(created_at).slice(0, 10) : new Date().toISOString();
     const result = await query(
-      `INSERT INTO customers (name, phone, company_name, address, customer_type, credit_limit, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      `INSERT INTO customers (name, phone, company_name, address, customer_type, credit_limit, notes, created_by, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [name, phone || null, company_name || null, address || null,
-       customer_type || 'RETAIL', credit_limit || 0, notes || null, req.user.id]
+       customer_type || 'RETAIL', credit_limit || 0, notes || null, req.user.id, createdAt]
     );
     res.status(201).json({ customer: result.rows[0] });
   } catch (err) { next(err); }
@@ -171,13 +173,15 @@ router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), [
 // PUT /api/customers/:id — tahrirlash
 router.put('/:id', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
   try {
-    const { name, phone, company_name, address, customer_type, credit_limit, notes, is_active } = req.body;
+    const { name, phone, company_name, address, customer_type, credit_limit, notes, is_active, created_at } = req.body;
+    // Qo'shilgan sana — berilsa yangilanadi, aks holda eskisi qoladi
+    const createdAt = created_at ? String(created_at).slice(0, 10) : null;
     const result = await query(
       `UPDATE customers SET name=$1, phone=$2, company_name=$3, address=$4,
-         customer_type=$5, credit_limit=$6, notes=$7, is_active=$8, updated_at=NOW()
-       WHERE id=$9 RETURNING *`,
+         customer_type=$5, credit_limit=$6, notes=$7, is_active=$8, created_at=COALESCE($9, created_at), updated_at=NOW()
+       WHERE id=$10 RETURNING *`,
       [name, phone, company_name, address, customer_type, credit_limit, notes,
-       is_active === undefined ? 1 : is_active, req.params.id]
+       is_active === undefined ? 1 : is_active, createdAt, req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Mijoz topilmadi' });
     res.json({ customer: result.rows[0] });

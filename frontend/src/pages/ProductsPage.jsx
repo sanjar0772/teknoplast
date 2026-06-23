@@ -187,6 +187,7 @@ export default function ProductsPage({ embedded = false }) {
   const openEdit = (p) => {
     setEditProduct(p);
     Object.entries(p).forEach(([k, v]) => setValue(k, v));
+    setValue('created_at', p.created_at ? String(p.created_at).slice(0, 10) : '');
     setShowModal(true);
   };
 
@@ -227,7 +228,7 @@ export default function ProductsPage({ embedded = false }) {
           {canAdd && (
             <button
               onClick={() => {
-                reset();
+                reset({ created_at: new Date().toISOString().slice(0, 10) });
                 setEditProduct(null);
                 setShowModal(true);
               }}
@@ -395,14 +396,20 @@ export default function ProductsPage({ embedded = false }) {
               ))}
             </select>
           </div>
-          <div>
-            <label className="label">Rangi</label>
-            <select {...register('rang')} className="select">
-              <option value="">— Rangsiz —</option>
-              {RANGLAR.map(r => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Rangi</label>
+              <select {...register('rang')} className="select">
+                <option value="">— Rangsiz —</option>
+                {RANGLAR.map(r => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Qo'shilgan sana</label>
+              <input {...register('created_at')} type="date" className="input" />
+            </div>
           </div>
           <div>
             <label className="label">Tavsif</label>

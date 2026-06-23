@@ -131,10 +131,12 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, rang, kind } = req.body;
+    const { name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, rang, kind, created_at } = req.body;
+    // Qo'shilgan sana — qo'lda kiritilsa o'sha sana, aks holda bugun
+    const createdAt = created_at ? String(created_at).slice(0, 10) : new Date().toISOString();
     const result = await query(
-      'INSERT INTO products (name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, rang, kind) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
-      [name, type, description, price, daily_production || 0, stock_quantity || 0, raw_material_id || null, unit || 'dona', rang || null, kind === 'KOMPONENT' ? 'KOMPONENT' : 'TAYYOR']
+      'INSERT INTO products (name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, rang, kind, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
+      [name, type, description, price, daily_production || 0, stock_quantity || 0, raw_material_id || null, unit || 'dona', rang || null, kind === 'KOMPONENT' ? 'KOMPONENT' : 'TAYYOR', createdAt]
     );
     res.status(201).json({ product: result.rows[0] });
   } catch (err) { next(err); }
@@ -276,10 +278,12 @@ router.post('/import-pricelist', requireRole('OWNER'), async (req, res, next) =>
 // PUT /api/products/:id — yagona mahsulotni yangilash
 router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, next) => {
   try {
-    const { name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, is_active, rang } = req.body;
+    const { name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, is_active, rang, created_at } = req.body;
+    // Qo'shilgan sana — berilsa yangilanadi, aks holda eskisi qoladi
+    const createdAt = created_at ? String(created_at).slice(0, 10) : null;
     const result = await query(
-      'UPDATE products SET name=$1,type=$2,description=$3,price=$4,daily_production=$5,stock_quantity=$6,raw_material_id=$7,unit=$8,is_active=$9,rang=$10,updated_at=NOW() WHERE id=$11 RETURNING *',
-      [name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, is_active, rang || null, req.params.id]
+      'UPDATE products SET name=$1,type=$2,description=$3,price=$4,daily_production=$5,stock_quantity=$6,raw_material_id=$7,unit=$8,is_active=$9,rang=$10,created_at=COALESCE($11, created_at),updated_at=NOW() WHERE id=$12 RETURNING *',
+      [name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, is_active, rang || null, createdAt, req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Mahsulot topilmadi' });
     res.json({ product: result.rows[0] });

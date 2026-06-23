@@ -10,7 +10,7 @@ router.use(authenticate);
 // GET /api/customers — mijozlar ro'yxati + statistika
 router.get('/', async (req, res, next) => {
   try {
-    const { search, type, is_active = 'true' } = req.query;
+    const { search, type, is_active = 'true', date_from, date_to } = req.query;
     let sql = `
       SELECT c.*,
              COUNT(s.id) as purchase_count,
@@ -24,8 +24,10 @@ router.get('/', async (req, res, next) => {
     const params = [];
     let idx = 1;
     if (is_active !== 'all') { sql += ` AND c.is_active = $${idx++}`; params.push(is_active === 'true'); }
-    if (type)   { sql += ` AND c.customer_type = $${idx++}`; params.push(type); }
-    if (search) { sql += ` AND (c.name ILIKE $${idx} OR c.phone ILIKE $${idx} OR c.company_name ILIKE $${idx})`; params.push(`%${search}%`); idx++; }
+    if (type)      { sql += ` AND c.customer_type = $${idx++}`; params.push(type); }
+    if (search)    { sql += ` AND (c.name ILIKE $${idx} OR c.phone ILIKE $${idx} OR c.company_name ILIKE $${idx})`; params.push(`%${search}%`); idx++; }
+    if (date_from) { sql += ` AND DATE(c.created_at) >= $${idx++}`; params.push(date_from); }
+    if (date_to)   { sql += ` AND DATE(c.created_at) <= $${idx++}`; params.push(date_to); }
     sql += ' GROUP BY c.id ORDER BY total_purchases DESC, c.name';
 
     const result = await query(sql, params);

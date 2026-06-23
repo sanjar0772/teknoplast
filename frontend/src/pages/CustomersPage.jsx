@@ -44,7 +44,30 @@ function Modal({ open, onClose, title, children, wide }) {
 export default function CustomersPage({ embedded = false }) {
   const { isOwner } = useAuthStore();
   const qc = useQueryClient();
-  const [filter, setFilter] = useState({ search: '', type: '' });
+  const [filter, setFilter] = useState({ search: '', type: '', date_from: '', date_to: '' });
+  const [datePreset, setDatePreset] = useState('all');
+
+  const applyPreset = (preset) => {
+    setDatePreset(preset);
+    const today = new Date();
+    const iso = d => d.toISOString().slice(0, 10);
+    if (preset === 'today') {
+      setFilter(f => ({ ...f, date_from: iso(today), date_to: iso(today) }));
+    } else if (preset === 'week') {
+      const mon = new Date(today);
+      mon.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+      setFilter(f => ({ ...f, date_from: iso(mon), date_to: iso(today) }));
+    } else if (preset === 'month') {
+      const first = new Date(today.getFullYear(), today.getMonth(), 1);
+      setFilter(f => ({ ...f, date_from: iso(first), date_to: iso(today) }));
+    } else if (preset === 'lastmonth') {
+      const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const last  = new Date(today.getFullYear(), today.getMonth(), 0);
+      setFilter(f => ({ ...f, date_from: iso(first), date_to: iso(last) }));
+    } else {
+      setFilter(f => ({ ...f, date_from: '', date_to: '' }));
+    }
+  };
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [detailId, setDetailId] = useState(null);
@@ -208,7 +231,7 @@ export default function CustomersPage({ embedded = false }) {
       )}
 
       {/* Filters */}
-      <div className="card p-4">
+      <div className="card p-4 space-y-3">
         <div className="flex gap-3 flex-wrap">
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -223,6 +246,40 @@ export default function CustomersPage({ embedded = false }) {
             <option value="WHOLESALE">Ulgurji</option>
             <option value="VIP">VIP</option>
           </select>
+        </div>
+        {/* Sana filtri */}
+        <div className="flex gap-2 flex-wrap items-center">
+          {[
+            { key: 'all',       label: 'Barchasi' },
+            { key: 'today',     label: 'Bugun' },
+            { key: 'week',      label: 'Bu hafta' },
+            { key: 'month',     label: 'Bu oy' },
+            { key: 'lastmonth', label: "O'tgan oy" },
+          ].map(p => (
+            <button key={p.key}
+              onClick={() => applyPreset(p.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                datePreset === p.key
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-600'
+              }`}>
+              {p.label}
+            </button>
+          ))}
+          <span className="text-gray-300 text-xs">|</span>
+          <input type="date" value={filter.date_from}
+            onChange={e => { setDatePreset('custom'); setFilter(f => ({ ...f, date_from: e.target.value })); }}
+            className="input text-xs py-1.5 w-36" title="Dan" />
+          <span className="text-gray-400 text-xs">—</span>
+          <input type="date" value={filter.date_to}
+            onChange={e => { setDatePreset('custom'); setFilter(f => ({ ...f, date_to: e.target.value })); }}
+            className="input text-xs py-1.5 w-36" title="Gacha" />
+          {(filter.date_from || filter.date_to) && (
+            <button onClick={() => applyPreset('all')}
+              className="text-gray-400 hover:text-red-500" title="Tozalash">
+              <X size={14} />
+            </button>
+          )}
         </div>
       </div>
 

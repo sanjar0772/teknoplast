@@ -105,6 +105,30 @@ export default function DebtsPage() {
   const [tone, setTone] = useState('soft');
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState(() => new Set());
+  const [dateFilter, setDateFilter] = useState({ date_from: '', date_to: '' });
+  const [datePreset, setDatePreset] = useState('all');
+
+  const applyPreset = (preset) => {
+    setDatePreset(preset);
+    const today = new Date();
+    const iso = d => d.toISOString().slice(0, 10);
+    if (preset === 'today') {
+      setDateFilter({ date_from: iso(today), date_to: iso(today) });
+    } else if (preset === 'week') {
+      const mon = new Date(today);
+      mon.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+      setDateFilter({ date_from: iso(mon), date_to: iso(today) });
+    } else if (preset === 'month') {
+      const first = new Date(today.getFullYear(), today.getMonth(), 1);
+      setDateFilter({ date_from: iso(first), date_to: iso(today) });
+    } else if (preset === 'lastmonth') {
+      const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const last  = new Date(today.getFullYear(), today.getMonth(), 0);
+      setDateFilter({ date_from: iso(first), date_to: iso(last) });
+    } else {
+      setDateFilter({ date_from: '', date_to: '' });
+    }
+  };
 
   const toggleExpand = (key) => setExpanded(prev => {
     const next = new Set(prev);
@@ -132,8 +156,8 @@ export default function DebtsPage() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['debts'],
-    queryFn: () => reportsAPI.getDebts().then(r => r.data),
+    queryKey: ['debts', dateFilter],
+    queryFn: () => reportsAPI.getDebts(dateFilter.date_from || dateFilter.date_to ? dateFilter : undefined).then(r => r.data),
   });
 
   // To'lovni eski qarzdan boshlab taqsimlash (FIFO):
@@ -260,8 +284,8 @@ export default function DebtsPage() {
         })}
       </div>
 
-      {/* Qidiruv */}
-      <div className="no-print">
+      {/* Qidiruv + Sana filtri */}
+      <div className="no-print card p-4 space-y-3">
         <div className="relative max-w-sm">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input value={search} onChange={e => setSearch(e.target.value)}
@@ -272,7 +296,41 @@ export default function DebtsPage() {
               className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>
           )}
         </div>
-        {q && <p className="text-xs text-gray-400 mt-1">{filteredGroups.length} ta mijoz topildi</p>}
+        {q && <p className="text-xs text-gray-400">{filteredGroups.length} ta mijoz topildi</p>}
+        {/* Sana filtri — sotuv sanasi bo'yicha */}
+        <div className="flex gap-2 flex-wrap items-center">
+          {[
+            { key: 'all',       label: 'Barchasi' },
+            { key: 'today',     label: 'Bugun' },
+            { key: 'week',      label: 'Bu hafta' },
+            { key: 'month',     label: 'Bu oy' },
+            { key: 'lastmonth', label: "O'tgan oy" },
+          ].map(p => (
+            <button key={p.key}
+              onClick={() => applyPreset(p.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                datePreset === p.key
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-600'
+              }`}>
+              {p.label}
+            </button>
+          ))}
+          <span className="text-gray-300 text-xs">|</span>
+          <input type="date" value={dateFilter.date_from}
+            onChange={e => { setDatePreset('custom'); setDateFilter(f => ({ ...f, date_from: e.target.value })); }}
+            className="input text-xs py-1.5 w-36" title="Dan" />
+          <span className="text-gray-400 text-xs">—</span>
+          <input type="date" value={dateFilter.date_to}
+            onChange={e => { setDatePreset('custom'); setDateFilter(f => ({ ...f, date_to: e.target.value })); }}
+            className="input text-xs py-1.5 w-36" title="Gacha" />
+          {(dateFilter.date_from || dateFilter.date_to) && (
+            <button onClick={() => applyPreset('all')}
+              className="text-gray-400 hover:text-red-500" title="Tozalash">
+              <X size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Jadval */}

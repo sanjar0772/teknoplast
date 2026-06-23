@@ -64,6 +64,13 @@ router.get('/dashboard', async (req, res, next) => {
 // GET /api/reports/debts — Qarzdorlik (aging) hisoboti
 router.get('/debts', async (req, res, next) => {
   try {
+    const { date_from, date_to } = req.query;
+    let where = `s.status != 'PAID' AND (s.total_amount - s.payment_amount) > 0.01`;
+    const params = [];
+    let idx = 1;
+    if (date_from) { where += ` AND DATE(s.sale_date) >= $${idx++}`; params.push(date_from); }
+    if (date_to)   { where += ` AND DATE(s.sale_date) <= $${idx++}`; params.push(date_to); }
+
     const rows = (await query(`
       SELECT s.id, s.sale_date, s.total_amount, s.payment_amount,
              (s.total_amount - s.payment_amount) as debt,
@@ -72,9 +79,9 @@ router.get('/debts', async (req, res, next) => {
              CAST(julianday('now') - julianday(s.sale_date) AS INTEGER) as days_old
       FROM sales s
       LEFT JOIN customers c ON s.customer_id = c.id
-      WHERE s.status != 'PAID' AND (s.total_amount - s.payment_amount) > 0.01
+      WHERE ${where}
       ORDER BY days_old DESC
-    `)).rows;
+    `, params)).rows;
 
     const buckets = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
     let total = 0;

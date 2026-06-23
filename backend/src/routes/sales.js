@@ -54,10 +54,21 @@ router.get('/', async (req, res, next) => {
 });
 
 // GET /api/sales/summary
+// Davr: ?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD (oraliq) YOKI ?month=YYYY-MM (eski usul).
 router.get('/summary', async (req, res, next) => {
   try {
-    const { month } = req.query;
-    const period = month || new Date().toISOString().slice(0, 7);
+    const { month, start_date, end_date } = req.query;
+    // Sana sharti — oraliq berilsa o'sha, aks holda oy bo'yicha (orqaga moslik)
+    let where, params;
+    if (start_date || end_date) {
+      const conds = []; params = []; let i = 1;
+      if (start_date) { conds.push(`sale_date >= $${i++}`); params.push(start_date); }
+      if (end_date)   { conds.push(`sale_date <= $${i++}`); params.push(end_date); }
+      where = conds.join(' AND ');
+    } else {
+      where = `TO_CHAR(sale_date, 'YYYY-MM') = $1`;
+      params = [month || new Date().toISOString().slice(0, 7)];
+    }
 
     const result = await query(`
       SELECT
@@ -68,23 +79,23 @@ router.get('/summary', async (req, res, next) => {
         COALESCE(SUM(CASE WHEN status='PARTIALLY_PAID' THEN total_amount ELSE 0 END), 0) as partial_amount,
         COALESCE(SUM(quantity), 0) as total_quantity
       FROM sales
-      WHERE TO_CHAR(sale_date, 'YYYY-MM') = $1
-    `, [period]);
+      WHERE ${where}
+    `, params);
 
     const byProduct = await query(`
       SELECT p.name, SUM(s.quantity) as qty, SUM(s.total_amount) as revenue
       FROM sales s JOIN products p ON s.product_id = p.id
-      WHERE TO_CHAR(s.sale_date, 'YYYY-MM') = $1
+      WHERE ${where}
       GROUP BY p.name ORDER BY revenue DESC LIMIT 10
-    `, [period]);
+    `, params);
 
     const byDay = await query(`
       SELECT TO_CHAR(sale_date, 'YYYY-MM-DD') as day,
              SUM(total_amount) as revenue, COUNT(*) as count
       FROM sales
-      WHERE TO_CHAR(sale_date, 'YYYY-MM') = $1
-      GROUP BY sale_date ORDER BY sale_date
-    `, [period]);
+      WHERE ${where}
+      GROUP BY sale_date ORDER BY sale_date DESC
+    `, params);
 
     res.json({
       summary: result.rows[0],

@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
-import { Plus, Download, Search, X, CheckCircle, Clock, AlertCircle, FileText, Printer, Pencil, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
+import { Plus, Download, Search, X, CheckCircle, Clock, AlertCircle, FileText, Printer, Pencil, ChevronDown, ChevronRight, RotateCcw, CalendarDays } from 'lucide-react';
 import { salesAPI, productsAPI, reportsAPI, customersAPI } from '../services/api';
 import { downloadQR } from '../utils/qr';
 import useAuthStore from '../store/authStore';
@@ -17,6 +17,34 @@ const STATUS_MAP = {
   PENDING: { label: 'Kutilmoqda', cls: 'badge-yellow' },
   PARTIALLY_PAID: { label: 'Qisman', cls: 'badge-blue' },
 };
+
+const iso = (d) => d.toISOString().slice(0, 10);
+// Sana presetlari → { from, to } oraliq
+function presetRange(preset) {
+  const today = new Date();
+  if (preset === 'bugun') return { from: iso(today), to: iso(today) };
+  if (preset === 'kecha') { const y = new Date(today); y.setDate(today.getDate() - 1); return { from: iso(y), to: iso(y) }; }
+  if (preset === 'hafta') {
+    const mon = new Date(today); mon.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    return { from: iso(mon), to: iso(sun) };
+  }
+  if (preset === 'oy') {
+    return { from: iso(new Date(today.getFullYear(), today.getMonth(), 1)), to: iso(new Date(today.getFullYear(), today.getMonth() + 1, 0)) };
+  }
+  if (preset === 'otgan_oy') {
+    return { from: iso(new Date(today.getFullYear(), today.getMonth() - 1, 1)), to: iso(new Date(today.getFullYear(), today.getMonth(), 0)) };
+  }
+  return { from: '', to: '' }; // custom
+}
+const DATE_PRESETS = [
+  { key: 'bugun', label: 'Bugun' },
+  { key: 'kecha', label: 'Kecha' },
+  { key: 'hafta', label: 'Bu hafta' },
+  { key: 'oy', label: 'Bu oy' },
+  { key: 'otgan_oy', label: "O'tgan oy" },
+];
+const fmtDate = (s) => s ? new Date(s).toLocaleDateString('uz-UZ') : '—';
 
 function Modal({ open, onClose, title, children }) {
   if (!open) return null;
@@ -40,7 +68,10 @@ export default function SalesPage({ embedded = false }) {
   const qc = useQueryClient();
   const [filter, setFilter] = useState({ status: '', search: '' });
   const [showModal, setShowModal] = useState(false);
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [datePreset, setDatePreset] = useState('oy');
+  const [dateRange, setDateRange] = useState(() => presetRange('oy'));
+  const [showDaily, setShowDaily] = useState(false);
+  const applyPreset = (p) => { setDatePreset(p); setDateRange(presetRange(p)); };
   const [chekSaleId, setChekSaleId] = useState(null);
   const [editForm, setEditForm] = useState(null); // tahrirlanayotgan savdo
   const [returnForm, setReturnForm] = useState(null); // vozvrat (qaytarish)
@@ -59,18 +90,21 @@ export default function SalesPage({ embedded = false }) {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['sales', filter, month],
+    queryKey: ['sales', filter, dateRange],
     queryFn: () => salesAPI.getAll({
       ...filter,
-      start_date: `${month}-01`,
-      end_date: new Date(new Date(`${month}-01`).getFullYear(), new Date(`${month}-01`).getMonth() + 1, 0).toISOString().slice(0, 10),
-      limit: 200,
+      start_date: dateRange.from || undefined,
+      end_date: dateRange.to || undefined,
+      limit: 500,
     }).then(r => r.data),
   });
 
   const { data: summary } = useQuery({
-    queryKey: ['sales-summary', month],
-    queryFn: () => salesAPI.getSummary({ month }).then(r => r.data),
+    queryKey: ['sales-summary', dateRange],
+    queryFn: () => salesAPI.getSummary({
+      start_date: dateRange.from || undefined,
+      end_date: dateRange.to || undefined,
+    }).then(r => r.data),
   });
 
   const { data: products } = useQuery({
@@ -213,11 +247,13 @@ export default function SalesPage({ embedded = false }) {
   };
 
   const downloadExcel = async () => {
+    // Excel oy bo'yicha tayyorlanadi — oraliq boshlanган oyini olamiz
+    const m = (dateRange.from || new Date().toISOString().slice(0, 10)).slice(0, 7);
     try {
-      const res = await reportsAPI.downloadSalesExcel(month);
+      const res = await reportsAPI.downloadSalesExcel(m);
       const url = URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement('a');
-      a.href = url; a.download = `sotuv-${month}.xlsx`; a.click();
+      a.href = url; a.download = `sotuv-${m}.xlsx`; a.click();
       URL.revokeObjectURL(url);
     } catch { toast.error('Yuklab bo\'lmadi'); }
   };
@@ -290,10 +326,33 @@ export default function SalesPage({ embedded = false }) {
       )}
 
       {/* Filters */}
-      <div className="card p-4">
+      <div className="card p-4 space-y-3">
+        {/* Sana — kunlik / haftalik / oylik / oraliq */}
+        <div className="flex gap-2 flex-wrap items-center">
+          {DATE_PRESETS.map(p => (
+            <button key={p.key} onClick={() => applyPreset(p.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                datePreset === p.key
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-600'
+              }`}>
+              {p.label}
+            </button>
+          ))}
+          <span className="text-gray-300 text-xs">|</span>
+          <input type="date" value={dateRange.from}
+            onChange={e => { setDatePreset('custom'); setDateRange(r => ({ ...r, from: e.target.value })); }}
+            className="input text-xs py-1.5 w-36" title="Dan" />
+          <span className="text-gray-400 text-xs">—</span>
+          <input type="date" value={dateRange.to}
+            onChange={e => { setDatePreset('custom'); setDateRange(r => ({ ...r, to: e.target.value })); }}
+            className="input text-xs py-1.5 w-36" title="Gacha" />
+        </div>
+        {(dateRange.from || dateRange.to) && (
+          <p className="text-xs text-gray-400">Davr: <span className="font-medium text-gray-600">{fmtDate(dateRange.from)} — {fmtDate(dateRange.to)}</span></p>
+        )}
+        {/* Qidiruv + status */}
         <div className="flex gap-3 flex-wrap">
-          <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-            className="input w-40" />
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input placeholder="Mijoz izlash..." value={filter.search}
@@ -310,6 +369,36 @@ export default function SalesPage({ embedded = false }) {
           </select>
         </div>
       </div>
+
+      {/* Kunlik taqsimot — har kunlik tushum (oraliqда 1 kundan ko'p bo'lsa) */}
+      {summary?.by_day?.length > 1 && (
+        <div className="card overflow-hidden">
+          <button onClick={() => setShowDaily(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-50">
+            <span className="font-semibold text-gray-700 text-sm flex items-center gap-2">
+              <CalendarDays size={15} className="text-blue-600" /> Kunlik taqsimot
+              <span className="badge-blue text-[10px] px-1.5">{summary.by_day.length} kun</span>
+            </span>
+            {showDaily ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />}
+          </button>
+          {showDaily && (
+            <div className="border-t border-gray-100 max-h-72 overflow-y-auto">
+              <table className="table text-sm">
+                <thead><tr><th>Kun</th><th>Savdolar</th><th className="text-right">Tushum</th></tr></thead>
+                <tbody>
+                  {summary.by_day.map(d => (
+                    <tr key={d.day}>
+                      <td className="whitespace-nowrap">{new Date(d.day).toLocaleDateString('uz-UZ', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}</td>
+                      <td>{d.count} ta</td>
+                      <td className="text-right font-semibold text-blue-700">{fmt(d.revenue)} so'm</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Table */}
       <div className="table-container">

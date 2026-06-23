@@ -5,6 +5,7 @@ import Layout from './components/layout/Layout';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import SalesPage from './pages/SalesPage';
+import VozvratlarPage from './pages/VozvratlarPage';
 import HistoryPage from './pages/HistoryPage';
 import InvoicePage from './pages/InvoicePage';
 import QuickSalePage from './pages/QuickSalePage';
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="quick-sale" element={<QuickSalePage />} />
           <Route path="history" element={<HistoryPage />} />
           <Route path="sales" element={<SalesPage />} />
+          <Route path="vozvrat" element={<VozvratlarPage />} />
           <Route path="invoice/:id" element={<InvoicePage />} />
           <Route path="customers" element={<CustomersPage />} />
           <Route path="debts" element={<DebtsPage />} />

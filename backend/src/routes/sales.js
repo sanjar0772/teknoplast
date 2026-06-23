@@ -606,6 +606,52 @@ router.delete('/:id', requireRole('OWNER'), async (req, res, next) => {
 });
 
 // GET /api/sales/:id/returns — sotuv bo'yicha qaytarishlar tarixi
+// GET /api/sales/returns/all — barcha vozvratlar ro'yxati + summary (omborga / ziyon)
+router.get('/returns/all', async (req, res, next) => {
+  try {
+    await saleReturns.ensureReturnsSchema();
+    const { date_from, date_to } = req.query;
+    let where = '1=1';
+    const params = [];
+    let idx = 1;
+    if (date_from) { where += ` AND DATE(COALESCE(sr.return_date, sr.created_at)) >= $${idx++}`; params.push(date_from); }
+    if (date_to)   { where += ` AND DATE(COALESCE(sr.return_date, sr.created_at)) <= $${idx++}`; params.push(date_to); }
+
+    const r = await query(
+      `SELECT sr.*, p.name AS product_name, p.unit AS unit,
+              COALESCE(c.name, s.customer_name) AS customer_name,
+              u.full_name AS created_by_name, s.order_ref
+       FROM sale_returns sr
+       LEFT JOIN products p ON sr.product_id = p.id
+       LEFT JOIN customers c ON sr.customer_id = c.id
+       LEFT JOIN sales s ON sr.sale_id = s.id
+       LEFT JOIN users u ON sr.created_by = u.id
+       WHERE ${where}
+       ORDER BY sr.created_at DESC`,
+      params
+    );
+
+    const returns = r.rows;
+    let goodQty = 0, defectiveQty = 0, totalRefund = 0, totalLoss = 0;
+    for (const x of returns) {
+      const q = parseFloat(x.quantity) || 0;
+      if (x.condition === 'DEFECTIVE') { defectiveQty += q; totalLoss += parseFloat(x.loss_amount) || 0; }
+      else { goodQty += q; }
+      totalRefund += parseFloat(x.refund_amount) || 0;
+    }
+    res.json({
+      returns,
+      summary: {
+        count: returns.length,
+        good_qty: goodQty,           // omborga qaytgan
+        defective_qty: defectiveQty, // brak (ziyon)
+        total_refund: totalRefund,   // mijozlarga qaytarilgan pul
+        total_loss: totalLoss,       // ziyon summasi
+      },
+    });
+  } catch (err) { next(err); }
+});
+
 router.get('/:id/returns', async (req, res, next) => {
   try {
     await saleReturns.ensureReturnsSchema();

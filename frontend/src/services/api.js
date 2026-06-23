@@ -58,6 +58,7 @@ export const salesAPI = {
   addPayment: (id, data) => api.post(`/sales/${id}/payments`, data),
   returnSale: (id, data) => api.post(`/sales/${id}/return`, data),
   getReturns: (id) => api.get(`/sales/${id}/returns`),
+  getAllReturns: (params) => api.get('/sales/returns/all', { params }),
   delete: (id) => api.delete(`/sales/${id}`),
 };
 

@@ -1,14 +1,35 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { RotateCcw, Warehouse, AlertTriangle, Coins, X, Search, Printer } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
+import { RotateCcw, Warehouse, AlertTriangle, Coins, X, Search, Printer, Plus, Package } from 'lucide-react';
 import { salesAPI } from '../services/api';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
+function Modal({ open, onClose, title, children, wide }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${wide ? 'max-w-lg' : 'max-w-md'} p-6 max-h-[90vh] overflow-y-auto`}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold text-gray-900">{title}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function VozvratlarPage() {
+  const qc = useQueryClient();
   const [dateFilter, setDateFilter] = useState({ date_from: '', date_to: '' });
   const [datePreset, setDatePreset] = useState('all');
   const [search, setSearch] = useState('');
+  const [picker, setPicker] = useState(false);       // sotuvni tanlash oynasi
+  const [pickerSearch, setPickerSearch] = useState('');
+  const [returnForm, setReturnForm] = useState(null); // tanlangan sotuv uchun vozvrat formasi
 
   const applyPreset = (preset) => {
     setDatePreset(preset);
@@ -37,6 +58,66 @@ export default function VozvratlarPage() {
     queryFn: () => salesAPI.getAllReturns(dateFilter.date_from || dateFilter.date_to ? dateFilter : undefined).then(r => r.data),
   });
 
+  // Vozvrat qilish uchun so'nggi sotuvlar (faqat oyna ochilganda yuklanadi)
+  const { data: salesData, isLoading: salesLoading } = useQuery({
+    queryKey: ['sales', 'for-return'],
+    queryFn: () => salesAPI.getAll({ limit: 100 }).then(r => r.data),
+    enabled: picker,
+  });
+
+  const pickableSales = useMemo(() => {
+    const list = (salesData?.sales || []).filter(s => (parseInt(s.quantity, 10) || 0) >= 1);
+    const pq = pickerSearch.trim().toLowerCase();
+    if (!pq) return list;
+    return list.filter(s =>
+      String(s.product_name || '').toLowerCase().includes(pq) ||
+      String(s.customer_name || '').toLowerCase().includes(pq) ||
+      String(s.order_ref || '').toLowerCase().includes(pq)
+    );
+  }, [salesData, pickerSearch]);
+
+  const returnMutation = useMutation({
+    mutationFn: ({ id, payload }) => salesAPI.returnSale(id, payload),
+    onSuccess: (res) => {
+      const refund = parseFloat(res?.data?.refund_amount || 0);
+      const loss = parseFloat(res?.data?.loss_amount || 0);
+      if (loss > 0) toast.success(`Brak qabul qilindi — ${fmt(loss)} so'm ziyon sifatida qayd etildi`);
+      else toast.success(refund > 0 ? `Vozvrat qabul qilindi. Qaytariladigan pul: ${fmt(refund)} so'm` : 'Vozvrat qabul qilindi — tovar omborga qaytdi');
+      qc.invalidateQueries({ queryKey: ['returns-all'] });
+      qc.invalidateQueries({ queryKey: ['sales'] });
+      qc.invalidateQueries({ queryKey: ['sales-summary'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['expenses'] });
+      setReturnForm(null);
+    },
+    onError: (err) => toast.error(err?.response?.data?.error || 'Vozvratda xato'),
+  });
+
+  const selectSale = (sale) => {
+    setPicker(false);
+    setReturnForm({
+      id: sale.id,
+      product_name: sale.product_name,
+      customer_name: sale.customer_name,
+      rang: sale.rang || '',
+      max: parseInt(sale.quantity, 10) || 0,
+      unit: sale.unit || 'dona',
+      unit_price: parseFloat(sale.unit_price) || 0,
+      quantity: parseInt(sale.quantity, 10) || 1,
+      reason: '',
+      condition: 'GOOD',
+    });
+  };
+
+  const submitReturn = () => {
+    const q = parseInt(returnForm.quantity, 10);
+    if (!q || q < 1) return toast.error('Miqdor noto\'g\'ri');
+    if (q > returnForm.max) return toast.error(`Faqat ${returnForm.max} ${returnForm.unit} qaytarish mumkin`);
+    if (!returnForm.reason.trim()) return toast.error('Vozvrat sababi majburiy');
+    returnMutation.mutate({ id: returnForm.id, payload: { quantity: q, reason: returnForm.reason.trim(), condition: returnForm.condition } });
+  };
+
   const summary = data?.summary || {};
   const all = data?.returns || [];
   const q = search.trim().toLowerCase();
@@ -63,9 +144,14 @@ export default function VozvratlarPage() {
 
         <div className="page-header">
           <h1 className="page-title flex items-center gap-2"><RotateCcw size={20} /> Vozvratlar (Qaytarishlar)</h1>
-          <button onClick={() => window.print()} className="btn-secondary btn-sm no-print">
-            <Printer size={14} /> Chop etish
-          </button>
+          <div className="flex items-center gap-2 no-print">
+            <button onClick={() => { setPickerSearch(''); setPicker(true); }} className="btn-primary btn-sm">
+              <Plus size={14} /> Vozvrat qilish
+            </button>
+            <button onClick={() => window.print()} className="btn-secondary btn-sm">
+              <Printer size={14} /> Chop etish
+            </button>
+          </div>
         </div>
 
         {/* Summary kartalar */}
@@ -177,6 +263,110 @@ export default function VozvratlarPage() {
           </table>
         </div>
       </div>
+
+      {/* 1-qadam: qaytariladigan sotuvni tanlash */}
+      <Modal open={picker} onClose={() => setPicker(false)} title="Qaysi sotuvni qaytarmoqchisiz?" wide>
+        <div className="space-y-3">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input autoFocus value={pickerSearch} onChange={e => setPickerSearch(e.target.value)}
+              placeholder="Mijoz, mahsulot yoki chek raqami..."
+              className="input pl-9 w-full" />
+          </div>
+          <div className="border border-gray-100 rounded-xl divide-y divide-gray-50 max-h-[55vh] overflow-y-auto">
+            {salesLoading ? (
+              <p className="text-center py-8 text-gray-400 text-sm">Yuklanmoqda...</p>
+            ) : !pickableSales.length ? (
+              <p className="text-center py-8 text-gray-400 text-sm">
+                <Package size={24} className="mx-auto mb-2 opacity-30" />
+                Sotuv topilmadi
+              </p>
+            ) : pickableSales.map(s => (
+              <button key={s.id} onClick={() => selectSale(s)}
+                className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-blue-50 transition">
+                <div className="min-w-0">
+                  <div className="font-medium text-gray-900 truncate">{s.product_name}{s.rang ? ` · ${s.rang}` : ''}</div>
+                  <div className="text-xs text-gray-500 truncate">
+                    {s.customer_name || 'Tasodifiy'} · {new Date(s.sale_date).toLocaleDateString('uz-UZ')}
+                    {s.order_ref ? ` · ${s.order_ref}` : ''}
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <div className="text-sm font-semibold text-gray-900">{fmt(s.quantity)} {s.unit || 'dona'}</div>
+                  <div className="text-xs text-gray-400">{fmt(s.unit_price)} so'm</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </Modal>
+
+      {/* 2-qadam: vozvrat formasi */}
+      <Modal open={!!returnForm} onClose={() => setReturnForm(null)} title="Vozvrat — sotuvdan qaytarish">
+        {returnForm && (
+          <div className="space-y-4">
+            <div className="bg-gray-50 rounded-xl p-3 text-sm">
+              <div className="font-medium text-gray-900">{returnForm.product_name || 'Mahsulot'}{returnForm.rang ? ` · ${returnForm.rang}` : ''}</div>
+              <div className="text-gray-500">
+                {returnForm.customer_name ? `${returnForm.customer_name} · ` : ''}
+                Sotilgan: {returnForm.max} {returnForm.unit} · Narx: {fmt(returnForm.unit_price)} so'm
+              </div>
+            </div>
+
+            <div>
+              <label className="label">Qaytariladigan miqdor * (maks: {returnForm.max})</label>
+              <input type="number" min="1" max={returnForm.max} className="input"
+                value={returnForm.quantity}
+                onChange={e => setReturnForm(f => ({ ...f, quantity: e.target.value }))} />
+            </div>
+
+            <div>
+              <label className="label">Tovar holati *</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setReturnForm(f => ({ ...f, condition: 'GOOD' }))}
+                  className={`rounded-xl border p-2.5 text-sm text-left transition ${returnForm.condition === 'GOOD' ? 'border-emerald-400 bg-emerald-50 ring-1 ring-emerald-300' : 'border-gray-200 hover:border-gray-300'}`}>
+                  <div className="font-medium text-gray-900 flex items-center gap-1"><Warehouse size={13} /> Yaxshi</div>
+                  <div className="text-[11px] text-gray-500">Omborga qaytadi</div>
+                </button>
+                <button type="button" onClick={() => setReturnForm(f => ({ ...f, condition: 'DEFECTIVE' }))}
+                  className={`rounded-xl border p-2.5 text-sm text-left transition ${returnForm.condition === 'DEFECTIVE' ? 'border-red-400 bg-red-50 ring-1 ring-red-300' : 'border-gray-200 hover:border-gray-300'}`}>
+                  <div className="font-medium text-gray-900 flex items-center gap-1"><AlertTriangle size={13} /> Brak</div>
+                  <div className="text-[11px] text-gray-500">Ziyon sifatida qayd</div>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="label">Sabab * (majburiy)</label>
+              <textarea className="input" rows={2} placeholder="Masalan: sifatsiz, ortiqcha, mijoz qaytardi..."
+                value={returnForm.reason}
+                onChange={e => setReturnForm(f => ({ ...f, reason: e.target.value }))} />
+            </div>
+
+            <div className="bg-gray-50 rounded-xl p-3 text-sm flex justify-between">
+              <span className="text-gray-600">Mijozga qaytariladigan (taxminiy):</span>
+              <span className="font-bold text-gray-900">
+                {fmt((parseInt(returnForm.quantity, 10) || 0) * returnForm.unit_price)} so'm
+              </span>
+            </div>
+            {returnForm.condition === 'DEFECTIVE' && (
+              <div className="bg-red-50 rounded-xl p-3 text-sm flex justify-between">
+                <span className="text-gray-600">⚠️ Ziyon (taxminiy):</span>
+                <span className="font-bold text-red-600">
+                  {fmt((parseInt(returnForm.quantity, 10) || 0) * returnForm.unit_price)} so'm
+                </span>
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setReturnForm(null)} className="btn-secondary flex-1">Bekor</button>
+              <button onClick={submitReturn} disabled={returnMutation.isPending} className="btn-primary flex-1">
+                <RotateCcw size={14} /> {returnMutation.isPending ? 'Saqlanmoqda...' : 'Vozvratni tasdiqlash'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -742,9 +742,9 @@ export default function SalesPage({ embedded = false }) {
 
       {/* Chek modal */}
       {chekSaleId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setChekSaleId(null)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto">
+          <div className="fixed inset-0 bg-black/50 print:hidden" onClick={() => setChekSaleId(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden my-4">
             <button onClick={() => setChekSaleId(null)}
               className="absolute top-3 right-3 z-10 text-gray-400 hover:text-gray-700 bg-white rounded-full p-1 shadow">
               <X size={18} />

@@ -66,34 +66,47 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // GET /api/products/:id/history — mahsulot harakatlari tarixi (kirim + ishlab chiqarish + sotuv)
+// ?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD — ixtiyoriy sana filtri
 router.get('/:id/history', async (req, res, next) => {
   try {
     const { id } = req.params;
+    const { start_date, end_date } = req.query;
     const prod = await query('SELECT id, name, unit, stock_quantity FROM products WHERE id = $1', [id]);
     if (!prod.rows.length) return res.status(404).json({ error: 'Mahsulot topilmadi' });
 
+    let dateFilter = '';
+    const dateParams = [id];
+    let pIdx = 2;
+    if (start_date) { dateFilter += ` AND %DATE% >= $${pIdx++}`; dateParams.push(start_date); }
+    if (end_date)   { dateFilter += ` AND %DATE% <= $${pIdx++}`; dateParams.push(end_date); }
+
     // 1) Sotuvlar — ombordan chiqim
+    const salesDateFilter = dateFilter.replace(/%DATE%/g, 'sale_date');
     const sales = await query(`
       SELECT id, quantity, total_amount, customer_name, sale_date, created_at
-      FROM sales WHERE product_id = $1
-    `, [id]);
+      FROM sales WHERE product_id = $1${salesDateFilter}
+    `, dateParams);
 
     // 2) Kirimlar — faqat tasdiqlangan (ombor haqiqatan ko'paygan)
+    const intakeDateFilter = dateFilter.replace(/%DATE%/g, 'COALESCE(pi.approved_at, pi.created_at)');
+    const intakeParams = [id, ...dateParams.slice(1)];
     const intakes = await query(`
       SELECT ii.id, ii.quantity, ii.rang, pi.approved_at, pi.created_at
       FROM intake_items ii
       JOIN product_intakes pi ON ii.intake_id = pi.id
-      WHERE ii.product_id = $1 AND pi.status = 'APPROVED'
-    `, [id]);
+      WHERE ii.product_id = $1 AND pi.status = 'APPROVED'${intakeDateFilter}
+    `, intakeParams);
 
     // 3) Ishlab chiqarish — stanok/detalchidan kelgan tayyor mahsulot
+    const prodDateFilter = dateFilter.replace(/%DATE%/g, 'COALESCE(ep.production_date, ep.created_at)');
+    const prodParams = [id, ...dateParams.slice(1)];
     const production = await query(`
       SELECT ep.id, ep.quantity_produced, ep.production_date, ep.production_type,
              ep.created_at, e.name AS employee_name
       FROM employee_production ep
       LEFT JOIN employees e ON ep.employee_id = e.id
-      WHERE ep.product_id = $1 AND ep.quantity_produced > 0
-    `, [id]);
+      WHERE ep.product_id = $1 AND ep.quantity_produced > 0${prodDateFilter}
+    `, prodParams);
 
     const history = [];
     sales.rows.forEach(s => history.push({

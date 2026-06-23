@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Package, DollarSign, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory } from 'lucide-react';
+import { Plus, X, Package, DollarSign, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory, Calendar } from 'lucide-react';
 import clsx from 'clsx';
 import { productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
@@ -17,22 +17,55 @@ const HIST_INFO = {
   sotuv:           { label: 'Sotuv',            icon: ArrowUpCircle,   cls: 'text-red-600',   sign: '−' },
 };
 
-// Mahsulot harakatlari tarixi modal — o'zi fetch qiladi
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+const monthStart = () => new Date().toISOString().slice(0, 8) + '01';
+const yearStart = () => new Date().getFullYear() + '-01-01';
+
+const DATE_PRESETS = [
+  { key: 'today', label: 'Bugun',  start: todayStr, end: todayStr },
+  { key: 'week',  label: 'Hafta',  start: () => daysAgo(7), end: todayStr },
+  { key: 'month', label: 'Oy',     start: monthStart, end: todayStr },
+  { key: 'year',  label: 'Yil',    start: yearStart, end: todayStr },
+  { key: 'all',   label: 'Hammasi' },
+];
+
 function ProductHistoryModal({ product, onClose }) {
+  const [preset, setPreset] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  const params = useMemo(() => {
+    if (preset === 'all') return {};
+    if (preset === 'custom') {
+      const p = {};
+      if (startDate) p.start_date = startDate;
+      if (endDate) p.end_date = endDate;
+      return p;
+    }
+    const pr = DATE_PRESETS.find(p => p.key === preset);
+    if (!pr || !pr.start) return {};
+    return { start_date: pr.start(), end_date: pr.end() };
+  }, [preset, startDate, endDate]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['product-history', product?.id],
-    queryFn: () => productsAPI.getHistory(product.id).then(r => r.data),
+    queryKey: ['product-history', product?.id, params],
+    queryFn: () => productsAPI.getHistory(product.id, params).then(r => r.data),
     enabled: !!product,
   });
 
   if (!product) return null;
   const history = data?.history || [];
 
+  const totalIn = history.filter(h => h.qty > 0).reduce((s, h) => s + Math.abs(h.qty), 0);
+  const totalOut = history.filter(h => h.qty < 0).reduce((s, h) => s + Math.abs(h.qty), 0);
+  const totalSales = history.filter(h => h.type === 'sotuv').reduce((s, h) => s + (h.amount || 0), 0);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="font-bold text-gray-900">Mahsulot tarixi</h3>
             <p className="text-sm text-gray-500">{product.name}</p>
@@ -40,17 +73,63 @@ function ProductHistoryModal({ product, onClose }) {
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
         </div>
 
-        <div className="bg-gray-50 rounded-xl p-3 mb-4 flex justify-between text-sm">
+        <div className="bg-gray-50 rounded-xl p-3 mb-3 flex justify-between text-sm">
           <span className="text-gray-500">Hozirgi ombor:</span>
           <span className="font-bold text-gray-900">{product.stock_quantity} {product.unit}</span>
         </div>
+
+        {/* Sana tugmalari */}
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {DATE_PRESETS.map(p => (
+            <button key={p.key} onClick={() => setPreset(p.key)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                preset === p.key ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}>{p.label}</button>
+          ))}
+          <button onClick={() => setPreset('custom')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
+              preset === 'custom' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}><Calendar size={11} /> Boshqa</button>
+        </div>
+
+        {/* Qo'lda sana kiritish */}
+        {preset === 'custom' && (
+          <div className="flex gap-2 mb-3">
+            <div className="flex-1">
+              <label className="text-[10px] text-gray-500">Boshlanish</label>
+              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input text-xs py-1" />
+            </div>
+            <div className="flex-1">
+              <label className="text-[10px] text-gray-500">Tugash</label>
+              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="input text-xs py-1" />
+            </div>
+          </div>
+        )}
+
+        {/* Umumiy statistika */}
+        {history.length > 0 && (
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="bg-green-50 rounded-lg p-2 text-center">
+              <div className="text-[10px] text-green-600 font-medium">Kirim</div>
+              <div className="text-sm font-bold text-green-700">+{totalIn}</div>
+            </div>
+            <div className="bg-red-50 rounded-lg p-2 text-center">
+              <div className="text-[10px] text-red-600 font-medium">Chiqim</div>
+              <div className="text-sm font-bold text-red-700">-{totalOut}</div>
+            </div>
+            <div className="bg-blue-50 rounded-lg p-2 text-center">
+              <div className="text-[10px] text-blue-600 font-medium">Sotuv</div>
+              <div className="text-sm font-bold text-blue-700">{fmt(totalSales)}</div>
+            </div>
+          </div>
+        )}
 
         {isLoading ? (
           <p className="text-center py-8 text-gray-400">Yuklanmoqda...</p>
         ) : !history.length ? (
           <div className="text-center py-10 text-gray-400">
             <History size={28} className="mx-auto mb-2 opacity-30" />
-            Hali harakat yo'q
+            {preset === 'all' ? 'Hali harakat yo\'q' : 'Bu davr uchun harakat yo\'q'}
           </div>
         ) : (
           <div className="space-y-1.5 overflow-y-auto">

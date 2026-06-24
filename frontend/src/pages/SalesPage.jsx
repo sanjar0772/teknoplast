@@ -474,7 +474,7 @@ export default function SalesPage({ embedded = false }) {
                             <RotateCcw size={12} /> Vozvrat
                           </button>
                         )}
-                        {g.status !== 'PAID' && canCreate && (
+                        {!embedded && g.status !== 'PAID' && canCreate && (
                           <button
                             onClick={() => multi ? markCheckPaid(sales) : statusMutation.mutate({ id: first.id, status: 'PAID' })}
                             className="btn-success btn-sm"
@@ -511,7 +511,7 @@ export default function SalesPage({ embedded = false }) {
                               <RotateCcw size={12} />
                             </button>
                           )}
-                          {s.status !== 'PAID' && canCreate && (
+                          {!embedded && s.status !== 'PAID' && canCreate && (
                             <button onClick={() => statusMutation.mutate({ id: s.id, status: 'PAID' })} className="btn-success btn-sm" title="To'landi">
                               <CheckCircle size={12} />
                             </button>

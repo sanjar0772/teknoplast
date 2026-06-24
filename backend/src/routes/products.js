@@ -340,7 +340,7 @@ router.post('/import-pricelist', requireRole('OWNER'), async (req, res, next) =>
 });
 
 // PUT /api/products/:id — yagona mahsulotni yangilash
-router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, next) => {
+router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'SALES_HEAD'), async (req, res, next) => {
   try {
     const { name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, is_active, rang, created_at } = req.body;
     // Qo'shilgan sana — berilsa yangilanadi, aks holda eskisi qoladi

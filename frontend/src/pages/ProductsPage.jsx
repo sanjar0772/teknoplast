@@ -181,7 +181,7 @@ function Modal({ open, onClose, title, children }) {
 }
 
 export default function ProductsPage({ embedded = false }) {
-  const { isOwner, isProductionHead, isAccountant, isKirimchi } = useAuthStore();
+  const { isOwner, isProductionHead, isAccountant, isKirimchi, isSalesHead } = useAuthStore();
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
@@ -304,6 +304,8 @@ export default function ProductsPage({ embedded = false }) {
   };
 
   const canWrite = isOwner() || isProductionHead();
+  // Savdo boshlig'i ham mahsulot ma'lumotini (nom, narx, rang...) tahrirlay oladi
+  const canEdit = canWrite || isSalesHead();
   const canPrice = isOwner() || isAccountant() || isProductionHead();
   // KIRIMCHI faqat yangi mahsulot qo'shishi mumkin
   const canAdd = canWrite || isKirimchi();
@@ -510,7 +512,7 @@ export default function ProductsPage({ embedded = false }) {
                 className="btn-sm flex-1 bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200 rounded-lg px-2 flex items-center gap-1 justify-center">
                 <History size={13} /> Tarix
               </button>
-              {canWrite && (
+              {canEdit && (
                 <button onClick={() => openEdit(p)} className="btn-secondary btn-sm flex-1">Tahrirlash</button>
               )}
               {canWrite && (

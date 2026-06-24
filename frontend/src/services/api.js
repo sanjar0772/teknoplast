@@ -175,6 +175,7 @@ export const reportsAPI = {
   getMonthly: (params) => api.get('/reports/monthly', { params }),
   getDebts: (params) => api.get('/reports/debts', { params }),
   addDebt: (data) => api.post('/reports/debts', data),
+  getDebtPayments: (params) => api.get('/reports/debt-payments', { params }),
   downloadPDF: (month) => api.get('/reports/pdf/monthly', { params: { month }, responseType: 'blob' }),
   downloadSalesExcel: (month) => api.get('/reports/excel/sales', { params: { month }, responseType: 'blob' }),
   downloadSalaryExcel: (month) => api.get('/reports/excel/salaries', { params: { month }, responseType: 'blob' }),

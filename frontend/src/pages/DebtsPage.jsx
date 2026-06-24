@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { X, Phone, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot, Printer, Search, ChevronDown, ChevronRight, History, Plus } from 'lucide-react';
 import { reportsAPI, salesAPI, ahmadAPI, customersAPI } from '../services/api';
 
-const METHOD_LABEL = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', OTHER: 'Boshqa' };
+const METHOD_LABEL = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', DISCOUNT: '🏷️ Skidka', OTHER: 'Boshqa' };
 
 // To'lov tarixi modal — ichida o'zi fetch qiladi
 function PaymentHistoryModal({ group, onClose }) {
@@ -97,8 +97,9 @@ export default function DebtsPage() {
   const qc = useQueryClient();
   // payFor = { customer, totalDebt, items: [{sale_id, debt}, ...] }
   const [payFor, setPayFor] = useState(null);
-  const [payAmounts, setPayAmounts] = useState({ naqd: '', karta: '', bank: '' });
+  const [payAmounts, setPayAmounts] = useState({ naqd: '', karta: '', bank: '', skidka: '' });
   const [receipt, setReceipt] = useState(null); // to'lovdan keyin chek
+  const [view, setView] = useState('active'); // 'active' = qarzdorlar, 'paid' = to'langan qarzlar tarixi
   const [historyFor, setHistoryFor] = useState(null);
   const [remindFor, setRemindFor] = useState(null);
   const [reminderText, setReminderText] = useState('');
@@ -193,14 +194,22 @@ export default function DebtsPage() {
     queryFn: () => reportsAPI.getDebts(dateFilter.date_from || dateFilter.date_to ? dateFilter : undefined).then(r => r.data),
   });
 
+  // To'langan qarzlar tarixi (qarz to'lovlari) — alohida bo'lim
+  const { data: paidData, isLoading: paidLoading } = useQuery({
+    queryKey: ['debt-payments', dateFilter],
+    queryFn: () => reportsAPI.getDebtPayments(dateFilter.date_from || dateFilter.date_to ? dateFilter : undefined).then(r => r.data),
+    enabled: view === 'paid',
+  });
+
   // To'lovni eski qarzdan boshlab taqsimlash (FIFO):
   // naqd → karta → bank tartibida har bir qarzga yoziladi
   const payMutation = useMutation({
-    mutationFn: async ({ items, naqd, karta, bank }) => {
+    mutationFn: async ({ items, naqd, karta, bank, skidka }) => {
       const pools = [
-        { method: 'CASH',     remaining: naqd  },
-        { method: 'CARD',     remaining: karta },
-        { method: 'TRANSFER', remaining: bank  },
+        { method: 'CASH',     remaining: naqd   },
+        { method: 'CARD',     remaining: karta  },
+        { method: 'TRANSFER', remaining: bank   },
+        { method: 'DISCOUNT', remaining: skidka }, // skidka — pul emas, qarzni kamaytiradi
       ].filter(p => p.remaining > 0.01);
 
       for (const item of items) {
@@ -216,12 +225,14 @@ export default function DebtsPage() {
       }
     },
     onSuccess: (_, variables) => {
-      const { customer, totalDebt, naqd, karta, bank } = variables;
+      const { customer, totalDebt, naqd, karta, bank, skidka } = variables;
       const total = (naqd || 0) + (karta || 0) + (bank || 0);
+      const settled = total + (skidka || 0);
       setPayFor(null);
-      setReceipt({ customer, naqd: naqd || 0, karta: karta || 0, bank: bank || 0, total, remaining: Math.max(0, totalDebt - total), date: new Date() });
+      setReceipt({ customer, naqd: naqd || 0, karta: karta || 0, bank: bank || 0, skidka: skidka || 0, total, remaining: Math.max(0, totalDebt - settled), date: new Date() });
       toast.success('To\'lov saqlandi! Chek tayyor.');
       qc.invalidateQueries({ queryKey: ['debts'] });
+      qc.invalidateQueries({ queryKey: ['debt-payments'] });
       qc.invalidateQueries({ queryKey: ['sales'] });
       qc.invalidateQueries({ queryKey: ['customers'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
@@ -229,22 +240,24 @@ export default function DebtsPage() {
     onError: (e) => toast.error(e.response?.data?.error || 'To\'lovda xato'),
   });
 
-  // To'lov oynasini ochish — bir yoki ko'p qarz, oraliq modal yo'q
+  // To'lov oynasini ochish — barcha maydonlar bo'sh (0), foydalanuvchi o'zi kiritadi
   const openPay = (g) => {
-    setPayAmounts({ naqd: Math.round(g.totalDebt), karta: '', bank: '' });
+    setPayAmounts({ naqd: '', karta: '', bank: '', skidka: '' });
     setPayFor({ customer: g.customer, totalDebt: g.totalDebt, items: g.items });
   };
 
-  const naqd  = parseFloat(payAmounts.naqd)  || 0;
-  const karta = parseFloat(payAmounts.karta) || 0;
-  const bank  = parseFloat(payAmounts.bank)  || 0;
-  const payTotal = naqd + karta + bank;
+  const naqd   = parseFloat(payAmounts.naqd)   || 0;
+  const karta  = parseFloat(payAmounts.karta)  || 0;
+  const bank   = parseFloat(payAmounts.bank)   || 0;
+  const skidka = parseFloat(payAmounts.skidka) || 0;
+  const payTotal = naqd + karta + bank;           // haqiqiy pul
+  const settled  = payTotal + skidka;             // qarz kamayishi (pul + skidka)
 
   const submitPay = () => {
-    if (payTotal <= 0) return toast.error('Kamida bitta usulda summa kiriting');
-    if (payFor && payTotal > payFor.totalDebt + 0.01)
-      return toast.error(`To'lov ${fmt(payFor.totalDebt)} so'mdan oshmasin`);
-    payMutation.mutate({ items: payFor.items, naqd, karta, bank, customer: payFor.customer, totalDebt: payFor.totalDebt });
+    if (settled <= 0) return toast.error('Kamida bitta usulda summa yoki skidka kiriting');
+    if (payFor && settled > payFor.totalDebt + 0.01)
+      return toast.error(`To'lov + skidka ${fmt(payFor.totalDebt)} so'mdan oshmasin`);
+    payMutation.mutate({ items: payFor.items, naqd, karta, bank, skidka, customer: payFor.customer, totalDebt: payFor.totalDebt });
   };
 
   const buckets = data?.buckets || {};
@@ -280,6 +293,17 @@ export default function DebtsPage() {
     );
   }, [customerGroups, q]);
 
+  // To'langan qarzlar tarixi — qidiruv bo'yicha filtr + jami
+  const paidPayments = paidData?.payments || [];
+  const paidFiltered = useMemo(() => {
+    if (!q) return paidPayments;
+    return paidPayments.filter(p =>
+      String(p.customer_name || '').toLowerCase().includes(q) ||
+      String(p.product_name || '').toLowerCase().includes(q)
+    );
+  }, [paidPayments, q]);
+  const paidTotal = paidFiltered.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+
   return (
     <div className="space-y-6">
       <div id="debts-print" className="space-y-6">
@@ -292,8 +316,17 @@ export default function DebtsPage() {
         <h1 className="page-title">Qarzlar (Debitorlar)</h1>
         <div className="flex items-center gap-3">
           <div className="text-right">
-            <p className="text-xs text-gray-500">Umumiy qarz</p>
-            <p className="text-2xl font-bold text-red-600">{fmt(data?.total_debt)} so'm</p>
+            {view === 'active' ? (
+              <>
+                <p className="text-xs text-gray-500">Umumiy qarz</p>
+                <p className="text-2xl font-bold text-red-600">{fmt(data?.total_debt)} so'm</p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-gray-500">To'langan (tanlangan davr)</p>
+                <p className="text-2xl font-bold text-green-600">{fmt(paidTotal)} so'm</p>
+              </>
+            )}
           </div>
           <button onClick={openAddDebt} className="btn-primary btn-sm no-print">
             <Plus size={14} /> Qarz qo'shish
@@ -304,7 +337,23 @@ export default function DebtsPage() {
         </div>
       </div>
 
-      {/* Aging buckets */}
+      {/* Bo'lim tablari — Qarzdorlar / To'langan qarzlar tarixi */}
+      <div className="flex gap-2 no-print">
+        {[
+          { key: 'active', label: 'Qarzdorlar' },
+          { key: 'paid',   label: "To'langan qarzlar" },
+        ].map(t => (
+          <button key={t.key} onClick={() => setView(t.key)}
+            className={`btn-sm rounded-lg px-4 font-medium ${
+              view === t.key ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+            }`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Aging buckets — faqat qarzdorlar bo'limida */}
+      {view === 'active' && (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {Object.keys(BUCKET_INFO).map(key => {
           const info = BUCKET_INFO[key];
@@ -319,6 +368,7 @@ export default function DebtsPage() {
           );
         })}
       </div>
+      )}
 
       {/* Qidiruv + Sana filtri */}
       <div className="no-print card p-4 space-y-3">
@@ -369,7 +419,8 @@ export default function DebtsPage() {
         </div>
       </div>
 
-      {/* Jadval */}
+      {/* Qarzdorlar jadvali */}
+      {view === 'active' && (
       <div className="table-container">
         <table className="table">
           <thead>
@@ -456,9 +507,45 @@ export default function DebtsPage() {
           </tbody>
         </table>
       </div>
+      )}
+
+      {/* To'langan qarzlar tarixi (qarz to'lovlari) */}
+      {view === 'paid' && (
+      <div className="table-container">
+        <table className="table">
+          <thead>
+            <tr><th>Sana</th><th>Mijoz</th><th>Mahsulot</th><th>Usul</th><th>Summa</th></tr>
+          </thead>
+          <tbody>
+            {paidLoading ? (
+              <tr><td colSpan={5} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
+            ) : !paidFiltered.length ? (
+              <tr><td colSpan={5} className="text-center py-10 text-gray-400">
+                <Coins size={26} className="mx-auto mb-2 text-gray-300" />
+                {q ? `"${search}" bo'yicha topilmadi` : "Bu davrda to'langan qarz yo'q"}
+              </td></tr>
+            ) : paidFiltered.map(p => (
+              <tr key={p.id}>
+                <td className="whitespace-nowrap">{new Date(p.payment_date).toLocaleDateString('uz-UZ')}</td>
+                <td className="font-medium text-gray-900">{p.customer_name || '—'}</td>
+                <td className="text-gray-600">{p.product_name || '—'}</td>
+                <td><span className="text-sm">{METHOD_LABEL[p.method] || p.method}</span></td>
+                <td className="font-bold text-green-700">{fmt(p.amount)} so'm</td>
+              </tr>
+            ))}
+            {paidFiltered.length > 0 && (
+              <tr className="bg-gray-50 font-bold">
+                <td colSpan={4} className="text-right text-gray-600">Jami to'langan:</td>
+                <td className="text-green-700">{fmt(paidTotal)} so'm</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      )}
       </div>
 
-      {/* To'lov modal — naqd / karta / bank */}
+      {/* To'lov modal — naqd / karta / bank / skidka */}
       <Modal open={!!payFor} onClose={() => setPayFor(null)} title="To'lov kiritish">
         {payFor && (
           <div className="space-y-4">
@@ -475,9 +562,10 @@ export default function DebtsPage() {
 
             <div className="space-y-3">
               {[
-                { key: 'naqd',  label: '💵 Naqd',  cls: 'border-green-200 focus:ring-green-400'  },
-                { key: 'karta', label: '💳 Karta', cls: 'border-blue-200  focus:ring-blue-400'   },
-                { key: 'bank',  label: '🏦 Bank',  cls: 'border-purple-200 focus:ring-purple-400' },
+                { key: 'naqd',   label: '💵 Naqd',   cls: 'border-green-200 focus:ring-green-400'  },
+                { key: 'karta',  label: '💳 Karta',  cls: 'border-blue-200  focus:ring-blue-400'   },
+                { key: 'bank',   label: '🏦 Bank',   cls: 'border-purple-200 focus:ring-purple-400' },
+                { key: 'skidka', label: '🏷️ Skidka', cls: 'border-orange-200 focus:ring-orange-400' },
               ].map(({ key, label, cls }) => (
                 <div key={key} className="flex items-center gap-3">
                   <label className="w-20 text-sm font-medium text-gray-700 flex-shrink-0">{label}</label>
@@ -494,22 +582,30 @@ export default function DebtsPage() {
               ))}
             </div>
 
-            <div className={`rounded-xl p-3 text-sm flex justify-between items-center ${
-              payTotal > payFor.totalDebt + 0.01 ? 'bg-red-50 border border-red-200' :
-              payTotal >= payFor.totalDebt - 0.01 && payTotal > 0 ? 'bg-green-50 border border-green-200' :
+            <div className={`rounded-xl p-3 text-sm ${
+              settled > payFor.totalDebt + 0.01 ? 'bg-red-50 border border-red-200' :
+              settled >= payFor.totalDebt - 0.01 && settled > 0 ? 'bg-green-50 border border-green-200' :
               'bg-blue-50 border border-blue-100'
             }`}>
-              <span className="text-gray-600 font-medium">Jami to'lov:</span>
-              <div className="text-right">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600 font-medium">To'lov (pul):</span>
                 <span className="font-bold text-lg">{fmt(payTotal)} so'm</span>
-                {payTotal > 0 && payTotal < payFor.totalDebt - 0.01 && (
-                  <div className="text-xs text-yellow-600">Qisman · qoladi: {fmt(payFor.totalDebt - payTotal)} so'm</div>
+              </div>
+              {skidka > 0 && (
+                <div className="flex justify-between items-center text-orange-600 mt-0.5">
+                  <span className="font-medium">🏷️ Skidka:</span>
+                  <span className="font-semibold">{fmt(skidka)} so'm</span>
+                </div>
+              )}
+              <div className="text-right mt-1">
+                {settled > 0 && settled < payFor.totalDebt - 0.01 && (
+                  <div className="text-xs text-yellow-600">Qisman · qoladi: {fmt(payFor.totalDebt - settled)} so'm</div>
                 )}
-                {payTotal >= payFor.totalDebt - 0.01 && payTotal <= payFor.totalDebt + 0.01 && payTotal > 0 && (
+                {settled >= payFor.totalDebt - 0.01 && settled <= payFor.totalDebt + 0.01 && settled > 0 && (
                   <div className="text-xs text-green-600">✅ To'liq — qarz yopiladi</div>
                 )}
-                {payTotal > payFor.totalDebt + 0.01 && (
-                  <div className="text-xs text-red-600">⚠️ Qarzdan ko'p!</div>
+                {settled > payFor.totalDebt + 0.01 && (
+                  <div className="text-xs text-red-600">⚠️ To'lov + skidka qarzdan ko'p!</div>
                 )}
               </div>
             </div>
@@ -517,7 +613,7 @@ export default function DebtsPage() {
             <div className="flex gap-3 pt-1">
               <button onClick={() => setPayFor(null)} className="btn-secondary flex-1">Bekor</button>
               <button onClick={submitPay}
-                disabled={payMutation.isPending || payTotal <= 0 || payTotal > payFor.totalDebt + 0.01}
+                disabled={payMutation.isPending || settled <= 0 || settled > payFor.totalDebt + 0.01}
                 className="btn-success flex-1">
                 {payMutation.isPending ? 'Saqlanmoqda...' : 'To\'lovni saqlash'}
               </button>
@@ -550,6 +646,7 @@ export default function DebtsPage() {
                 {receipt.naqd > 0 && <div className="flex justify-between"><span>Naqd:</span><span className="font-bold text-green-700">{fmt(receipt.naqd)} so'm</span></div>}
                 {receipt.karta > 0 && <div className="flex justify-between"><span>Karta:</span><span className="font-bold text-blue-700">{fmt(receipt.karta)} so'm</span></div>}
                 {receipt.bank > 0 && <div className="flex justify-between"><span>Bank:</span><span className="font-bold text-purple-700">{fmt(receipt.bank)} so'm</span></div>}
+                {receipt.skidka > 0 && <div className="flex justify-between"><span>🏷️ Skidka:</span><span className="font-bold text-orange-600">{fmt(receipt.skidka)} so'm</span></div>}
               </div>
               <div className="flex justify-between font-bold text-[15px] pb-2 mb-1">
                 <span>TO'LANDI:</span><span>{fmt(receipt.total)} so'm</span>

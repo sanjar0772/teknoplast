@@ -147,6 +147,36 @@ router.post('/debts', requireRole('OWNER', 'ACCOUNTANT', 'SALES_HEAD'), async (r
   } catch (err) { next(err); }
 });
 
+// GET /api/reports/debt-payments — to'langan qarzlar tarixi (qarz to'lovlari ro'yxati)
+// payments jadvali faqat qarz to'lovlari oqimi orqali to'ladi, shu bois bu = qarz to'lovlari tarixi.
+router.get('/debt-payments', async (req, res, next) => {
+  try {
+    const { date_from, date_to } = req.query;
+    let where = '1=1';
+    const params = [];
+    let idx = 1;
+    if (date_from) { where += ` AND DATE(p.payment_date) >= $${idx++}`; params.push(date_from); }
+    if (date_to)   { where += ` AND DATE(p.payment_date) <= $${idx++}`; params.push(date_to); }
+
+    const rows = (await query(`
+      SELECT p.id, p.amount, p.method, p.payment_date, p.notes, p.created_at,
+             pr.name AS product_name, s.order_ref,
+             COALESCE(c.name, s.customer_name) AS customer_name, c.id AS customer_id, c.phone,
+             u.full_name AS created_by_name
+      FROM payments p
+      LEFT JOIN sales s ON p.sale_id = s.id
+      LEFT JOIN products pr ON s.product_id = pr.id
+      LEFT JOIN customers c ON s.customer_id = c.id
+      LEFT JOIN users u ON p.created_by = u.id
+      WHERE ${where}
+      ORDER BY p.payment_date DESC, p.created_at DESC
+    `, params)).rows;
+
+    const total = rows.reduce((sm, r) => sm + parseFloat(r.amount || 0), 0);
+    res.json({ payments: rows, total, count: rows.length });
+  } catch (err) { next(err); }
+});
+
 // GET /api/reports/monthly?month=2024-01
 router.get('/monthly', async (req, res, next) => {
   try {

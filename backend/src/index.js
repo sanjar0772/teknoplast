@@ -63,7 +63,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'sale-date-today-fix', commit: 'v75' });
+  res.json({ version: 'sale-date-backfix', commit: 'v76' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)
@@ -147,6 +147,12 @@ require('./services/salesReset')
   .catch(e => console.error('Sotuv tozalash init xato:', e.message))
   .then(() => require('./services/debtorsSeed').ensureDebtors2026())
   .catch(e => console.error('Qarzdorlar seed init xato:', e.message));
+
+// BIR MARTALIK: eski sessiya sanasi tufayli noto'g'ri yozilган savdo sanalarini
+// order_ref (haqiqiy yaratilган kun) bo'yicha to'g'rilash (sentinel bilan himoyalangan).
+require('./services/saleDateFix')
+  .ensureSaleDatesFixed()
+  .catch(e => console.error('Sale date fix init xato:', e.message));
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

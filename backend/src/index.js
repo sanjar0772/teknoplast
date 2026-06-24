@@ -63,7 +63,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'sale-discount', commit: 'v73' });
+  res.json({ version: 'pwa-android', commit: 'v74' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)
@@ -71,7 +71,8 @@ const frontendDist = path.join(__dirname, '../../frontend/dist');
 // Hashli fayllar (assets/) abadiy keshlanadi, index.html esa HECH QACHON keshlanmaydi
 app.use(express.static(frontendDist, {
   setHeaders: (res, filePath) => {
-    if (filePath.endsWith('index.html')) {
+    // index.html, service worker va manifest — HECH QACHON keshlanmaydi (tez yangilanish uchun)
+    if (filePath.endsWith('index.html') || filePath.endsWith('sw.js') || filePath.endsWith('.webmanifest')) {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');

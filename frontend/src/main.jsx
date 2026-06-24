@@ -31,3 +31,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </QueryClientProvider>
   </React.StrictMode>
 );
+
+// PWA service worker — Android/Chrome'da "ilovani o'rnatish" uchun.
+// updateViaCache: 'none' — sw.js har doim yangilanadi (eski kesh qolib ketmaydi).
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => {});
+  });
+}

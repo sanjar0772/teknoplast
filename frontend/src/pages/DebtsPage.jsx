@@ -1,7 +1,8 @@
 import { useState, useMemo, Fragment } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { X, Phone, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot, Printer, Search, ChevronDown, ChevronRight, History, Plus } from 'lucide-react';
+import { X, Phone, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot, Printer, Search, ChevronDown, ChevronRight, History, Plus, FileText } from 'lucide-react';
 import { reportsAPI, salesAPI, ahmadAPI, customersAPI } from '../services/api';
 
 const METHOD_LABEL = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', DISCOUNT: '🏷️ Skidka', OTHER: 'Boshqa' };
@@ -95,6 +96,7 @@ function Modal({ open, onClose, title, children }) {
 
 export default function DebtsPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   // payFor = { customer, totalDebt, items: [{sale_id, debt}, ...] }
   const [payFor, setPayFor] = useState(null);
   const [payAmounts, setPayAmounts] = useState({ naqd: '', karta: '', bank: '', skidka: '' });
@@ -258,6 +260,25 @@ export default function DebtsPage() {
     if (payFor && settled > payFor.totalDebt + 0.01)
       return toast.error(`To'lov + skidka ${fmt(payFor.totalDebt)} so'mdan oshmasin`);
     payMutation.mutate({ items: payFor.items, naqd, karta, bank, skidka, customer: payFor.customer, totalDebt: payFor.totalDebt });
+  };
+
+  // To'langan qarzlar tabidan — tarixiy to'lov uchun chek (dastlabki/to'langan/joriy qarz bilan)
+  const openPaidChek = (p) => {
+    const amt = parseFloat(p.amount) || 0;
+    const m = p.method;
+    setReceipt({
+      customer: p.customer_name || '—',
+      product: p.product_name || null,
+      naqd:   m === 'CASH'     ? amt : 0,
+      karta:  m === 'CARD'     ? amt : 0,
+      bank:   m === 'TRANSFER' ? amt : 0,
+      skidka: m === 'DISCOUNT' ? amt : 0,
+      total:  m === 'DISCOUNT' ? 0   : amt,
+      remaining: Math.max(0, parseFloat(p.sale_remaining) || 0),
+      saleTotal: parseFloat(p.sale_total) || 0,
+      salePaid:  parseFloat(p.sale_paid)  || 0,
+      date: new Date(p.payment_date),
+    });
   };
 
   const buckets = data?.buckets || {};
@@ -514,29 +535,53 @@ export default function DebtsPage() {
       <div className="table-container">
         <table className="table">
           <thead>
-            <tr><th>Sana</th><th>Mijoz</th><th>Mahsulot</th><th>Usul</th><th>Summa</th></tr>
+            <tr>
+              <th>Sana</th><th>Mijoz</th><th>Mahsulot</th><th>Usul</th>
+              <th>To'landi</th><th>Dastlabki</th><th>Joriy qarz</th><th className="no-print">Amal</th>
+            </tr>
           </thead>
           <tbody>
             {paidLoading ? (
-              <tr><td colSpan={5} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
+              <tr><td colSpan={8} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
             ) : !paidFiltered.length ? (
-              <tr><td colSpan={5} className="text-center py-10 text-gray-400">
+              <tr><td colSpan={8} className="text-center py-10 text-gray-400">
                 <Coins size={26} className="mx-auto mb-2 text-gray-300" />
                 {q ? `"${search}" bo'yicha topilmadi` : "Bu davrda to'langan qarz yo'q"}
               </td></tr>
-            ) : paidFiltered.map(p => (
-              <tr key={p.id}>
-                <td className="whitespace-nowrap">{new Date(p.payment_date).toLocaleDateString('uz-UZ')}</td>
-                <td className="font-medium text-gray-900">{p.customer_name || '—'}</td>
-                <td className="text-gray-600">{p.product_name || '—'}</td>
-                <td><span className="text-sm">{METHOD_LABEL[p.method] || p.method}</span></td>
-                <td className="font-bold text-green-700">{fmt(p.amount)} so'm</td>
-              </tr>
-            ))}
+            ) : paidFiltered.map(p => {
+              const rem = parseFloat(p.sale_remaining) || 0;
+              return (
+                <tr key={p.id}>
+                  <td className="whitespace-nowrap">{new Date(p.payment_date).toLocaleDateString('uz-UZ')}</td>
+                  <td className="font-medium text-gray-900">{p.customer_name || '—'}</td>
+                  <td className="text-gray-600">{p.product_name || '—'}</td>
+                  <td><span className="text-sm">{METHOD_LABEL[p.method] || p.method}</span></td>
+                  <td className="font-bold text-green-700 whitespace-nowrap">{fmt(p.amount)} so'm</td>
+                  <td className="whitespace-nowrap">{fmt(p.sale_total)} so'm</td>
+                  <td className="whitespace-nowrap">
+                    {rem > 0.01
+                      ? <span className="font-bold text-red-600">{fmt(rem)} so'm</span>
+                      : <span className="badge badge-green">✅ yopilgan</span>}
+                  </td>
+                  <td className="no-print">
+                    <div className="flex gap-1">
+                      <button onClick={() => navigate(`/invoice/${p.order_ref || p.sale_id}`)}
+                        className="btn-secondary btn-sm" title="Schyot-faktura">
+                        <FileText size={12} /> Faktura
+                      </button>
+                      <button onClick={() => openPaidChek(p)} className="btn-secondary btn-sm" title="Chek">
+                        <Printer size={12} /> Chek
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
             {paidFiltered.length > 0 && (
               <tr className="bg-gray-50 font-bold">
                 <td colSpan={4} className="text-right text-gray-600">Jami to'langan:</td>
-                <td className="text-green-700">{fmt(paidTotal)} so'm</td>
+                <td className="text-green-700 whitespace-nowrap">{fmt(paidTotal)} so'm</td>
+                <td colSpan={3} className="no-print"></td>
               </tr>
             )}
           </tbody>
@@ -641,6 +686,7 @@ export default function DebtsPage() {
                 <div className="flex justify-between"><span>Sana:</span><span>{receipt.date.toLocaleDateString('uz-UZ')}</span></div>
                 <div className="flex justify-between"><span>Vaqt:</span><span>{receipt.date.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}</span></div>
                 <div className="flex justify-between"><span>Mijoz:</span><span className="font-bold">{receipt.customer}</span></div>
+                {receipt.product && <div className="flex justify-between"><span>Mahsulot:</span><span>{receipt.product}</span></div>}
               </div>
               <div className="text-[12px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-2">
                 {receipt.naqd > 0 && <div className="flex justify-between"><span>Naqd:</span><span className="font-bold text-green-700">{fmt(receipt.naqd)} so'm</span></div>}
@@ -651,7 +697,17 @@ export default function DebtsPage() {
               <div className="flex justify-between font-bold text-[15px] pb-2 mb-1">
                 <span>TO'LANDI:</span><span>{fmt(receipt.total)} so'm</span>
               </div>
-              {receipt.remaining > 0.01 ? (
+              {receipt.saleTotal != null && receipt.saleTotal > 0 ? (
+                <div className="text-[12px] space-y-0.5 border-t border-dashed border-gray-300 pt-2">
+                  <div className="flex justify-between"><span>Dastlabki qarz:</span><span className="font-semibold">{fmt(receipt.saleTotal)} so'm</span></div>
+                  <div className="flex justify-between text-green-700"><span>Jami to'langan:</span><span className="font-semibold">{fmt(receipt.salePaid)} so'm</span></div>
+                  {receipt.remaining > 0.01 ? (
+                    <div className="flex justify-between text-red-600"><span>Joriy qarz:</span><span className="font-bold">{fmt(receipt.remaining)} so'm</span></div>
+                  ) : (
+                    <div className="text-center text-green-700 font-bold pt-1">✅ Qarz to'liq yopildi!</div>
+                  )}
+                </div>
+              ) : receipt.remaining > 0.01 ? (
                 <div className="flex justify-between text-[12px] text-red-600">
                   <span>Qolgan qarz:</span><span className="font-bold">{fmt(receipt.remaining)} so'm</span>
                 </div>

@@ -160,7 +160,9 @@ router.get('/debt-payments', async (req, res, next) => {
 
     const rows = (await query(`
       SELECT p.id, p.amount, p.method, p.payment_date, p.notes, p.created_at,
-             pr.name AS product_name, s.order_ref,
+             pr.name AS product_name, s.id AS sale_id, s.order_ref, s.sale_date,
+             s.total_amount AS sale_total, s.payment_amount AS sale_paid,
+             (s.total_amount - s.payment_amount) AS sale_remaining, s.status AS sale_status,
              COALESCE(c.name, s.customer_name) AS customer_name, c.id AS customer_id, c.phone,
              u.full_name AS created_by_name
       FROM payments p

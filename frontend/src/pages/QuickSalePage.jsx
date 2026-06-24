@@ -23,6 +23,12 @@ const rowAvail = (x) => {
 const MAX_TABS = 5;
 const STORAGE_KEY = 'teknoplast_sale_sessions';
 const STORAGE_IDX_KEY = 'teknoplast_sale_activeIdx';
+// Mahalliy (Toshkent) sana — toISOString() UTC bergani uchun emas, mahalliy kun bo'yicha
+const todayStr = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+
 const freshSession = () => ({
   id: Date.now() + Math.random(),
   cart: [],
@@ -33,7 +39,7 @@ const freshSession = () => ({
   payPayme: '',
   discount: '',
   discountMode: 'sum', // 'sum' = so'm, 'pct' = foiz
-  saleDate: new Date().toISOString().slice(0, 10),
+  saleDate: todayStr(),
 });
 
 const loadSessions = () => {
@@ -42,7 +48,12 @@ const loadSessions = () => {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length) {
-        parsed.forEach(ses => { ses.cart.forEach(x => { x.key = newRowKey(); }); });
+        // MUHIM: saqlangan sessiyaning sanasi eskirgan bo'lishi mumkin —
+        // ilova ochilganda sanani har doim bugunga tiklaymiz (savdo bugungi kun bilan yozilsin).
+        parsed.forEach(ses => {
+          (ses.cart || []).forEach(x => { x.key = newRowKey(); });
+          ses.saleDate = todayStr();
+        });
         return parsed;
       }
     }

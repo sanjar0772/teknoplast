@@ -50,7 +50,7 @@ export default function CustomersPage({ embedded = false }) {
   const applyPreset = (preset) => {
     setDatePreset(preset);
     const today = new Date();
-    const iso = d => d.toISOString().slice(0, 10);
+    const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
     if (preset === 'today') {
       setFilter(f => ({ ...f, date_from: iso(today), date_to: iso(today) }));
     } else if (preset === 'week') {

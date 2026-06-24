@@ -18,7 +18,8 @@ const STATUS_MAP = {
   PARTIALLY_PAID: { label: 'Qisman', cls: 'badge-blue' },
 };
 
-const iso = (d) => d.toISOString().slice(0, 10);
+// Mahalliy (Toshkent) sana — toISOString() UTC bergani uchun emas, mahalliy kun bo'yicha
+const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 // Sana presetlari → { from, to } oraliq
 function presetRange(preset) {
   const today = new Date();

@@ -46,6 +46,12 @@ const DATE_PRESETS = [
   { key: 'otgan_oy', label: "O'tgan oy" },
 ];
 const fmtDate = (s) => s ? new Date(s).toLocaleDateString('uz-UZ') : '—';
+// created_at SQLite'da UTC ('YYYY-MM-DD HH:MM:SS', Z'siz) — 'Z' qo'shib mahalliy (Toshkent) vaqtini ko'rsatamiz
+const fmtTime = (ca) => {
+  if (!ca) return '';
+  const d = new Date(String(ca).replace(' ', 'T') + (String(ca).includes('Z') ? '' : 'Z'));
+  return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
+};
 
 function Modal({ open, onClose, title, children }) {
   if (!open) return null;
@@ -261,16 +267,13 @@ export default function SalesPage({ embedded = false }) {
 
   const canCreate = isOwner() || isSalesHead() || isAccountant();
 
-  // Bitta mijoz + bitta kun = bitta qator.
-  // Bir kunda 4 ta yoki 10 ta xarid qilgan bo'lsa ham — 1 ta qator, ichiga kirib ko'rish mumkin.
+  // HAR BIR SAVDO (chek/order_ref) = alohida qator. Bir mijoz bir kunda bir necha marta
+  // xarid qilsa ham, har bir savdo o'z qatorida (vaqti bilan) ko'rinadi. Yangi savdo — tepada.
   const groups = useMemo(() => {
     const map = new Map();
     (data?.sales || []).forEach(s => {
-      const dateKey = s.sale_date ? String(s.sale_date).slice(0, 10) : '';
-      const custKey = s.customer_id
-        ? `id:${s.customer_id}`
-        : `name:${(s.customer_name || '').toLowerCase().trim() || 'anon'}`;
-      const key = `${custKey}|${dateKey}`;
+      // Bitta chekdagi (order_ref) bir necha mahsulot — 1 qator; aks holda har sotuv alohida
+      const key = s.order_ref ? `ord:${s.order_ref}` : `id:${s.id}`;
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(s);
     });
@@ -279,6 +282,8 @@ export default function SalesPage({ embedded = false }) {
       const paid = sales.reduce((sum, x) => sum + parseFloat(x.payment_amount || 0), 0);
       const totalQty = sales.reduce((sum, x) => sum + parseFloat(x.quantity || 0), 0);
       const statuses = new Set(sales.map(x => x.status));
+      // Eng so'nggi created_at — saralash va vaqt ko'rsatish uchun
+      const created = sales.reduce((mx, x) => (x.created_at && x.created_at > mx ? x.created_at : mx), '');
       return {
         key,
         sales,
@@ -288,9 +293,10 @@ export default function SalesPage({ embedded = false }) {
         paid,
         debt: Math.max(0, total - paid),
         totalQty,
+        created,
         status: statuses.size === 1 ? sales[0].status : null,
       };
-    });
+    }).sort((a, b) => String(b.created).localeCompare(String(a.created))); // yangi savdo tepada
   }, [data]);
 
   return (
@@ -421,13 +427,16 @@ export default function SalesPage({ embedded = false }) {
               return (
                 <Fragment key={g.key}>
                   <tr className={multi ? 'bg-blue-50/30' : ''}>
-                    <td className="whitespace-nowrap">{new Date(first.sale_date).toLocaleDateString('uz-UZ')}</td>
+                    <td className="whitespace-nowrap">
+                      <div>{new Date(first.sale_date).toLocaleDateString('uz-UZ')}</div>
+                      {fmtTime(g.created) && <div className="text-[11px] text-gray-400">{fmtTime(g.created)}</div>}
+                    </td>
                     <td className="font-medium">
                       {multi ? (
                         <button onClick={() => toggleExpand(g.key)} className="flex items-center gap-1 text-left hover:text-blue-700">
                           {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                           <span>{first.product_name}</span>
-                          <span className="badge-blue ml-1">+{sales.length - 1} ta xarid</span>
+                          <span className="badge-blue ml-1">+{sales.length - 1} ta mahsulot</span>
                         </button>
                       ) : first.product_name}
                     </td>

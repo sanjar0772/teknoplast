@@ -725,7 +725,7 @@ export default function IntakePage() {
   const { isOwner, isSalesHead, isKirimchi, isProductionHead, user } = useAuthStore();
   const [tab, setTab] = useState('intake');
 
-  const canCreate = isOwner() || isKirimchi() || isProductionHead();
+  const canCreate = isOwner() || isKirimchi() || isProductionHead() || isSalesHead();
   const canApprove = isOwner() || isSalesHead();
 
   const TABS = [

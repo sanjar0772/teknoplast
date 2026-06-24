@@ -53,8 +53,8 @@ router.get('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/intakes — yangi kirim (KIRIMCHI yoki OWNER)
-router.post('/', requireRole('OWNER', 'KIRIMCHI', 'PRODUCTION_HEAD'), async (req, res, next) => {
+// POST /api/intakes — yangi kirim (KIRIMCHI, OWNER, PRODUCTION_HEAD, SALES_HEAD)
+router.post('/', requireRole('OWNER', 'KIRIMCHI', 'PRODUCTION_HEAD', 'SALES_HEAD'), async (req, res, next) => {
   try {
     const { items, notes } = req.body;
     if (!Array.isArray(items) || !items.length) {

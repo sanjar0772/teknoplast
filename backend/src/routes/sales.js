@@ -685,6 +685,12 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
     const reason = (req.body.reason || '').trim();
     // Holati: GOOD = yaxshi (omborga qaytadi), DEFECTIVE = brak (ziyon, omborga qaytmaydi)
     const condition = req.body.condition === 'DEFECTIVE' ? 'DEFECTIVE' : 'GOOD';
+    // Summani qanday yopish:
+    //   'REFUND'  = naqd pul qaytariladi (to'langan summadan oshmaydi)
+    //   'BALANCE' = naqd qaytarilmaydi — qarzdan ayiriladi yoki mijoz haqdor bo'lib qoladi
+    //   (berilmasa — eski xatti-harakat: ortiqcha to'lov bo'lsa avtomatik refund)
+    const settlement = req.body.settlement === 'REFUND' ? 'REFUND'
+      : req.body.settlement === 'BALANCE' ? 'BALANCE' : null;
     if (!qty || qty < 1) return res.status(400).json({ error: 'Qaytariladigan miqdor noto\'g\'ri' });
     if (!reason) return res.status(400).json({ error: 'Vozvrat sababini kiriting (majburiy)' });
 
@@ -708,10 +714,21 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
     const newQty = soldQty - qty;
     const newTotal = Math.max(0, (parseFloat(sale.total_amount) || 0) - amount);
 
-    // Moliyani avtomatik to'g'rilash: ortiqcha to'lov bo'lsa — refund, aks holda qarz kamayadi
+    // Moliyani to'g'rilash — egasi tanlagan usul bo'yicha
     let newPayment = parseFloat(sale.payment_amount) || 0;
     let refund = 0;
-    if (newPayment > newTotal) { refund = newPayment - newTotal; newPayment = newTotal; }
+    if (settlement === 'REFUND') {
+      // Naqd pul qaytariladi (faqat to'langan summa doirasida; qolgani qarzdan ayiriladi)
+      refund = Math.min(amount, newPayment);
+      newPayment = newPayment - refund;
+    } else if (settlement === 'BALANCE') {
+      // Naqd qaytarilmaydi — to'lov o'zgarmaydi. Qarz bo'lsa kamayadi,
+      // to'liq to'langan bo'lsa mijoz shu summaga haqdor bo'lib qoladi (kredit).
+      refund = 0;
+    } else {
+      // Eski xatti-harakat: ortiqcha to'lov bo'lsa avtomatik refund
+      if (newPayment > newTotal) { refund = newPayment - newTotal; newPayment = newTotal; }
+    }
 
     // Status
     let newStatus;
@@ -757,9 +774,9 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
       await client.query('COMMIT');
       logAudit(req, {
         action: 'SALE_RETURN', table: 'sales', recordId: sale.id,
-        newValues: { quantity: qty, amount, refund_amount: refund, reason, condition, loss_amount: lossAmount, new_quantity: newQty, new_total: newTotal },
+        newValues: { quantity: qty, amount, refund_amount: refund, reason, condition, settlement: settlement || 'AUTO', loss_amount: lossAmount, new_quantity: newQty, new_total: newTotal },
       });
-      res.status(201).json({ sale: upd.rows[0], return: retR.rows[0], refund_amount: refund, condition, loss_amount: lossAmount });
+      res.status(201).json({ sale: upd.rows[0], return: retR.rows[0], refund_amount: refund, settlement: settlement || 'AUTO', amount, condition, loss_amount: lossAmount });
     } catch (e) {
       await client.query('ROLLBACK');
       throw e;

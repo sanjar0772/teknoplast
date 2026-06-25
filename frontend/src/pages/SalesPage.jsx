@@ -160,14 +160,19 @@ export default function SalesPage({ embedded = false }) {
 
   const returnMutation = useMutation({
     mutationFn: ({ id, data }) => salesAPI.returnSale(id, data),
-    onSuccess: (res) => {
+    onSuccess: (res, vars) => {
       const refund = parseFloat(res?.data?.refund_amount || 0);
       const loss = parseFloat(res?.data?.loss_amount || 0);
-      if (loss > 0) {
-        toast.success(`Brak qabul qilindi — ${fmt(loss)} so'm ziyon sifatida qayd etildi`);
+      const amt = parseFloat(res?.data?.amount || 0);
+      const settlement = vars?.data?.settlement;
+      if (refund > 0) {
+        toast.success(`Vozvrat qabul qilindi — mijozga ${fmt(refund)} so'm naqd qaytarildi`);
+      } else if (settlement === 'BALANCE') {
+        toast.success(`Vozvrat qabul qilindi — ${fmt(amt)} so'm mijoz hisobiga yozildi (qarz kamaydi / haqdor bo'ldi)`);
       } else {
-        toast.success(refund > 0 ? `Vozvrat qabul qilindi. Qaytariladigan pul: ${fmt(refund)} so'm` : 'Vozvrat qabul qilindi — tovar omborga qaytdi');
+        toast.success('Vozvrat qabul qilindi — tovar omborga qaytdi');
       }
+      if (loss > 0) toast.success(`Brak: ${fmt(loss)} so'm ziyon sifatida qayd etildi`);
       qc.invalidateQueries({ queryKey: ['sales'] });
       qc.invalidateQueries({ queryKey: ['sales-summary'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
@@ -185,9 +190,12 @@ export default function SalesPage({ embedded = false }) {
       max: parseInt(sale.quantity, 10) || 0,
       unit: sale.unit || 'dona',
       unit_price: parseFloat(sale.unit_price) || 0,
+      total_amount: parseFloat(sale.total_amount) || 0,
+      payment_amount: parseFloat(sale.payment_amount) || 0,
       quantity: parseInt(sale.quantity, 10) || 1,
       reason: '',
       condition: 'GOOD',
+      settlement: 'DEBT', // 'DEBT' = qarzdan ayirsin · 'REFUND' = naqd qaytarsin · 'CREDIT' = haqdor bo'lsin
     });
   };
 
@@ -196,7 +204,9 @@ export default function SalesPage({ embedded = false }) {
     if (!q || q < 1) return toast.error('Miqdor noto\'g\'ri');
     if (q > returnForm.max) return toast.error(`Faqat ${returnForm.max} dona qaytarish mumkin`);
     if (!returnForm.reason.trim()) return toast.error('Vozvrat sababi majburiy');
-    returnMutation.mutate({ id: returnForm.id, data: { quantity: q, reason: returnForm.reason.trim(), condition: returnForm.condition } });
+    // 'DEBT' va 'CREDIT' — naqd qaytarilmaydi (balansga); 'REFUND' — naqd pul qaytariladi
+    const settlement = returnForm.settlement === 'REFUND' ? 'REFUND' : 'BALANCE';
+    returnMutation.mutate({ id: returnForm.id, data: { quantity: q, reason: returnForm.reason.trim(), condition: returnForm.condition, settlement } });
   };
 
   // Bitta chekdagi barcha to'lanmagan mahsulotlarni "To'langan" qilish
@@ -733,12 +743,73 @@ export default function SalesPage({ embedded = false }) {
                 onChange={e => setReturnForm(f => ({ ...f, reason: e.target.value }))}
               />
             </div>
-            <div className="bg-emerald-50 rounded-xl p-3 text-sm flex justify-between">
-              <span className="text-gray-600">Mijozga qaytariladigan:</span>
-              <span className="font-semibold text-emerald-700">
-                {fmt((parseInt(returnForm.quantity, 10) || 0) * returnForm.unit_price)} so'm
-              </span>
+            {/* Summani qanday yopish — egasi tanlaydi */}
+            <div>
+              <label className="label">Summa qayerga ketsin? *</label>
+              <div className="space-y-2">
+                {[
+                  { key: 'DEBT',   title: '➖ Qarzdan ayirsin',     desc: 'Qarz shu summaga kamayadi (naqd pul berilmaydi)' },
+                  { key: 'REFUND', title: '💵 Naqd qaytarib berish', desc: 'Mijozga naqd pul qaytariladi' },
+                  { key: 'CREDIT', title: '⭐ Haqdor bo‘lib qolsin',  desc: 'Mijoz shu summaga haqdor bo‘ladi (keyingi xaridda)' },
+                ].map(opt => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => setReturnForm(f => ({ ...f, settlement: opt.key }))}
+                    className={`w-full rounded-xl border p-2.5 text-sm text-left transition ${returnForm.settlement === opt.key ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-300' : 'border-gray-200 hover:border-gray-300'}`}
+                  >
+                    <div className="font-medium text-gray-900">{opt.title}</div>
+                    <div className="text-[11px] text-gray-500">{opt.desc}</div>
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Natija — tanlangan usul bo'yicha */}
+            {(() => {
+              const q = parseInt(returnForm.quantity, 10) || 0;
+              const A = q * returnForm.unit_price;                 // qaytarilayotgan tovar qiymati
+              const debtBefore = Math.max(0, returnForm.total_amount - returnForm.payment_amount);
+              if (returnForm.settlement === 'REFUND') {
+                const cash = Math.min(A, returnForm.payment_amount);
+                return (
+                  <div className="bg-emerald-50 rounded-xl p-3 text-sm flex justify-between">
+                    <span className="text-gray-600">💵 Mijozga naqd qaytariladi:</span>
+                    <span className="font-semibold text-emerald-700">{fmt(cash)} so'm</span>
+                  </div>
+                );
+              }
+              if (returnForm.settlement === 'CREDIT') {
+                return (
+                  <div className="bg-amber-50 rounded-xl p-3 text-sm flex justify-between">
+                    <span className="text-gray-600">⭐ Mijoz haqdor bo'ladi:</span>
+                    <span className="font-semibold text-amber-700">{fmt(A)} so'm</span>
+                  </div>
+                );
+              }
+              // DEBT
+              const debtAfter = Math.max(0, debtBefore - A);
+              const creditAfter = Math.max(0, A - debtBefore);
+              return (
+                <div className="bg-blue-50 rounded-xl p-3 text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Hozirgi qarz:</span>
+                    <span className="font-medium text-gray-800">{fmt(debtBefore)} so'm</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Vozvratdan keyin qarz:</span>
+                    <span className="font-semibold text-blue-700">{fmt(debtAfter)} so'm</span>
+                  </div>
+                  {creditAfter > 0 && (
+                    <div className="flex justify-between border-t border-blue-100 pt-1">
+                      <span className="text-gray-600">Mijoz haqdor bo'ladi:</span>
+                      <span className="font-semibold text-amber-700">{fmt(creditAfter)} so'm</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {returnForm.condition === 'DEFECTIVE' && (
               <div className="bg-red-50 rounded-xl p-3 text-sm flex justify-between">
                 <span className="text-gray-600">⚠️ Ziyon (taxminiy):</span>

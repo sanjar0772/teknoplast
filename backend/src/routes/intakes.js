@@ -32,6 +32,54 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Kirimlarni (intake_items yassilangan) olish — Excel/PDF eksport uchun
+async function fetchIntakeRows({ status, start_date, end_date }) {
+  let sql = `
+    SELECT i.id, i.status, i.notes, i.created_at, i.approved_at,
+           u.full_name AS created_by_name, a.full_name AS approved_by_name,
+           it.quantity, COALESCE(it.rang, p.rang) AS rang,
+           p.name AS product_name, COALESCE(p.unit, 'dona') AS unit
+    FROM intake_items it
+    JOIN product_intakes i ON it.intake_id = i.id
+    LEFT JOIN products p ON it.product_id = p.id
+    LEFT JOIN users u ON i.created_by = u.id
+    LEFT JOIN users a ON i.approved_by = a.id
+    WHERE 1=1`;
+  const params = [];
+  let idx = 1;
+  if (status)     { sql += ` AND i.status = $${idx++}`; params.push(status); }
+  if (start_date) { sql += ` AND DATE(i.created_at) >= $${idx++}`; params.push(start_date); }
+  if (end_date)   { sql += ` AND DATE(i.created_at) <= $${idx++}`; params.push(end_date); }
+  sql += ' ORDER BY i.created_at DESC, p.name';
+  return (await query(sql, params)).rows;
+}
+
+// GET /api/intakes/excel — kirimlar Excel hisoboti
+router.get('/excel', async (req, res, next) => {
+  try {
+    const { status, start_date, end_date } = req.query;
+    const rows = await fetchIntakeRows({ status, start_date, end_date });
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateIntakesExcel(rows, { status, start_date, end_date });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="kirimlar-${start_date || 'hammasi'}_${end_date || ''}.xlsx"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) { next(err); }
+});
+
+// GET /api/intakes/pdf — kirimlar PDF hisoboti
+router.get('/pdf', async (req, res, next) => {
+  try {
+    const { status, start_date, end_date } = req.query;
+    const rows = await fetchIntakeRows({ status, start_date, end_date });
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateIntakesPDF(rows, { status, start_date, end_date });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="kirimlar-${start_date || 'hammasi'}_${end_date || ''}.pdf"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) { next(err); }
+});
+
 // GET /api/intakes/:id — kirim tafsiloti + mahsulotlar
 router.get('/:id', async (req, res, next) => {
   try {

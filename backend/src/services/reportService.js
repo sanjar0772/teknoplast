@@ -794,4 +794,115 @@ async function generateCustomerExcel(data) {
   return buffer;
 }
 
-module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel };
+// ─── Kirimlar (intake) — Excel va PDF hisobot ────────────────────────────────
+const INTAKE_STATUS_UZ = { PENDING: 'Kutilmoqda', APPROVED: 'Tasdiqlangan', REJECTED: 'Rad etilgan' };
+const rangUz = (r) => (r && String(r).trim()) ? r : 'Rangsiz';
+const periodLabel = (f) => {
+  if (f.start_date && f.end_date) return `${f.start_date} — ${f.end_date}`;
+  if (f.start_date) return `${f.start_date} dan`;
+  if (f.end_date) return `${f.end_date} gacha`;
+  return 'Barcha davr';
+};
+
+async function generateIntakesExcel(rows, filters = {}) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Kirimlar');
+
+  sheet.columns = [
+    { header: '№', key: 'num', width: 5 },
+    { header: 'Sana', key: 'date', width: 14 },
+    { header: 'Holat', key: 'status', width: 16 },
+    { header: 'Mahsulot', key: 'product', width: 34 },
+    { header: 'Rang', key: 'rang', width: 14 },
+    { header: 'Miqdor', key: 'qty', width: 12 },
+    { header: 'Kiritdi', key: 'created_by', width: 20 },
+    { header: 'Tasdiqladi', key: 'approved_by', width: 20 },
+  ];
+  sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D4ED8' } };
+
+  rows.forEach((r, i) => {
+    sheet.addRow({
+      num: i + 1,
+      date: r.created_at ? new Date(r.created_at).toLocaleDateString('uz-UZ') : '',
+      status: INTAKE_STATUS_UZ[r.status] || r.status,
+      product: r.product_name || '—',
+      rang: rangUz(r.rang),
+      qty: parseFloat(r.quantity || 0),
+      created_by: r.created_by_name || '—',
+      approved_by: r.approved_by_name || '—',
+    });
+  });
+
+  const totalRow = sheet.addRow({
+    product: 'JAMI:',
+    qty: rows.reduce((a, r) => a + parseFloat(r.quantity || 0), 0),
+  });
+  totalRow.font = { bold: true };
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return buffer;
+}
+
+async function generateIntakesPDF(rows, filters = {}) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    registerCyrillicFonts(doc);
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    doc.fontSize(18).font('Arial-Bold').text('TEKNOPLAST', { align: 'center' });
+    doc.fontSize(12).font('Arial').text('Kirimlar hisoboti', { align: 'center' });
+    doc.fontSize(9).fillColor('#666').text(`Davr: ${periodLabel(filters)}   ·   Yaratildi: ${new Date().toLocaleDateString('uz-UZ')}`, { align: 'center' });
+    doc.fillColor('black').moveDown(0.8);
+
+    // Ustun x-koordinatalari (A4, margin 40 → 40..555)
+    const col = { num: 40, date: 70, product: 140, rang: 330, qty: 405, status: 470 };
+    const right = 555;
+
+    const drawHeader = (y) => {
+      doc.font('Arial-Bold').fontSize(9).fillColor('black');
+      doc.text('№', col.num, y);
+      doc.text('Sana', col.date, y);
+      doc.text('Mahsulot', col.product, y);
+      doc.text('Rang', col.rang, y);
+      doc.text('Miqdor', col.qty, y);
+      doc.text('Holat', col.status, y);
+      doc.moveTo(40, y + 13).lineTo(right, y + 13).strokeColor('#999').stroke();
+      return y + 18;
+    };
+
+    let y = drawHeader(doc.y);
+    doc.font('Arial').fontSize(8.5);
+    let totalQty = 0;
+
+    rows.forEach((r, i) => {
+      if (y > 780) { doc.addPage(); y = drawHeader(40); doc.font('Arial').fontSize(8.5); }
+      const qty = parseFloat(r.quantity || 0);
+      totalQty += qty;
+      doc.fillColor('black');
+      doc.text(String(i + 1), col.num, y, { width: 25 });
+      doc.text(r.created_at ? new Date(r.created_at).toLocaleDateString('uz-UZ') : '', col.date, y, { width: 65 });
+      doc.text(r.product_name || '—', col.product, y, { width: 185 });
+      doc.text(rangUz(r.rang), col.rang, y, { width: 70 });
+      doc.text(`${qty}`, col.qty, y, { width: 55 });
+      doc.text(INTAKE_STATUS_UZ[r.status] || r.status, col.status, y, { width: 85 });
+      const h = Math.max(
+        doc.heightOfString(r.product_name || '—', { width: 185 }),
+        12
+      );
+      y += h + 4;
+    });
+
+    doc.moveTo(40, y).lineTo(right, y).strokeColor('#999').stroke();
+    y += 6;
+    doc.font('Arial-Bold').fontSize(10).fillColor('black');
+    doc.text(`JAMI: ${rows.length} ta yozuv · ${totalQty} dona`, 40, y, { width: right - 40, align: 'right' });
+
+    doc.end();
+  });
+}
+
+module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF };

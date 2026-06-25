@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { PackagePlus, X, Search, Plus, Trash2, Check, Ban, Eye, Save, Users, ChevronDown, Clock } from 'lucide-react';
+import { PackagePlus, X, Search, Plus, Trash2, Check, Ban, Eye, Save, Users, ChevronDown, Clock, FileDown, FileText } from 'lucide-react';
 import { intakesAPI, productsAPI, productionAPI, employeesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import clsx from 'clsx';
@@ -41,11 +41,34 @@ function ProductIntakeTab({ canCreate, canApprove }) {
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState([]);
   const [notes, setNotes] = useState('');
+  const [exp, setExp] = useState({ start_date: '', end_date: '' }); // eksport sana oralig'i
+  const [downloading, setDownloading] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['intakes'],
     queryFn: () => intakesAPI.getAll().then(r => r.data),
   });
+
+  // Kirimlarni Excel yoki PDF qilib yuklab olish
+  const downloadReport = async (kind) => {
+    setDownloading(kind);
+    try {
+      const params = {};
+      if (exp.start_date) params.start_date = exp.start_date;
+      if (exp.end_date) params.end_date = exp.end_date;
+      const res = kind === 'excel' ? await intakesAPI.downloadExcel(params) : await intakesAPI.downloadPdf(params);
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `kirimlar-${exp.start_date || 'hammasi'}${exp.end_date ? '_' + exp.end_date : ''}.${kind === 'excel' ? 'xlsx' : 'pdf'}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Yuklab bo\'lmadi');
+    } finally {
+      setDownloading('');
+    }
+  };
   const { data: productsData } = useQuery({
     queryKey: ['products', 'all'],
     queryFn: () => productsAPI.getAll({ is_active: 'all' }).then(r => r.data),
@@ -112,7 +135,25 @@ function ProductIntakeTab({ canCreate, canApprove }) {
 
   return (
     <>
-      <div className="flex justify-end mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs text-gray-500 font-medium">Eksport:</span>
+          <input type="date" value={exp.start_date}
+            onChange={e => setExp(f => ({ ...f, start_date: e.target.value }))}
+            className="input text-xs py-1.5 w-36" title="Dan" />
+          <span className="text-gray-400 text-xs">—</span>
+          <input type="date" value={exp.end_date}
+            onChange={e => setExp(f => ({ ...f, end_date: e.target.value }))}
+            className="input text-xs py-1.5 w-36" title="Gacha" />
+          <button onClick={() => downloadReport('excel')} disabled={!!downloading}
+            className="btn-sm bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg px-3 flex items-center gap-1 hover:bg-emerald-100 disabled:opacity-50">
+            <FileDown size={13} /> {downloading === 'excel' ? '...' : 'Excel'}
+          </button>
+          <button onClick={() => downloadReport('pdf')} disabled={!!downloading}
+            className="btn-sm bg-red-50 text-red-700 border border-red-200 rounded-lg px-3 flex items-center gap-1 hover:bg-red-100 disabled:opacity-50">
+            <FileText size={13} /> {downloading === 'pdf' ? '...' : 'PDF'}
+          </button>
+        </div>
         {canCreate && (
           <button onClick={() => { setCart([]); setNotes(''); setShowForm(true); }} className="btn-primary btn-sm">
             <PackagePlus size={14} /> Yangi kirim

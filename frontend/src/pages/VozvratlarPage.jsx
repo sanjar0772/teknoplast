@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { RotateCcw, Warehouse, AlertTriangle, Coins, X, Search, Printer, Plus, Package } from 'lucide-react';
+import { RotateCcw, Warehouse, AlertTriangle, Coins, X, Search, Printer, Plus, Package, User, ArrowLeft, Check } from 'lucide-react';
 import { salesAPI } from '../services/api';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -27,9 +27,14 @@ export default function VozvratlarPage() {
   const [dateFilter, setDateFilter] = useState({ date_from: '', date_to: '' });
   const [datePreset, setDatePreset] = useState('all');
   const [search, setSearch] = useState('');
-  const [picker, setPicker] = useState(false);       // sotuvni tanlash oynasi
+
+  // ── Vozvrat oqimi: 1) mijoz tanlash → 2) mahsulotlarni belgilash (bir nechtasini birdan) ──
+  const [picker, setPicker] = useState(false);
+  const [step, setStep] = useState('customer');        // 'customer' | 'products'
   const [pickerSearch, setPickerSearch] = useState('');
-  const [returnForm, setReturnForm] = useState(null); // tanlangan sotuv uchun vozvrat formasi
+  const [selectedCustomer, setSelectedCustomer] = useState(null); // { key, id, name, sales }
+  const [selectedItems, setSelectedItems] = useState({});         // { [saleId]: { quantity, condition } }
+  const [bulkReason, setBulkReason] = useState('');
 
   const applyPreset = (preset) => {
     setDatePreset(preset);
@@ -61,61 +66,136 @@ export default function VozvratlarPage() {
   // Vozvrat qilish uchun so'nggi sotuvlar (faqat oyna ochilganda yuklanadi)
   const { data: salesData, isLoading: salesLoading } = useQuery({
     queryKey: ['sales', 'for-return'],
-    queryFn: () => salesAPI.getAll({ limit: 100 }).then(r => r.data),
+    queryFn: () => salesAPI.getAll({ limit: 300 }).then(r => r.data),
     enabled: picker,
   });
 
-  const pickableSales = useMemo(() => {
+  // 1-qadam: sotuvlarni mijoz bo'yicha guruhlash
+  const customerGroups = useMemo(() => {
     const list = (salesData?.sales || []).filter(s => (parseInt(s.quantity, 10) || 0) >= 1);
-    const pq = pickerSearch.trim().toLowerCase();
-    if (!pq) return list;
-    return list.filter(s =>
-      String(s.product_name || '').toLowerCase().includes(pq) ||
-      String(s.customer_name || '').toLowerCase().includes(pq) ||
-      String(s.order_ref || '').toLowerCase().includes(pq)
-    );
-  }, [salesData, pickerSearch]);
+    const map = new Map();
+    list.forEach(s => {
+      const key = s.customer_id ? `c:${s.customer_id}` : 'walkin';
+      if (!map.has(key)) {
+        map.set(key, { key, id: s.customer_id || null, name: s.customer_name || 'Tasodifiy mijoz', sales: [] });
+      }
+      map.get(key).sales.push(s);
+    });
+    return Array.from(map.values()).sort((a, b) => b.sales.length - a.sales.length);
+  }, [salesData]);
 
-  const returnMutation = useMutation({
-    mutationFn: ({ id, payload }) => salesAPI.returnSale(id, payload),
-    onSuccess: (res) => {
-      const refund = parseFloat(res?.data?.refund_amount || 0);
-      const loss = parseFloat(res?.data?.loss_amount || 0);
-      if (loss > 0) toast.success(`Brak qabul qilindi — ${fmt(loss)} so'm ziyon sifatida qayd etildi`);
-      else toast.success(refund > 0 ? `Vozvrat qabul qilindi. Qaytariladigan pul: ${fmt(refund)} so'm` : 'Vozvrat qabul qilindi — tovar omborga qaytdi');
+  const visibleCustomers = useMemo(() => {
+    const q = pickerSearch.trim().toLowerCase();
+    if (!q) return customerGroups;
+    return customerGroups.filter(c => c.name.toLowerCase().includes(q));
+  }, [customerGroups, pickerSearch]);
+
+  // 2-qadam: tanlangan mijozning mahsulotlari (qidiruv bilan)
+  const customerSales = useMemo(() => {
+    if (!selectedCustomer) return [];
+    const q = pickerSearch.trim().toLowerCase();
+    const list = selectedCustomer.sales;
+    if (!q) return list;
+    return list.filter(s =>
+      String(s.product_name || '').toLowerCase().includes(q) ||
+      String(s.order_ref || '').toLowerCase().includes(q)
+    );
+  }, [selectedCustomer, pickerSearch]);
+
+  const bulkMutation = useMutation({
+    mutationFn: async ({ items, reason }) => {
+      const results = [];
+      // Ketma-ket yuboramiz — har bir sotuv alohida vozvrat qilinadi
+      for (const it of items) {
+        const res = await salesAPI.returnSale(it.id, { quantity: it.quantity, reason, condition: it.condition });
+        results.push(res.data);
+      }
+      return results;
+    },
+    onSuccess: (results) => {
+      const refund = results.reduce((a, r) => a + parseFloat(r?.refund_amount || 0), 0);
+      const loss   = results.reduce((a, r) => a + parseFloat(r?.loss_amount || 0), 0);
+      let msg = `${results.length} ta mahsulot qaytarildi`;
+      if (refund > 0) msg += ` · Qaytariladigan pul: ${fmt(refund)} so'm`;
+      if (loss > 0)   msg += ` · Ziyon: ${fmt(loss)} so'm`;
+      toast.success(msg);
       qc.invalidateQueries({ queryKey: ['returns-all'] });
       qc.invalidateQueries({ queryKey: ['sales'] });
       qc.invalidateQueries({ queryKey: ['sales-summary'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['expenses'] });
-      setReturnForm(null);
+      closePicker();
     },
     onError: (err) => toast.error(err?.response?.data?.error || 'Vozvratda xato'),
   });
 
-  const selectSale = (sale) => {
+  const openPicker = () => {
+    setStep('customer');
+    setPickerSearch('');
+    setSelectedCustomer(null);
+    setSelectedItems({});
+    setBulkReason('');
+    setPicker(true);
+  };
+  const closePicker = () => {
     setPicker(false);
-    setReturnForm({
-      id: sale.id,
-      product_name: sale.product_name,
-      customer_name: sale.customer_name,
-      rang: sale.rang || '',
-      max: parseInt(sale.quantity, 10) || 0,
-      unit: sale.unit || 'dona',
-      unit_price: parseFloat(sale.unit_price) || 0,
-      quantity: parseInt(sale.quantity, 10) || 1,
-      reason: '',
-      condition: 'GOOD',
-    });
+    setStep('customer');
+    setSelectedCustomer(null);
+    setSelectedItems({});
+    setBulkReason('');
+    setPickerSearch('');
   };
 
-  const submitReturn = () => {
-    const q = parseInt(returnForm.quantity, 10);
-    if (!q || q < 1) return toast.error('Miqdor noto\'g\'ri');
-    if (q > returnForm.max) return toast.error(`Faqat ${returnForm.max} ${returnForm.unit} qaytarish mumkin`);
-    if (!returnForm.reason.trim()) return toast.error('Vozvrat sababi majburiy');
-    returnMutation.mutate({ id: returnForm.id, payload: { quantity: q, reason: returnForm.reason.trim(), condition: returnForm.condition } });
+  const chooseCustomer = (cust) => {
+    setSelectedCustomer(cust);
+    setSelectedItems({});
+    setPickerSearch('');
+    setStep('products');
+  };
+  const backToCustomers = () => {
+    setStep('customer');
+    setSelectedCustomer(null);
+    setSelectedItems({});
+    setPickerSearch('');
+  };
+
+  const isPicked = (sale) => Object.prototype.hasOwnProperty.call(selectedItems, sale.id);
+  const toggleItem = (sale) => {
+    setSelectedItems(prev => {
+      const next = { ...prev };
+      if (next[sale.id]) {
+        delete next[sale.id];
+      } else {
+        next[sale.id] = { quantity: parseInt(sale.quantity, 10) || 1, condition: 'GOOD' };
+      }
+      return next;
+    });
+  };
+  const setItemQty = (sale, val) => {
+    setSelectedItems(prev => ({ ...prev, [sale.id]: { ...prev[sale.id], quantity: val } }));
+  };
+  const setItemCond = (sale, cond) => {
+    setSelectedItems(prev => ({ ...prev, [sale.id]: { ...prev[sale.id], condition: cond } }));
+  };
+
+  const pickedCount = Object.keys(selectedItems).length;
+
+  const submitBulk = () => {
+    const entries = Object.entries(selectedItems);
+    if (!entries.length) return toast.error('Kamida bitta mahsulot tanlang');
+    if (!bulkReason.trim()) return toast.error('Vozvrat sababi majburiy');
+
+    const items = [];
+    for (const [id, it] of entries) {
+      const sale = selectedCustomer.sales.find(s => String(s.id) === String(id));
+      const max = parseInt(sale?.quantity, 10) || 0;
+      const q = parseInt(it.quantity, 10);
+      if (!q || q < 1) return toast.error(`"${sale?.product_name}" — miqdor noto'g'ri`);
+      if (q > max) return toast.error(`"${sale?.product_name}" — faqat ${max} ${sale?.unit || 'dona'} qaytarish mumkin`);
+      items.push({ id, quantity: q, condition: it.condition });
+    }
+    bulkMutation.mutate({ items, reason: bulkReason.trim() });
   };
 
   const summary = data?.summary || {};
@@ -145,7 +225,7 @@ export default function VozvratlarPage() {
         <div className="page-header">
           <h1 className="page-title flex items-center gap-2"><RotateCcw size={20} /> Vozvratlar (Qaytarishlar)</h1>
           <div className="flex items-center gap-2 no-print">
-            <button onClick={() => { setPickerSearch(''); setPicker(true); }} className="btn-primary btn-sm">
+            <button onClick={openPicker} className="btn-primary btn-sm">
               <Plus size={14} /> Vozvrat qilish
             </button>
             <button onClick={() => window.print()} className="btn-secondary btn-sm">
@@ -264,108 +344,128 @@ export default function VozvratlarPage() {
         </div>
       </div>
 
-      {/* 1-qadam: qaytariladigan sotuvni tanlash */}
-      <Modal open={picker} onClose={() => setPicker(false)} title="Qaysi sotuvni qaytarmoqchisiz?" wide>
+      {/* 1-qadam: MIJOZNI tanlash */}
+      <Modal open={picker && step === 'customer'} onClose={closePicker} title="Qaysi mijoz qaytarmoqchi?" wide>
         <div className="space-y-3">
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input autoFocus value={pickerSearch} onChange={e => setPickerSearch(e.target.value)}
-              placeholder="Mijoz, mahsulot yoki chek raqami..."
+              placeholder="Mijoz ismi bo'yicha qidirish..."
               className="input pl-9 w-full" />
           </div>
           <div className="border border-gray-100 rounded-xl divide-y divide-gray-50 max-h-[55vh] overflow-y-auto">
             {salesLoading ? (
               <p className="text-center py-8 text-gray-400 text-sm">Yuklanmoqda...</p>
-            ) : !pickableSales.length ? (
+            ) : !visibleCustomers.length ? (
               <p className="text-center py-8 text-gray-400 text-sm">
-                <Package size={24} className="mx-auto mb-2 opacity-30" />
-                Sotuv topilmadi
+                <User size={24} className="mx-auto mb-2 opacity-30" />
+                Mijoz topilmadi
               </p>
-            ) : pickableSales.map(s => (
-              <button key={s.id} onClick={() => selectSale(s)}
-                className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-blue-50 transition">
-                <div className="min-w-0">
-                  <div className="font-medium text-gray-900 truncate">{s.product_name}{s.rang ? ` · ${s.rang}` : ''}</div>
-                  <div className="text-xs text-gray-500 truncate">
-                    {s.customer_name || 'Tasodifiy'} · {new Date(s.sale_date).toLocaleDateString('uz-UZ')}
-                    {s.order_ref ? ` · ${s.order_ref}` : ''}
+            ) : visibleCustomers.map(c => (
+              <button key={c.key} onClick={() => chooseCustomer(c)}
+                className="w-full flex items-center justify-between gap-3 px-3 py-3 text-left hover:bg-blue-50 transition">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <User size={16} className="text-blue-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-medium text-gray-900 truncate">{c.name}</div>
+                    <div className="text-xs text-gray-500">{c.sales.length} ta mahsulot sotilgan</div>
                   </div>
                 </div>
-                <div className="text-right flex-shrink-0">
-                  <div className="text-sm font-semibold text-gray-900">{fmt(s.quantity)} {s.unit || 'dona'}</div>
-                  <div className="text-xs text-gray-400">{fmt(s.unit_price)} so'm</div>
-                </div>
+                <span className="badge bg-gray-100 text-gray-600 flex-shrink-0">{c.sales.length}</span>
               </button>
             ))}
           </div>
         </div>
       </Modal>
 
-      {/* 2-qadam: vozvrat formasi */}
-      <Modal open={!!returnForm} onClose={() => setReturnForm(null)} title="Vozvrat — sotuvdan qaytarish">
-        {returnForm && (
-          <div className="space-y-4">
-            <div className="bg-gray-50 rounded-xl p-3 text-sm">
-              <div className="font-medium text-gray-900">{returnForm.product_name || 'Mahsulot'}{returnForm.rang ? ` · ${returnForm.rang}` : ''}</div>
-              <div className="text-gray-500">
-                {returnForm.customer_name ? `${returnForm.customer_name} · ` : ''}
-                Sotilgan: {returnForm.max} {returnForm.unit} · Narx: {fmt(returnForm.unit_price)} so'm
-              </div>
-            </div>
+      {/* 2-qadam: MAHSULOTLARNI belgilash (bir nechtasini birdan) */}
+      <Modal open={picker && step === 'products'} onClose={closePicker}
+        title={selectedCustomer ? `${selectedCustomer.name} — mahsulotlar` : 'Mahsulotlar'} wide>
+        <div className="space-y-3">
+          <button onClick={backToCustomers} className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1">
+            <ArrowLeft size={14} /> Mijozni o'zgartirish
+          </button>
 
-            <div>
-              <label className="label">Qaytariladigan miqdor * (maks: {returnForm.max})</label>
-              <input type="number" min="1" max={returnForm.max} className="input"
-                value={returnForm.quantity}
-                onChange={e => setReturnForm(f => ({ ...f, quantity: e.target.value }))} />
-            </div>
-
-            <div>
-              <label className="label">Tovar holati *</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setReturnForm(f => ({ ...f, condition: 'GOOD' }))}
-                  className={`rounded-xl border p-2.5 text-sm text-left transition ${returnForm.condition === 'GOOD' ? 'border-emerald-400 bg-emerald-50 ring-1 ring-emerald-300' : 'border-gray-200 hover:border-gray-300'}`}>
-                  <div className="font-medium text-gray-900 flex items-center gap-1"><Warehouse size={13} /> Yaxshi</div>
-                  <div className="text-[11px] text-gray-500">Omborga qaytadi</div>
-                </button>
-                <button type="button" onClick={() => setReturnForm(f => ({ ...f, condition: 'DEFECTIVE' }))}
-                  className={`rounded-xl border p-2.5 text-sm text-left transition ${returnForm.condition === 'DEFECTIVE' ? 'border-red-400 bg-red-50 ring-1 ring-red-300' : 'border-gray-200 hover:border-gray-300'}`}>
-                  <div className="font-medium text-gray-900 flex items-center gap-1"><AlertTriangle size={13} /> Brak</div>
-                  <div className="text-[11px] text-gray-500">Ziyon sifatida qayd</div>
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="label">Sabab * (majburiy)</label>
-              <textarea className="input" rows={2} placeholder="Masalan: sifatsiz, ortiqcha, mijoz qaytardi..."
-                value={returnForm.reason}
-                onChange={e => setReturnForm(f => ({ ...f, reason: e.target.value }))} />
-            </div>
-
-            <div className="bg-gray-50 rounded-xl p-3 text-sm flex justify-between">
-              <span className="text-gray-600">Mijozga qaytariladigan (taxminiy):</span>
-              <span className="font-bold text-gray-900">
-                {fmt((parseInt(returnForm.quantity, 10) || 0) * returnForm.unit_price)} so'm
-              </span>
-            </div>
-            {returnForm.condition === 'DEFECTIVE' && (
-              <div className="bg-red-50 rounded-xl p-3 text-sm flex justify-between">
-                <span className="text-gray-600">⚠️ Ziyon (taxminiy):</span>
-                <span className="font-bold text-red-600">
-                  {fmt((parseInt(returnForm.quantity, 10) || 0) * returnForm.unit_price)} so'm
-                </span>
-              </div>
-            )}
-
-            <div className="flex gap-3 pt-1">
-              <button onClick={() => setReturnForm(null)} className="btn-secondary flex-1">Bekor</button>
-              <button onClick={submitReturn} disabled={returnMutation.isPending} className="btn-primary flex-1">
-                <RotateCcw size={14} /> {returnMutation.isPending ? 'Saqlanmoqda...' : 'Vozvratni tasdiqlash'}
-              </button>
-            </div>
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input value={pickerSearch} onChange={e => setPickerSearch(e.target.value)}
+              placeholder="Mahsulot yoki chek raqami..."
+              className="input pl-9 w-full" />
           </div>
-        )}
+
+          <p className="text-xs text-gray-500">Qaytariladigan mahsulotlarni belgilang (bir nechtasini birdan tanlash mumkin):</p>
+
+          <div className="border border-gray-100 rounded-xl divide-y divide-gray-50 max-h-[42vh] overflow-y-auto">
+            {!customerSales.length ? (
+              <p className="text-center py-8 text-gray-400 text-sm">
+                <Package size={24} className="mx-auto mb-2 opacity-30" />
+                Mahsulot topilmadi
+              </p>
+            ) : customerSales.map(s => {
+              const picked = isPicked(s);
+              const it = selectedItems[s.id];
+              const max = parseInt(s.quantity, 10) || 0;
+              return (
+                <div key={s.id} className={`px-3 py-2.5 transition ${picked ? 'bg-blue-50/60' : 'hover:bg-gray-50'}`}>
+                  <button onClick={() => toggleItem(s)} className="w-full flex items-center gap-3 text-left">
+                    <span className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 ${picked ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
+                      {picked && <Check size={13} className="text-white" />}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-gray-900 truncate">{s.product_name}{s.rang ? ` · ${s.rang}` : ''}</div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {new Date(s.sale_date).toLocaleDateString('uz-UZ')}
+                        {s.order_ref ? ` · ${s.order_ref}` : ''} · {fmt(s.unit_price)} so'm
+                      </div>
+                    </div>
+                    <div className="text-sm font-semibold text-gray-900 flex-shrink-0">{fmt(s.quantity)} {s.unit || 'dona'}</div>
+                  </button>
+
+                  {picked && (
+                    <div className="mt-2 ml-8 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[11px] text-gray-500">Miqdor (maks: {max})</label>
+                        <input type="number" min="1" max={max} className="input py-1.5 text-sm"
+                          value={it.quantity}
+                          onChange={e => setItemQty(s, e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-gray-500">Holati</label>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button type="button" onClick={() => setItemCond(s, 'GOOD')}
+                            className={`rounded-lg border px-2 py-1.5 text-xs flex items-center justify-center gap-1 transition ${it.condition === 'GOOD' ? 'border-emerald-400 bg-emerald-50 text-emerald-700 ring-1 ring-emerald-300' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                            <Warehouse size={12} /> Yaxshi
+                          </button>
+                          <button type="button" onClick={() => setItemCond(s, 'DEFECTIVE')}
+                            className={`rounded-lg border px-2 py-1.5 text-xs flex items-center justify-center gap-1 transition ${it.condition === 'DEFECTIVE' ? 'border-red-400 bg-red-50 text-red-700 ring-1 ring-red-300' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                            <AlertTriangle size={12} /> Brak
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div>
+            <label className="label">Sabab * (barcha tanlanganlar uchun, majburiy)</label>
+            <textarea className="input" rows={2} placeholder="Masalan: sifatsiz, ortiqcha, mijoz qaytardi..."
+              value={bulkReason}
+              onChange={e => setBulkReason(e.target.value)} />
+          </div>
+
+          <div className="flex gap-3 pt-1">
+            <button onClick={closePicker} className="btn-secondary flex-1">Bekor</button>
+            <button onClick={submitBulk} disabled={bulkMutation.isPending || !pickedCount} className="btn-primary flex-1">
+              <RotateCcw size={14} />
+              {bulkMutation.isPending ? 'Saqlanmoqda...' : `Qaytarish${pickedCount ? ` (${pickedCount} ta)` : ''}`}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

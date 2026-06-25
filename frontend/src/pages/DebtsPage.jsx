@@ -95,6 +95,175 @@ function Modal({ open, onClose, title, children }) {
   );
 }
 
+// Qarzdorning umumiy qarzi bo'yicha schyot-faktura (mahsulotsiz) —
+// ikki bo'lim: 1) Summalar tarixi (oldi-berdi: +qarz / −to'lov, qoldiq balans),
+// 2) Umumiy tarixi (savdolar jadvali).
+function DebtFakturaModal({ group, onClose }) {
+  const { data: payments, isLoading } = useQuery({
+    queryKey: ['debt-faktura-payments', group?.key],
+    queryFn: async () => {
+      const results = await Promise.all(
+        group.items.map(it => salesAPI.getPayments(it.sale_id).then(r => r.data.payments || []))
+      );
+      return results.flat();
+    },
+    enabled: !!group,
+  });
+
+  if (!group) return null;
+
+  // Oldi-berdi: har bir qarz (+) va har bir to'lov (−) sana bo'yicha, qoldiq balans bilan
+  const ledger = [];
+  group.items.forEach(it => ledger.push({
+    date: it.sale_date, label: 'Qarz olindi', amount: parseFloat(it.total_amount) || 0,
+  }));
+  (payments || []).forEach(p => ledger.push({
+    date: p.payment_date,
+    label: `To'lov${METHOD_LABEL[p.method] ? ' · ' + METHOD_LABEL[p.method] : ''}`,
+    amount: -(parseFloat(p.amount) || 0),
+  }));
+  ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
+  let bal = 0;
+  ledger.forEach(e => { bal += e.amount; e.balance = bal; });
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-start justify-center p-4 overflow-y-auto">
+      <div className="absolute inset-0 bg-black/50 print:hidden" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-8">
+        <button onClick={onClose}
+          className="absolute top-3 right-3 z-10 text-gray-400 hover:text-gray-700 bg-white rounded-full p-1 shadow print:hidden">
+          <X size={18} />
+        </button>
+        <div id="debt-faktura-print" className="px-6 py-6 text-[13px] text-gray-900">
+          {/* Header — yetkazib beruvchi rekvizitlari */}
+          <div className="flex items-start justify-between border-b border-gray-200 pb-3 mb-3 gap-3">
+            <div className="min-w-0">
+              <h2 className="text-base font-bold leading-tight">{COMPANY.name}</h2>
+              <div className="text-[11px] text-gray-500 leading-snug mt-0.5 space-y-px">
+                <div>Манзил: {COMPANY.address}</div>
+                <div>Тел: {COMPANY.phone} · ИНН: {COMPANY.inn}</div>
+                <div>Х/р: {COMPANY.account} · МФО: {COMPANY.mfo}</div>
+                <div>Банк: {COMPANY.bank}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Sarlavha + sana */}
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-bold">QARZDORLIK BO'YICHA SCHYOT-FAKTURA</h3>
+            <span className="text-xs text-gray-500">Sana: {new Date().toLocaleDateString('uz-UZ')}</span>
+          </div>
+
+          {/* Qarzdor (xaridor) */}
+          <div className="text-xs text-gray-600 mb-4">
+            <span className="text-gray-400">Qarzdor (xaridor): </span>
+            <span className="font-medium text-gray-800">{group.customer}</span>
+            {group.phone && <span className="text-gray-400"> · {group.phone}</span>}
+          </div>
+
+          {/* 1-BO'LIM: SUMMALAR TARIXI (oldi-berdi) */}
+          <div className="mb-1.5 text-xs font-bold text-gray-700 uppercase tracking-wide">1. Summalar tarixi (oldi-berdi)</div>
+          <table className="w-full text-[13px] mb-5">
+            <thead>
+              <tr className="border-b border-gray-300 text-gray-500 text-xs">
+                <th className="text-left py-1">Sana</th>
+                <th className="text-left py-1">Izoh</th>
+                <th className="text-right py-1">Summa</th>
+                <th className="text-right py-1">Qoldiq</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr><td colSpan={4} className="py-3 text-center text-gray-400">Yuklanmoqda...</td></tr>
+              ) : ledger.map((e, i) => (
+                <tr key={i} className="border-b border-gray-100">
+                  <td className="py-1">{new Date(e.date).toLocaleDateString('uz-UZ')}</td>
+                  <td className="py-1 text-gray-700">{e.label}</td>
+                  <td className={`py-1 text-right font-semibold ${e.amount < 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {e.amount < 0 ? '−' : '+'}{fmt(Math.abs(e.amount))}
+                  </td>
+                  <td className="py-1 text-right text-gray-600">{fmt(e.balance)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-gray-300 font-bold">
+                <td className="py-1.5" colSpan={3}>Qoldiq qarz</td>
+                <td className="py-1.5 text-right text-red-600">{fmt(group.totalDebt)}</td>
+              </tr>
+            </tfoot>
+          </table>
+
+          {/* 2-BO'LIM: UMUMIY TARIXI (savdolar) */}
+          <div className="mb-1.5 text-xs font-bold text-gray-700 uppercase tracking-wide">2. Umumiy tarixi</div>
+          <table className="w-full text-[13px] mb-3">
+            <thead>
+              <tr className="border-b border-gray-300 text-gray-500 text-xs">
+                <th className="text-left py-1 w-6">#</th>
+                <th className="text-left py-1">Savdo sanasi</th>
+                <th className="text-right py-1">Savdo summasi</th>
+                <th className="text-right py-1">To'langan</th>
+                <th className="text-right py-1">Qarz</th>
+                <th className="text-center py-1 w-14">Kun</th>
+              </tr>
+            </thead>
+            <tbody>
+              {group.items.map((it, i) => (
+                <tr key={it.sale_id} className="border-b border-gray-100">
+                  <td className="py-1 text-gray-400">{i + 1}</td>
+                  <td className="py-1">{new Date(it.sale_date).toLocaleDateString('uz-UZ')}</td>
+                  <td className="py-1 text-right text-gray-600">{fmt(it.total_amount)}</td>
+                  <td className="py-1 text-right text-green-600">{fmt(it.paid)}</td>
+                  <td className="py-1 text-right font-semibold text-red-600">{fmt(it.debt)}</td>
+                  <td className="py-1 text-center text-gray-500">{it.days_old}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-gray-300 font-bold">
+                <td className="py-1.5" colSpan={2}>Jami</td>
+                <td className="py-1.5 text-right text-gray-700">{fmt(group.totalAmount)}</td>
+                <td className="py-1.5 text-right text-green-700">{fmt(group.totalPaid)}</td>
+                <td className="py-1.5 text-right text-red-600">{fmt(group.totalDebt)}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+
+          {/* Umumiy qarz */}
+          <div className="flex justify-end items-baseline gap-2 border-t border-gray-200 pt-2">
+            <span className="text-xs text-gray-400">Umumiy qarz:</span>
+            <span className="text-xl font-bold text-red-600">{fmt(group.totalDebt)} <span className="text-sm font-medium">so'm</span></span>
+          </div>
+
+          {/* Imzo joylari */}
+          <div className="flex justify-between mt-10 text-xs text-gray-600">
+            <div className="text-center">
+              <div className="border-t border-gray-400 w-44 pt-1">Yetkazib beruvchi (imzo)</div>
+            </div>
+            <div className="text-center">
+              <div className="border-t border-gray-400 w-44 pt-1">Qarzdor (imzo)</div>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-gray-300 mt-4 text-center">TEKNOPLAST tizimi · qarzdorlik hujjati</p>
+        </div>
+
+        <div className="flex gap-2 px-6 pb-5 print:hidden">
+          <button onClick={onClose} className="btn-secondary flex-1 text-sm">Yopish</button>
+          <button onClick={() => {
+            document.body.classList.add('printing-debt-faktura');
+            window.print();
+            setTimeout(() => document.body.classList.remove('printing-debt-faktura'), 1000);
+          }} className="btn-primary flex-1 text-sm">
+            <Printer size={13} /> Chop etish
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DebtsPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -741,109 +910,8 @@ export default function DebtsPage() {
         </div>
       )}
 
-      {/* Qarzdorning umumiy qarzi bo'yicha schyot-faktura */}
-      {faktura && (
-        <div className="fixed inset-0 z-[60] flex items-start justify-center p-4 overflow-y-auto">
-          <div className="absolute inset-0 bg-black/50 print:hidden" onClick={() => setFaktura(null)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-8">
-            <button onClick={() => setFaktura(null)}
-              className="absolute top-3 right-3 z-10 text-gray-400 hover:text-gray-700 bg-white rounded-full p-1 shadow print:hidden">
-              <X size={18} />
-            </button>
-            <div id="debt-faktura-print" className="px-6 py-6 text-[13px] text-gray-900">
-              {/* Header — yetkazib beruvchi rekvizitlari */}
-              <div className="flex items-start justify-between border-b border-gray-200 pb-3 mb-3 gap-3">
-                <div className="min-w-0">
-                  <h2 className="text-base font-bold leading-tight">{COMPANY.name}</h2>
-                  <div className="text-[11px] text-gray-500 leading-snug mt-0.5 space-y-px">
-                    <div>Манзил: {COMPANY.address}</div>
-                    <div>Тел: {COMPANY.phone} · ИНН: {COMPANY.inn}</div>
-                    <div>Х/р: {COMPANY.account} · МФО: {COMPANY.mfo}</div>
-                    <div>Банк: {COMPANY.bank}</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Sarlavha + sana */}
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-bold">QARZDORLIK BO'YICHA SCHYOT-FAKTURA</h3>
-                <span className="text-xs text-gray-500">Sana: {new Date().toLocaleDateString('uz-UZ')}</span>
-              </div>
-
-              {/* Qarzdor (xaridor) */}
-              <div className="text-xs text-gray-600 mb-3">
-                <span className="text-gray-400">Qarzdor (xaridor): </span>
-                <span className="font-medium text-gray-800">{faktura.customer}</span>
-                {faktura.phone && <span className="text-gray-400"> · {faktura.phone}</span>}
-              </div>
-
-              {/* Qarzlar jadvali */}
-              <table className="w-full text-[13px] mb-3">
-                <thead>
-                  <tr className="border-b border-gray-300 text-gray-500 text-xs">
-                    <th className="text-left py-1 w-6">#</th>
-                    <th className="text-left py-1">Savdo sanasi</th>
-                    <th className="text-right py-1">Savdo summasi</th>
-                    <th className="text-right py-1">To'langan</th>
-                    <th className="text-right py-1">Qarz</th>
-                    <th className="text-center py-1 w-14">Kun</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {faktura.items.map((it, i) => (
-                    <tr key={it.sale_id} className="border-b border-gray-100">
-                      <td className="py-1 text-gray-400">{i + 1}</td>
-                      <td className="py-1">{new Date(it.sale_date).toLocaleDateString('uz-UZ')}</td>
-                      <td className="py-1 text-right text-gray-600">{fmt(it.total_amount)}</td>
-                      <td className="py-1 text-right text-green-600">{fmt(it.paid)}</td>
-                      <td className="py-1 text-right font-semibold text-red-600">{fmt(it.debt)}</td>
-                      <td className="py-1 text-center text-gray-500">{it.days_old}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-gray-300 font-bold">
-                    <td className="py-1.5" colSpan={2}>Jami</td>
-                    <td className="py-1.5 text-right text-gray-700">{fmt(faktura.totalAmount)}</td>
-                    <td className="py-1.5 text-right text-green-700">{fmt(faktura.totalPaid)}</td>
-                    <td className="py-1.5 text-right text-red-600">{fmt(faktura.totalDebt)}</td>
-                    <td></td>
-                  </tr>
-                </tfoot>
-              </table>
-
-              {/* Umumiy qarz */}
-              <div className="flex justify-end items-baseline gap-2 border-t border-gray-200 pt-2">
-                <span className="text-xs text-gray-400">Umumiy qarz:</span>
-                <span className="text-xl font-bold text-red-600">{fmt(faktura.totalDebt)} <span className="text-sm font-medium">so'm</span></span>
-              </div>
-
-              {/* Imzo joylari */}
-              <div className="flex justify-between mt-10 text-xs text-gray-600">
-                <div className="text-center">
-                  <div className="border-t border-gray-400 w-44 pt-1">Yetkazib beruvchi (imzo)</div>
-                </div>
-                <div className="text-center">
-                  <div className="border-t border-gray-400 w-44 pt-1">Qarzdor (imzo)</div>
-                </div>
-              </div>
-
-              <p className="text-[10px] text-gray-300 mt-4 text-center">TEKNOPLAST tizimi · qarzdorlik hujjati</p>
-            </div>
-
-            <div className="flex gap-2 px-6 pb-5 print:hidden">
-              <button onClick={() => setFaktura(null)} className="btn-secondary flex-1 text-sm">Yopish</button>
-              <button onClick={() => {
-                document.body.classList.add('printing-debt-faktura');
-                window.print();
-                setTimeout(() => document.body.classList.remove('printing-debt-faktura'), 1000);
-              }} className="btn-primary flex-1 text-sm">
-                <Printer size={13} /> Chop etish
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Qarzdorning umumiy qarzi bo'yicha schyot-faktura (oldi-berdi + umumiy tarix) */}
+      {faktura && <DebtFakturaModal group={faktura} onClose={() => setFaktura(null)} />}
 
       {/* To'lov tarixi modal */}
       <PaymentHistoryModal group={historyFor} onClose={() => setHistoryFor(null)} />

@@ -280,7 +280,7 @@ export default function ComponentsPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Narxi (so'm) *</label>
-              <input {...register('price', { required: true })} type="number" min="0" className="input" />
+              <input {...register('price', { required: true, setValueAs: v => parseFloat(String(v).replace(/\s/g,'').replace(/,/g,'')) || 0 })} type="text" inputMode="decimal" className="input" placeholder="masalan: 5 000" />
             </div>
             <div>
               <label className="label">Boshlang'ich ombor</label>

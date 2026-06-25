@@ -241,6 +241,90 @@ router.get('/pdf/monthly', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, 
   } catch (err) { next(err); }
 });
 
+// GET /api/reports/inventory?type=products|production|raw&format=excel|pdf — Ombor ro'yxatini yuklab olish
+router.get('/inventory', requireRole('OWNER', 'ACCOUNTANT', 'SALES_HEAD', 'PRODUCTION_HEAD', 'KIRIMCHI', 'OMBORCHI', 'TAMINOTCHI'), async (req, res, next) => {
+  try {
+    const type = ['products', 'production', 'raw'].includes(req.query.type) ? req.query.type : 'products';
+    const format = req.query.format === 'pdf' ? 'pdf' : 'excel';
+
+    let title, columns, rows, headerColor, fname;
+
+    if (type === 'raw') {
+      const r = await query(
+        `SELECT name, unit, stock_balance, price_per_unit, supplier_name, min_stock_level
+         FROM raw_materials WHERE is_active = true ORDER BY name`
+      );
+      title = 'Ombor — Xom ashyo';
+      fname = 'ombor-xom-ashyo';
+      headerColor = 'FF7C3AED';
+      columns = [
+        { header: '№',            key: 'num',      w: 5  },
+        { header: 'Nomi',         key: 'name',     w: 28 },
+        { header: 'Birlik',       key: 'unit',     w: 10 },
+        { header: 'Omborda',      key: 'stock',    w: 14 },
+        { header: "Narxi (so'm)", key: 'price',    w: 16, money: true, align: 'right' },
+        { header: "Ta'minotchi",  key: 'supplier', w: 20 },
+        { header: 'Holat',        key: 'status',   w: 12 },
+        { header: "Qiymati (so'm)", key: 'value',  w: 18, money: true, total: true, align: 'right' },
+      ];
+      rows = r.rows.map((m, i) => {
+        const stock = parseFloat(m.stock_balance || 0);
+        const price = parseFloat(m.price_per_unit || 0);
+        const min = parseFloat(m.min_stock_level || 0);
+        return {
+          num: i + 1, name: m.name, unit: m.unit || 'dona',
+          stock: `${stock} ${m.unit || 'dona'}`, price,
+          supplier: m.supplier_name || '—',
+          status: stock <= 0 ? 'Tugagan' : stock <= min ? 'Kam' : 'Yetarli',
+          value: stock * price,
+        };
+      });
+    } else {
+      const isProd = type === 'production';
+      const r = await query(
+        `SELECT name, type, unit, stock_quantity, price FROM products
+         WHERE is_active = true AND ${isProd ? "kind = 'KOMPONENT'" : "(kind IS NULL OR kind != 'KOMPONENT')"}
+         ORDER BY name`
+      );
+      title = isProd ? 'Ombor — Ishlab chiqarish ombori' : 'Ombor — Tayyor mahsulotlar';
+      fname = isProd ? 'ombor-ishlab-chiqarish' : 'ombor-tayyor-mahsulotlar';
+      headerColor = isProd ? 'FF065F46' : 'FF1E40AF';
+      columns = [
+        { header: '№',             key: 'num',    w: 5  },
+        { header: 'Mahsulot',      key: 'name',   w: 30 },
+        { header: 'Turi',          key: 'type',   w: 18 },
+        { header: 'Omborda',       key: 'stock',  w: 14 },
+        { header: "Narxi (so'm)",  key: 'price',  w: 16, money: true, align: 'right' },
+        { header: "Qiymati (so'm)",key: 'value',  w: 18, money: true, total: true, align: 'right' },
+        { header: 'Holat',         key: 'status', w: 12 },
+      ];
+      rows = r.rows.map((p, i) => {
+        const stock = parseFloat(p.stock_quantity || 0);
+        const price = parseFloat(p.price || 0);
+        return {
+          num: i + 1, name: p.name, type: p.type || '—',
+          stock: `${stock} ${p.unit || 'dona'}`, price,
+          value: stock * price,
+          status: stock === 0 ? 'Tugagan' : stock < 10 ? 'Kam' : 'Yetarli',
+        };
+      });
+    }
+
+    const subtitle = `Jami: ${rows.length} ta`;
+    if (format === 'pdf') {
+      const buf = await reportService.generateInventoryPDF({ title, columns, rows, subtitle });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fname}.pdf"`);
+      res.send(buf);
+    } else {
+      const buf = await reportService.generateInventoryExcel({ title, columns, rows, headerColor });
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${fname}.xlsx"`);
+      res.send(buf);
+    }
+  } catch (err) { next(err); }
+});
+
 // GET /api/reports/excel/sales?start_date=2026-06-01&end_date=2026-06-30  (yoki ?month=2026-06)
 router.get('/excel/sales', requireRole('OWNER', 'ACCOUNTANT', 'SALES_HEAD'), async (req, res, next) => {
   try {

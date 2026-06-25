@@ -994,4 +994,97 @@ async function generateIntakesPDF(rows, filters = {}) {
   });
 }
 
-module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF };
+// ── Umumiy ombor (inventar) ro'yxati — Excel ──
+// columns: [{ header, key, w, money?, total?, align? }], rows: [{ key: value }]
+async function generateInventoryExcel({ title, columns, rows, headerColor = 'FF1E40AF' }) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Teknoplast';
+  const safeName = String(title || 'Ombor').replace(/[\\/?*[\]:]/g, ' ').slice(0, 28);
+  const sheet = workbook.addWorksheet(safeName);
+
+  sheet.columns = columns.map(c => ({ header: c.header, key: c.key, width: c.w || 14 }));
+  _applyHeaderStyle(sheet.getRow(1), headerColor);
+  columns.forEach(c => { if (c.money) sheet.getColumn(c.key).numFmt = '#,##0'; });
+
+  rows.forEach(r => sheet.addRow(r));
+
+  const totalCols = columns.filter(c => c.total);
+  if (totalCols.length && rows.length) {
+    const labelKey = (columns[1] || columns[0]).key;
+    const totalObj = { [labelKey]: 'JAMI:' };
+    totalCols.forEach(c => { totalObj[c.key] = rows.reduce((a, r) => a + (parseFloat(r[c.key]) || 0), 0); });
+    sheet.addRow(totalObj).font = { bold: true };
+  }
+
+  return workbook.xlsx.writeBuffer();
+}
+
+// ── Umumiy ombor (inventar) ro'yxati — PDF jadval ──
+async function generateInventoryPDF({ title, columns, rows, subtitle }) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    registerCyrillicFonts(doc);
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    doc.fontSize(18).font('Arial-Bold').text('TEKNOPLAST', { align: 'center' });
+    doc.fontSize(12).font('Arial').text(title || 'Ombor hisoboti', { align: 'center' });
+    doc.fontSize(9).fillColor('#666').text(
+      `${subtitle ? subtitle + '   ·   ' : ''}Yaratildi: ${new Date().toLocaleDateString('uz-UZ')}`,
+      { align: 'center' }
+    );
+    doc.fillColor('black').moveDown(0.8);
+
+    const left = 40, right = 555;
+    const totalW = columns.reduce((a, c) => a + (c.w || 14), 0);
+    const scale = (right - left) / totalW;
+    let x = left;
+    const cols = columns.map(c => { const o = { ...c, x, width: (c.w || 14) * scale }; x += (c.w || 14) * scale; return o; });
+
+    const drawHeader = (y) => {
+      doc.font('Arial-Bold').fontSize(9).fillColor('black');
+      cols.forEach(c => doc.text(c.header, c.x, y, { width: c.width, align: c.align || 'left' }));
+      doc.moveTo(left, y + 13).lineTo(right, y + 13).strokeColor('#999').stroke();
+      return y + 18;
+    };
+
+    let y = drawHeader(doc.y);
+    doc.font('Arial').fontSize(8.5);
+
+    if (!rows.length) {
+      doc.fillColor('#888').text("Ma'lumot yo'q", left, y + 6);
+      doc.end();
+      return;
+    }
+
+    const totals = {};
+    cols.filter(c => c.total).forEach(c => { totals[c.key] = 0; });
+
+    rows.forEach((r) => {
+      if (y > 780) { doc.addPage(); y = drawHeader(40); doc.font('Arial').fontSize(8.5); }
+      doc.fillColor('black');
+      cols.forEach(c => {
+        const raw = r[c.key];
+        const val = c.money ? formatMoney(raw) : (raw == null ? '' : String(raw));
+        doc.text(val, c.x, y, { width: c.width, align: c.align || 'left' });
+        if (c.total) totals[c.key] += parseFloat(raw) || 0;
+      });
+      const h = Math.max(...cols.map(c => doc.heightOfString(String(r[c.key] ?? ''), { width: c.width })), 12);
+      y += h + 4;
+    });
+
+    doc.moveTo(left, y).lineTo(right, y).strokeColor('#999').stroke();
+    y += 6;
+    doc.font('Arial-Bold').fontSize(9).fillColor('black');
+    if (cols[1]) doc.text('JAMI:', cols[1].x, y, { width: cols[1].width });
+    cols.filter(c => c.total).forEach(c => {
+      doc.text(c.money ? formatMoney(totals[c.key]) : String(totals[c.key]), c.x, y, { width: c.width, align: c.align || 'left' });
+    });
+
+    doc.end();
+  });
+}
+
+module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF, generateInventoryExcel, generateInventoryPDF };

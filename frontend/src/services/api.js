@@ -181,6 +181,7 @@ export const reportsAPI = {
   downloadPDF: (month) => api.get('/reports/pdf/monthly', { params: { month }, responseType: 'blob' }),
   downloadSalesExcel: (params) => api.get('/reports/excel/sales', { params: typeof params === 'string' ? { month: params } : params, responseType: 'blob' }),
   downloadSalaryExcel: (month) => api.get('/reports/excel/salaries', { params: { month }, responseType: 'blob' }),
+  downloadInventory: (type, format) => api.get('/reports/inventory', { params: { type, format }, responseType: 'blob' }),
 };
 
 // AI

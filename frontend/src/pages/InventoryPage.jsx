@@ -3,8 +3,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, AlertTriangle, Warehouse, Package, Boxes, PackagePlus, Pencil, Trash2, Factory } from 'lucide-react';
-import { productsAPI } from '../services/api';
+import { Plus, X, AlertTriangle, Warehouse, Package, Boxes, PackagePlus, Pencil, Trash2, Factory, FileSpreadsheet, FileText } from 'lucide-react';
+import { productsAPI, reportsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import clsx from 'clsx';
 
@@ -169,6 +169,24 @@ export default function InventoryPage() {
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
+  // Ombor ro'yxatini Excel/PDF qilib yuklab olish (joriy tab bo'yicha)
+  const downloadInventory = async (format) => {
+    const names = { products: 'ombor-tayyor-mahsulotlar', production: 'ombor-ishlab-chiqarish', raw: 'ombor-xom-ashyo' };
+    const tid = toast.loading(format === 'pdf' ? 'PDF tayyorlanmoqda...' : 'Excel tayyorlanmoqda...');
+    try {
+      const res = await reportsAPI.downloadInventory(tab, format);
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${names[tab] || 'ombor'}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Yuklab olindi', { id: tid });
+    } catch {
+      toast.error('Yuklab bo\'lmadi', { id: tid });
+    }
+  };
+
   const TABS = [
     { key: 'products',   label: 'Tayyor mahsulotlar',     icon: Package },
     { key: 'production', label: 'Ishlab chiqarish ombori', icon: Factory },
@@ -179,21 +197,29 @@ export default function InventoryPage() {
     <div className="space-y-6">
       <div className="page-header">
         <h1 className="page-title">Ombor</h1>
-        {tab === 'products' && canManageProducts && (
-          <button onClick={() => navigate('/intake')} className="btn-primary btn-sm">
-            <PackagePlus size={14} /> Mahsulot kirimi (Kirim sahifasi)
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => downloadInventory('excel')} className="btn-secondary btn-sm" title="Excel formatida yuklab olish">
+            <FileSpreadsheet size={14} /> Excel
           </button>
-        )}
-        {tab === 'production' && canManageProducts && (
-          <button onClick={() => { resetComp(); setShowCompModal(true); }} className="btn-primary btn-sm">
-            <Plus size={14} /> Mahsulot qo'shish
+          <button onClick={() => downloadInventory('pdf')} className="btn-secondary btn-sm" title="PDF formatida yuklab olish">
+            <FileText size={14} /> PDF
           </button>
-        )}
-        {tab === 'raw' && canWriteRaw && (
-          <button onClick={() => { resetRm(); setShowRmModal(true); }} className="btn-primary btn-sm">
-            <Plus size={14} /> Xom ashyo qo'shish
-          </button>
-        )}
+          {tab === 'products' && canManageProducts && (
+            <button onClick={() => navigate('/intake')} className="btn-primary btn-sm">
+              <PackagePlus size={14} /> Mahsulot kirimi (Kirim sahifasi)
+            </button>
+          )}
+          {tab === 'production' && canManageProducts && (
+            <button onClick={() => { resetComp(); setShowCompModal(true); }} className="btn-primary btn-sm">
+              <Plus size={14} /> Mahsulot qo'shish
+            </button>
+          )}
+          {tab === 'raw' && canWriteRaw && (
+            <button onClick={() => { resetRm(); setShowRmModal(true); }} className="btn-primary btn-sm">
+              <Plus size={14} /> Xom ashyo qo'shish
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}

@@ -6,21 +6,11 @@ import { ArrowLeft, Download, Printer } from 'lucide-react';
 import { salesAPI } from '../services/api';
 import { downloadQR } from '../utils/qr';
 import { RANG_COLORS } from '../constants/colors';
+import { COMPANY } from '../constants/company';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 const balfmt = (n) => (parseFloat(n) > 0 ? '+' : '') + fmt(n);
 const rangLabel = (r) => (r && String(r).trim()) ? r : 'Rangsiz';
-
-// Yetkazib beruvchi rekvizitlari (rasmiy schyot-faktura uchun)
-const COMPANY = {
-  name: 'ТЕХНО-ИННОВАТОР МЧЖ',
-  address: 'АНДИЖОН ТУМАН Найманобод М.Ф.Й. Темир йул куча №2',
-  phone: '+998 99-444-70-99',
-  account: '20208000304436294001',
-  bank: 'АТБ "Хамкорбанк" Андижон булими',
-  mfo: '00083',
-  inn: '205811951',
-};
 
 function groupInvoiceRows(rows) {
   const order = [], map = {};

@@ -53,6 +53,20 @@
   body.printing-receipt #debts-print,
   body.printing-receipt #debts-print * { visibility: hidden !important; }
 
+  /* Qarzdorlik bo'yicha umumiy schyot-faktura modal chop etish */
+  #debt-faktura-print, #debt-faktura-print * { visibility: visible !important; }
+  #debt-faktura-print {
+    position: absolute !important;
+    left: 0; top: 0;
+    width: 100% !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  #debt-faktura-print * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  /* Faktura chop etilayotganda debts jadvalini yashir */
+  body.printing-debt-faktura #debts-print,
+  body.printing-debt-faktura #debts-print * { visibility: hidden !important; }
+
   /* Xodim QR begiklari chop etish */
   body.printing-badges .badge-print-zone,
   body.printing-badges .badge-print-zone * { visibility: visible !important; }

@@ -104,7 +104,7 @@ function ProductIntakeTab({ canCreate, canApprove }) {
   const submit = () => {
     if (!cart.length) return toast.error('Mahsulot qo\'shing');
     for (const r of cart) {
-      if (!r.rang) return toast.error(`"${r.name}" uchun rang tanlang`);
+      // rang bo'sh bo'lsa "Rangsiz" sifatida saqlanadi — majburiy emas
       if (!r.qty || parseInt(r.qty) < 1) return toast.error(`"${r.name}" miqdori noto'g'ri`);
     }
     createMutation.mutate({ items: cart.map(r => ({ product_id: r.product_id, quantity: parseInt(r.qty), rang: r.rang })), notes });
@@ -211,9 +211,9 @@ function ProductIntakeTab({ canCreate, canApprove }) {
                         <select
                           value={x.rang}
                           onChange={e => updateRow(x.rowId, 'rang', e.target.value)}
-                          className={`select py-1 px-2 text-sm w-32 ${!x.rang ? 'border-red-300' : ''}`}
+                          className="select py-1 px-2 text-sm w-32"
                         >
-                          <option value="">— Rang —</option>
+                          <option value="">Rangsiz</option>
                           {RANGLAR.map(r => (
                             <option key={r} value={r}>{r}</option>
                           ))}
@@ -270,7 +270,7 @@ function ProductIntakeTab({ canCreate, canApprove }) {
                             <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background: RANG_COLORS[it.rang] || '#999' }} />
                             {it.rang}
                           </span>
-                        ) : '—'}
+                        ) : <span className="text-gray-400">Rangsiz</span>}
                       </td>
                       <td className="font-semibold text-green-600">+{fmt(it.quantity)} {it.unit}</td>
                       <td>{fmt(it.stock_quantity)} {it.unit}</td>

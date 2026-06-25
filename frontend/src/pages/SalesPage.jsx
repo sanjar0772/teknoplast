@@ -443,7 +443,7 @@ export default function SalesPage({ embedded = false }) {
               const isOpen = expanded.has(g.key);
               return (
                 <Fragment key={g.key}>
-                  <tr className={multi ? 'bg-blue-50/30' : ''}>
+                  <tr className={multi ? (isOpen ? 'bg-blue-100/60 border-l-4 border-blue-400' : 'bg-blue-50/30') : ''}>
                     <td className="whitespace-nowrap">
                       <div>{new Date(first.sale_date).toLocaleDateString('uz-UZ')}</div>
                       {fmtTime(g.created) && <div className="text-[11px] text-gray-400">{fmtTime(g.created)}</div>}
@@ -503,11 +503,17 @@ export default function SalesPage({ embedded = false }) {
                     </td>
                   </tr>
 
-                  {/* Mijozning shu kundagi barcha xaridlari (kengaytirilganda) */}
+                  {/* Mijozning shu kundagi barcha xaridlari (kengaytirilganda) —
+                      ko'k chap chiziq + ko'k nuqta bilan alohida guruh sifatida ajratiladi */}
                   {multi && isOpen && sales.map(s => (
-                    <tr key={s.id} className="bg-gray-50/60 text-sm">
+                    <tr key={s.id} className="bg-blue-50/50 text-sm border-l-4 border-blue-400">
                       <td></td>
-                      <td className="pl-8 text-gray-700">{s.product_name}</td>
+                      <td className="pl-8 text-gray-700">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+                          <span className="font-medium">{s.product_name}</span>
+                        </span>
+                      </td>
                       <td>{s.quantity} {s.unit}</td>
                       <td>{fmt(s.unit_price)} so'm</td>
                       <td className="font-medium">{fmt(s.total_amount)} so'm</td>

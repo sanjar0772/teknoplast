@@ -506,7 +506,7 @@ export default function SalesPage({ embedded = false }) {
                   {/* Mijozning shu kundagi barcha xaridlari (kengaytirilganda) —
                       ko'k chap chiziq bilan ajratiladi, mahsulot nomi to'q ko'k */}
                   {multi && isOpen && sales.map(s => (
-                    <tr key={s.id} className="bg-gray-50/60 text-sm border-l-4 border-blue-400">
+                    <tr key={s.id} className="bg-white text-sm border-l-4 border-blue-400">
                       <td></td>
                       <td className="pl-8 font-medium text-blue-800">{s.product_name}</td>
                       <td>{s.quantity} {s.unit}</td>

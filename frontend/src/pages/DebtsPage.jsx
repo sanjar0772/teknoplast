@@ -494,6 +494,12 @@ export default function DebtsPage() {
                         <button onClick={() => openPay(g)} className="btn-success btn-sm">
                           <Coins size={12} /> To'lov
                         </button>
+                        {!g.multi && (
+                          <button onClick={() => navigate(`/invoice/${g.items[0].sale_id}`)}
+                            title="Schyot-faktura" className="btn-secondary btn-sm">
+                            <FileText size={12} /> Faktura
+                          </button>
+                        )}
                         <button onClick={() => setHistoryFor(g)} title="To'lov tarixi"
                           className="btn-secondary btn-sm">
                           <History size={12} /> Tarixi
@@ -518,7 +524,12 @@ export default function DebtsPage() {
                         <td className="text-green-600">{fmt(item.paid)}</td>
                         <td className="font-bold text-red-600">{fmt(item.debt)}</td>
                         <td><span className={`badge ${iInfo.bg} ${iInfo.cls}`}>{iInfo.label}</span></td>
-                        <td></td>
+                        <td className="no-print">
+                          <button onClick={() => navigate(`/invoice/${item.sale_id}`)}
+                            title="Schyot-faktura" className="btn-secondary btn-sm">
+                            <FileText size={12} /> Faktura
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}

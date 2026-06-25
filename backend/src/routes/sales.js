@@ -13,11 +13,15 @@ const router = express.Router();
 const rangLabel = (r) => (r && r.trim()) ? r : 'Rangsiz';
 router.use(authenticate);
 
-// Buyurtma kodi / schyot-faktura raqami: ORD-YYYYMMDD-NNN
-// NNN — shu kungi tartib raqami (001 dan boshlanadi, har kuni yangidan).
+// Schyot-faktura raqami: KK-OO-YYYY-NNN  (masalan 25-06-2026-001)
+// KK-OO-YYYY — sana (kun-oy-yil, Toshkent vaqti); NNN — shu kungi tartib
+// raqami (001 dan boshlanadi, har kuni yangidan).
 async function genOrderRef() {
-  const ymd = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const prefix = `ORD-${ymd}-`;
+  const t = new Date(Date.now() + 5 * 3600 * 1000); // Toshkent (UTC+5)
+  const dd = String(t.getUTCDate()).padStart(2, '0');
+  const mm = String(t.getUTCMonth() + 1).padStart(2, '0');
+  const yyyy = t.getUTCFullYear();
+  const prefix = `${dd}-${mm}-${yyyy}-`;
   // Shu kungi mavjud raqamlardan eng kattasini topib, +1 qilamiz
   const r = await query(`SELECT order_ref FROM sales WHERE order_ref LIKE $1`, [`${prefix}%`]);
   let max = 0;

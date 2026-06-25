@@ -13,11 +13,19 @@ const router = express.Router();
 const rangLabel = (r) => (r && r.trim()) ? r : 'Rangsiz';
 router.use(authenticate);
 
-// Buyurtma kodi (QR uchun): ORD-YYYYMMDD-XXXX
-function genOrderRef() {
-  const d = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const rnd = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `ORD-${d}-${rnd}`;
+// Buyurtma kodi / schyot-faktura raqami: ORD-YYYYMMDD-NNN
+// NNN — shu kungi tartib raqami (001 dan boshlanadi, har kuni yangidan).
+async function genOrderRef() {
+  const ymd = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const prefix = `ORD-${ymd}-`;
+  // Shu kungi mavjud raqamlardan eng kattasini topib, +1 qilamiz
+  const r = await query(`SELECT order_ref FROM sales WHERE order_ref LIKE $1`, [`${prefix}%`]);
+  let max = 0;
+  for (const row of r.rows) {
+    const m = String(row.order_ref || '').match(/-(\d+)$/);
+    if (m) { const n = parseInt(m[1], 10); if (n > max) max = n; }
+  }
+  return `${prefix}${String(max + 1).padStart(3, '0')}`;
 }
 
 // GET /api/sales
@@ -253,7 +261,7 @@ router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), [
       return res.status(400).json({ error: `"${product.rows[0].name}" — ${rangLabel(rang)} rangidan faqat ${availColor} dona bor (so'ralgan: ${quantity})` });
     }
 
-    const order_ref = genOrderRef();
+    const order_ref = await genOrderRef();
     const client = await require('../db').getClient();
     try {
       await client.query('BEGIN');
@@ -328,7 +336,7 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (re
     const saleStatus = paidAmount !== null
       ? (paidAmount >= preGrand ? 'PAID' : paidAmount > 0 ? 'PARTIALLY_PAID' : 'PENDING')
       : (status || 'PENDING');
-    const order_ref = genOrderRef();
+    const order_ref = await genOrderRef();
     const client = await require('../db').getClient();
     const created = [];
     let grandTotal = 0;

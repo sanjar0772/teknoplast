@@ -443,7 +443,7 @@ export default function SalesPage({ embedded = false }) {
               const isOpen = expanded.has(g.key);
               return (
                 <Fragment key={g.key}>
-                  <tr className={multi ? 'bg-blue-50/30' : ''}>
+                  <tr className={multi ? 'bg-white' : ''}>
                     <td className="whitespace-nowrap">
                       <div>{new Date(first.sale_date).toLocaleDateString('uz-UZ')}</div>
                       {fmtTime(g.created) && <div className="text-[11px] text-gray-400">{fmtTime(g.created)}</div>}
@@ -506,7 +506,7 @@ export default function SalesPage({ embedded = false }) {
                   {/* Mijozning shu kundagi barcha xaridlari (kengaytirilganda) —
                       ko'k chap chiziq bilan ajratiladi, mahsulot nomi to'q ko'k */}
                   {multi && isOpen && sales.map(s => (
-                    <tr key={s.id} className="bg-white text-sm border-l-4 border-blue-400">
+                    <tr key={s.id} className="bg-blue-50/30 text-sm border-l-4 border-blue-400">
                       <td></td>
                       <td className="pl-8 font-medium text-blue-800">{s.product_name}</td>
                       <td>{s.quantity} {s.unit}</td>

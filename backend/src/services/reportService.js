@@ -101,48 +101,127 @@ async function generateMonthlyPDF(data) {
   });
 }
 
+function _applyHeaderStyle(row, argb = 'FF1E40AF') {
+  row.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } };
+}
+
 async function generateSalesExcel(salesData, period) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Teknoplast';
-  const sheet = workbook.addWorksheet(`Sotuv ${period}`);
 
-  sheet.columns = [
-    { header: '№', key: 'num', width: 5 },
-    { header: 'Sana', key: 'sale_date', width: 12 },
-    { header: 'Mahsulot', key: 'product_name', width: 25 },
-    { header: 'Miqdor', key: 'quantity', width: 10 },
-    { header: 'Birlik narx', key: 'unit_price', width: 15 },
-    { header: 'Jami', key: 'total_amount', width: 18 },
-    { header: 'Mijoz', key: 'customer_name', width: 20 },
-    { header: 'Status', key: 'status', width: 15 },
-    { header: 'Kim kiritdi', key: 'created_by_name', width: 20 },
+  /* ── 1-varaq: Sotuv tarixi ── */
+  const sheet1 = workbook.addWorksheet('Sotuv tarixi');
+  sheet1.columns = [
+    { header: '№',            key: 'num',             width: 5  },
+    { header: 'Sana',         key: 'sale_date',        width: 12 },
+    { header: 'Mahsulot',     key: 'product_name',     width: 25 },
+    { header: 'Miqdor',       key: 'quantity',         width: 10 },
+    { header: "Birlik narx",  key: 'unit_price',       width: 16 },
+    { header: "Jami (so'm)",  key: 'total_amount',     width: 18 },
+    { header: "To'langan",    key: 'payment_amount',   width: 16 },
+    { header: "Qarz",         key: 'debt',             width: 14 },
+    { header: 'Mijoz',        key: 'customer_name',    width: 20 },
+    { header: 'Status',       key: 'status',           width: 13 },
+    { header: 'Kim sotdi',    key: 'created_by_name',  width: 18 },
   ];
+  _applyHeaderStyle(sheet1.getRow(1));
 
-  sheet.getRow(1).font = { bold: true };
-  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
-  sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-
+  const statusMap = { PAID: "To'langan", PENDING: 'Kutilmoqda', PARTIAL: 'Qisman' };
   salesData.forEach((s, i) => {
-    sheet.addRow({
-      num: i + 1,
-      sale_date: new Date(s.sale_date).toLocaleDateString('uz-UZ'),
-      product_name: s.product_name,
-      quantity: s.quantity,
-      unit_price: parseFloat(s.unit_price),
-      total_amount: parseFloat(s.total_amount),
-      customer_name: s.customer_name || '-',
-      status: s.status === 'PAID' ? 'To\'langan' : s.status === 'PENDING' ? 'Kutilmoqda' : 'Qisman',
+    const total = parseFloat(s.total_amount || 0);
+    const paid  = parseFloat(s.payment_amount || 0);
+    sheet1.addRow({
+      num:             i + 1,
+      sale_date:       new Date(s.sale_date).toLocaleDateString('uz-UZ'),
+      product_name:    s.product_name,
+      quantity:        s.quantity,
+      unit_price:      parseFloat(s.unit_price || 0),
+      total_amount:    total,
+      payment_amount:  paid,
+      debt:            Math.max(0, total - paid),
+      customer_name:   s.customer_name || '-',
+      status:          statusMap[s.status] || s.status,
       created_by_name: s.created_by_name,
     });
   });
-
-  const totalRow = sheet.addRow({
-    num: '',
+  const t1 = sheet1.addRow({
     sale_date: 'JAMI:',
-    quantity: salesData.reduce((a, s) => a + s.quantity, 0),
-    total_amount: salesData.reduce((a, s) => a + parseFloat(s.total_amount), 0),
+    quantity:      salesData.reduce((a, s) => a + parseFloat(s.quantity || 0), 0),
+    total_amount:  salesData.reduce((a, s) => a + parseFloat(s.total_amount || 0), 0),
+    payment_amount:salesData.reduce((a, s) => a + parseFloat(s.payment_amount || 0), 0),
+    debt:          salesData.reduce((a, s) => a + Math.max(0, parseFloat(s.total_amount||0)-parseFloat(s.payment_amount||0)), 0),
   });
-  totalRow.font = { bold: true };
+  t1.font = { bold: true };
+
+  /* ── 2-varaq: Mijozlar bo'yicha ── */
+  const sheet2 = workbook.addWorksheet('Mijozlar');
+  sheet2.columns = [
+    { header: '№',              key: 'num',     width: 5  },
+    { header: 'Mijoz',          key: 'name',    width: 28 },
+    { header: 'Xaridlar soni',  key: 'cnt',     width: 15 },
+    { header: "Jami summa",     key: 'total',   width: 18 },
+    { header: "To'langan",      key: 'paid',    width: 18 },
+    { header: 'Qarz',           key: 'debt',    width: 16 },
+  ];
+  _applyHeaderStyle(sheet2.getRow(1), 'FF065F46');
+
+  const custMap = new Map();
+  salesData.forEach(s => {
+    const k = s.customer_name || 'Noma\'lum';
+    if (!custMap.has(k)) custMap.set(k, { cnt: 0, total: 0, paid: 0 });
+    const c = custMap.get(k);
+    c.cnt++;
+    c.total += parseFloat(s.total_amount || 0);
+    c.paid  += parseFloat(s.payment_amount || 0);
+  });
+  [...custMap.entries()]
+    .sort((a, b) => b[1].total - a[1].total)
+    .forEach(([name, c], i) => {
+      sheet2.addRow({ num: i + 1, name, cnt: c.cnt, total: c.total, paid: c.paid, debt: Math.max(0, c.total - c.paid) });
+    });
+  const t2 = sheet2.addRow({
+    name: 'JAMI:',
+    cnt:   [...custMap.values()].reduce((a, c) => a + c.cnt, 0),
+    total: [...custMap.values()].reduce((a, c) => a + c.total, 0),
+    paid:  [...custMap.values()].reduce((a, c) => a + c.paid, 0),
+    debt:  [...custMap.values()].reduce((a, c) => a + Math.max(0, c.total - c.paid), 0),
+  });
+  t2.font = { bold: true };
+
+  /* ── 3-varaq: Mahsulotlar bo'yicha ── */
+  const sheet3 = workbook.addWorksheet('Mahsulotlar');
+  sheet3.columns = [
+    { header: '№',              key: 'num',    width: 5  },
+    { header: 'Mahsulot',       key: 'name',   width: 28 },
+    { header: 'Birligi',        key: 'unit',   width: 10 },
+    { header: 'Jami miqdor',    key: 'qty',    width: 14 },
+    { header: "Jami summa",     key: 'total',  width: 18 },
+    { header: 'Savdolar soni',  key: 'cnt',    width: 14 },
+  ];
+  _applyHeaderStyle(sheet3.getRow(1), 'FF7C3AED');
+
+  const prodMap = new Map();
+  salesData.forEach(s => {
+    const k = s.product_name || '-';
+    if (!prodMap.has(k)) prodMap.set(k, { unit: s.unit || 'dona', qty: 0, total: 0, cnt: 0 });
+    const p = prodMap.get(k);
+    p.qty   += parseFloat(s.quantity || 0);
+    p.total += parseFloat(s.total_amount || 0);
+    p.cnt++;
+  });
+  [...prodMap.entries()]
+    .sort((a, b) => b[1].total - a[1].total)
+    .forEach(([name, p], i) => {
+      sheet3.addRow({ num: i + 1, name, unit: p.unit, qty: p.qty, total: p.total, cnt: p.cnt });
+    });
+  const t3 = sheet3.addRow({
+    name:  'JAMI:',
+    qty:   [...prodMap.values()].reduce((a, p) => a + p.qty, 0),
+    total: [...prodMap.values()].reduce((a, p) => a + p.total, 0),
+    cnt:   [...prodMap.values()].reduce((a, p) => a + p.cnt, 0),
+  });
+  t3.font = { bold: true };
 
   const buffer = await workbook.xlsx.writeBuffer();
   return buffer;

@@ -254,13 +254,20 @@ export default function SalesPage({ embedded = false }) {
   };
 
   const downloadExcel = async () => {
-    // Excel oy bo'yicha tayyorlanadi — oraliq boshlanган oyini olamiz
-    const m = (dateRange.from || new Date().toISOString().slice(0, 10)).slice(0, 7);
+    const params = {};
+    if (dateRange.from) params.start_date = dateRange.from;
+    if (dateRange.to)   params.end_date   = dateRange.to;
+    if (!params.start_date && !params.end_date) {
+      params.month = new Date().toISOString().slice(0, 7);
+    }
+    const label = params.start_date && params.end_date
+      ? `${params.start_date}_${params.end_date}`
+      : (params.month || new Date().toISOString().slice(0, 7));
     try {
-      const res = await reportsAPI.downloadSalesExcel(m);
+      const res = await reportsAPI.downloadSalesExcel(params);
       const url = URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement('a');
-      a.href = url; a.download = `sotuv-${m}.xlsx`; a.click();
+      a.href = url; a.download = `sotuv-${label}.xlsx`; a.click();
       URL.revokeObjectURL(url);
     } catch { toast.error('Yuklab bo\'lmadi'); }
   };

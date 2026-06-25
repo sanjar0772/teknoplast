@@ -241,21 +241,34 @@ router.get('/pdf/monthly', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, 
   } catch (err) { next(err); }
 });
 
-// GET /api/reports/excel/sales?month=2024-01
+// GET /api/reports/excel/sales?start_date=2026-06-01&end_date=2026-06-30  (yoki ?month=2026-06)
 router.get('/excel/sales', requireRole('OWNER', 'ACCOUNTANT', 'SALES_HEAD'), async (req, res, next) => {
   try {
-    const { month } = req.query;
-    const period = month || new Date().toISOString().slice(0, 7);
+    const { month, start_date, end_date } = req.query;
+
+    let where, params, periodLabel;
+    if (start_date || end_date) {
+      const conds = []; params = []; let i = 1;
+      if (start_date) { conds.push(`s.sale_date >= $${i++}`); params.push(start_date); }
+      if (end_date)   { conds.push(`s.sale_date <= $${i++}`); params.push(end_date); }
+      where = conds.join(' AND ');
+      periodLabel = [start_date, end_date].filter(Boolean).join('_');
+    } else {
+      const period = month || new Date().toISOString().slice(0, 7);
+      where = `TO_CHAR(s.sale_date,'YYYY-MM') = $1`;
+      params = [period];
+      periodLabel = period;
+    }
 
     const salesData = await query(`
       SELECT s.*, p.name as product_name, p.unit, u.full_name as created_by_name
       FROM sales s JOIN products p ON s.product_id = p.id JOIN users u ON s.created_by = u.id
-      WHERE TO_CHAR(s.sale_date,'YYYY-MM') = $1 ORDER BY s.sale_date
-    `, [period]);
+      WHERE ${where} ORDER BY s.sale_date, s.created_at
+    `, params);
 
-    const excelBuffer = await reportService.generateSalesExcel(salesData.rows, period);
+    const excelBuffer = await reportService.generateSalesExcel(salesData.rows, periodLabel);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="sotuv-${period}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="sotuv-${periodLabel}.xlsx"`);
     res.send(excelBuffer);
   } catch (err) { next(err); }
 });

@@ -210,15 +210,16 @@ export default function InvoicePage() {
         {/* Jami + To'lov */}
         <div className="flex items-start justify-between pt-1">
           <div className="text-xs text-gray-500 space-y-0.5">
-            {paymentParts.length > 0 ? (
+            {/* To'lov usullari faqat dastlabki to'lov summasiga mos kelsa ko'rsatamiz
+                (qarz to'lovlari notes'ga yozilmaydi — shu sabab umumiy "To'langan"ni alohida chiqaramiz) */}
+            {paymentParts.length > 0 && Math.abs(paymentParts.reduce((s, p) => s + p.amount, 0) - paid) < 1 &&
               paymentParts.map((p, i) => (
                 <div key={i}>{p.icon} {p.label}: <span className="font-medium text-gray-700">{fmt(p.amount)}</span></div>
-              ))
-            ) : (
-              <div>{getPaymentLabel(sale)}</div>
-            )}
+              ))}
+            {paid > 0 && <div className="text-green-600 font-medium">✅ To'langan: {fmt(paid)}</div>}
             {debt > 0 && <div className="text-red-500 font-medium">📝 Qarz: {fmt(debt)}</div>}
             {credit > 0 && <div className="text-blue-600 font-medium">💰 Haqdor (oshiqcha): +{fmt(credit)}</div>}
+            {paid <= 0 && debt <= 0 && credit <= 0 && <div>{getPaymentLabel(sale)}</div>}
           </div>
           <div className="text-right">
             {discountAmt > 0 && (

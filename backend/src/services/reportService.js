@@ -726,7 +726,17 @@ async function generateInvoicePDF(sale, items, viewUrl) {
       .text(`JAMI: ${formatMoney(grandTotal)}`, M, y, { width: W, align: 'right' });
     y += 16;
 
-    doc.font('Arial').fontSize(8.5).fillColor('#333')
+    // To'langan summa (qarz to'lovlari bilan birga — payment_amount'dan) va qoldiq qarz
+    const grandPaid = rows.reduce((s, it) => s + parseFloat(it.payment_amount || 0), 0);
+    const grandDebt = Math.max(0, grandTotal - grandPaid);
+    doc.font('Arial-Bold').fontSize(9).fillColor('#1a7a3c')
+      .text(`To'langan: ${formatMoney(grandPaid)}`, M, y);
+    if (grandDebt > 0) {
+      doc.font('Arial-Bold').fontSize(9).fillColor('#c0392b')
+        .text(`Qarz: ${formatMoney(grandDebt)}`, M, y, { width: W, align: 'right' });
+    }
+    y += 14;
+    doc.font('Arial').fontSize(8).fillColor('#777')
       .text(`To'lov holati: ${getInvoicePaymentLabel(sale)}`, M, y);
 
     // ── MIJOZ BALANSI (eski qarzlar bilan) ────────────────

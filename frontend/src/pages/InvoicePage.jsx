@@ -112,7 +112,7 @@ export default function InvoicePage() {
           Schyot-faktura{sale.order_ref ? ` № ${sale.order_ref}` : ''}
         </h1>
         <div className="flex gap-1.5">
-          <button onClick={() => navigate('/sales')} className="btn-secondary btn-sm text-xs">
+          <button onClick={() => navigate(-1)} className="btn-secondary btn-sm text-xs">
             <ArrowLeft size={12} /> Orqaga
           </button>
           <button onClick={() => window.print()} className="btn-secondary btn-sm text-xs">

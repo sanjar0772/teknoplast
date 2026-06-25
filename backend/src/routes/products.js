@@ -152,6 +152,137 @@ router.get('/:id/history', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Tanlangan mahsulotlar tarixini PDF/Excel qilib chiqarish ──────────────
+// Bitta mahsulot harakatlari tarixi (kirim + ishlab chiqarish + sotuv)
+async function fetchProductHistory(id, start_date, end_date) {
+  const prod = await query('SELECT id, name, unit, stock_quantity FROM products WHERE id = $1', [id]);
+  if (!prod.rows.length) return null;
+
+  let dateFilter = '';
+  const dateParams = [id];
+  let pIdx = 2;
+  if (start_date) { dateFilter += ` AND %DATE% >= $${pIdx++}`; dateParams.push(start_date); }
+  if (end_date)   { dateFilter += ` AND %DATE% <= $${pIdx++}`; dateParams.push(end_date); }
+
+  const salesDateFilter = dateFilter.replace(/%DATE%/g, 'sale_date');
+  const sales = await query(`
+    SELECT id, quantity, total_amount, customer_name, sale_date, created_at
+    FROM sales WHERE product_id = $1${salesDateFilter}
+  `, dateParams);
+
+  const intakeDateFilter = dateFilter.replace(/%DATE%/g, 'COALESCE(pi.approved_at, pi.created_at)');
+  const intakeParams = [id, ...dateParams.slice(1)];
+  const intakes = await query(`
+    SELECT ii.id, ii.quantity, ii.rang, pi.approved_at, pi.created_at
+    FROM intake_items ii
+    JOIN product_intakes pi ON ii.intake_id = pi.id
+    WHERE ii.product_id = $1 AND pi.status = 'APPROVED'${intakeDateFilter}
+  `, intakeParams);
+
+  const prodDateFilter = dateFilter.replace(/%DATE%/g, 'COALESCE(ep.production_date, ep.created_at)');
+  const prodParams = [id, ...dateParams.slice(1)];
+  const production = await query(`
+    SELECT ep.id, ep.quantity_produced, ep.production_date, ep.created_at, e.name AS employee_name
+    FROM employee_production ep
+    LEFT JOIN employees e ON ep.employee_id = e.id
+    WHERE ep.product_id = $1 AND ep.quantity_produced > 0${prodDateFilter}
+  `, prodParams);
+
+  const history = [];
+  sales.rows.forEach(s => history.push({
+    type: 'sotuv', date: s.sale_date || s.created_at,
+    qty: -Math.abs(parseInt(s.quantity) || 0),
+    amount: parseFloat(s.total_amount) || 0, detail: s.customer_name || '',
+  }));
+  intakes.rows.forEach(i => history.push({
+    type: 'kirim', date: i.approved_at || i.created_at,
+    qty: Math.abs(parseInt(i.quantity) || 0), amount: 0, detail: i.rang || '',
+  }));
+  production.rows.forEach(p => history.push({
+    type: 'ishlab_chiqarish', date: p.production_date || p.created_at,
+    qty: Math.abs(parseInt(p.quantity_produced) || 0), amount: 0, detail: p.employee_name || '',
+  }));
+
+  history.sort((a, b) => new Date(b.date) - new Date(a.date));
+  return { product: prod.rows[0], history };
+}
+
+const HIST_TYPE_LABEL = { kirim: 'Kirim', ishlab_chiqarish: 'Ishlab chiqarish', sotuv: 'Sotuv' };
+
+// Tanlangan mahsulotlar tarixini bitta tekis jadval (rows) qilib yig'amiz
+async function buildSelectedProductsHistoryRows(idsParam, start_date, end_date) {
+  const ids = String(idsParam || '').split(',').map(s => s.trim()).filter(Boolean);
+  const rows = [];
+  for (const id of ids) {
+    const res = await fetchProductHistory(id, start_date, end_date);
+    if (!res) continue;
+    res.history.forEach(h => {
+      const d = new Date(h.date);
+      rows.push({
+        product: res.product.name,
+        date: isNaN(d.getTime()) ? '' : d.toLocaleDateString('uz-UZ'),
+        _ts: isNaN(d.getTime()) ? 0 : d.getTime(),
+        type_label: HIST_TYPE_LABEL[h.type] || h.type,
+        qty: h.qty,
+        amount: h.amount || 0,
+        detail: h.detail || '',
+      });
+    });
+  }
+  rows.sort((a, b) => String(a.product).localeCompare(String(b.product)) || b._ts - a._ts);
+  rows.forEach(r => { delete r._ts; });
+  return rows;
+}
+
+const PRODUCT_HISTORY_COLUMNS = [
+  { header: 'Mahsulot', key: 'product',    w: 24 },
+  { header: 'Sana',     key: 'date',       w: 13, align: 'center' },
+  { header: 'Harakat',  key: 'type_label', w: 16 },
+  { header: 'Miqdor',   key: 'qty',        w: 11, align: 'right', total: true },
+  { header: 'Summa',    key: 'amount',     w: 16, align: 'right', money: true, total: true },
+  { header: 'Izoh',     key: 'detail',     w: 22 },
+];
+
+function historyRangeSubtitle(start_date, end_date) {
+  if (start_date && end_date) return `Davr: ${start_date} — ${end_date}`;
+  if (start_date) return `Davr: ${start_date} dan`;
+  if (end_date) return `Davr: ${end_date} gacha`;
+  return 'Davr: Barchasi';
+}
+
+// GET /api/products/history/export/excel?ids=&start_date=&end_date=
+router.get('/history/export/excel', async (req, res, next) => {
+  try {
+    const { ids, start_date, end_date } = req.query;
+    if (!ids) return res.status(400).json({ error: 'Mahsulot tanlanmagan' });
+    const rows = await buildSelectedProductsHistoryRows(ids, start_date, end_date);
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateInventoryExcel({
+      title: 'Mahsulot tarixi', columns: PRODUCT_HISTORY_COLUMNS, rows,
+    });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="mahsulot-tarixi-${start_date || 'boshi'}_${end_date || 'oxiri'}.xlsx"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) { next(err); }
+});
+
+// GET /api/products/history/export/pdf?ids=&start_date=&end_date=
+router.get('/history/export/pdf', async (req, res, next) => {
+  try {
+    const { ids, start_date, end_date } = req.query;
+    if (!ids) return res.status(400).json({ error: 'Mahsulot tanlanmagan' });
+    const rows = await buildSelectedProductsHistoryRows(ids, start_date, end_date);
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateInventoryPDF({
+      title: 'Mahsulot tarixi', columns: PRODUCT_HISTORY_COLUMNS, rows,
+      subtitle: historyRangeSubtitle(start_date, end_date),
+    });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="mahsulot-tarixi-${start_date || 'boshi'}_${end_date || 'oxiri'}.pdf"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) { next(err); }
+});
+
 // POST /api/products
 router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
   body('name').notEmpty().trim(),

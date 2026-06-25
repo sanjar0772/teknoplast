@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Package, DollarSign, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory, Calendar } from 'lucide-react';
+import { Plus, X, Package, DollarSign, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory, Calendar, CheckSquare, Square, FileText, FileSpreadsheet } from 'lucide-react';
 import clsx from 'clsx';
 import { productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
@@ -195,6 +195,10 @@ export default function ProductsPage({ embedded = false }) {
   const [search, setSearch] = useState(''); // mahsulot qidiruv
   const [dateFilter, setDateFilter] = useState({ date_from: '', date_to: '' });
   const [datePreset, setDatePreset] = useState('all');
+  // Belgilash rejimi — mahsulotlarni tanlab tarixini eksport qilish
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [exporting, setExporting] = useState(null); // 'pdf' | 'excel' | null
 
   const applyPreset = (preset) => {
     setDatePreset(preset);
@@ -325,6 +329,44 @@ export default function ProductsPage({ embedded = false }) {
     );
   }, [data, q]);
 
+  // Belgilash rejimi yordamchilari
+  const toggleSelect = (id) => setSelectedIds(prev => {
+    const n = new Set(prev);
+    n.has(id) ? n.delete(id) : n.add(id);
+    return n;
+  });
+  const clearSelection = () => setSelectedIds(new Set());
+  const selectAllShown = () => setSelectedIds(new Set(shownProducts.map(p => p.id)));
+  const exitSelectMode = () => { setSelectMode(false); clearSelection(); };
+
+  // Tanlangan mahsulotlar tarixini joriy davr bo'yicha PDF/Excel qilib yuklab olish
+  const exportHistory = async (format) => {
+    if (!selectedIds.size) return toast.error('Avval mahsulot(lar)ni belgilang');
+    setExporting(format);
+    const params = { ids: Array.from(selectedIds).join(',') };
+    if (dateFilter.date_from) params.start_date = dateFilter.date_from;
+    if (dateFilter.date_to)   params.end_date   = dateFilter.date_to;
+    try {
+      const res = format === 'excel'
+        ? await productsAPI.exportHistoryExcel(params)
+        : await productsAPI.exportHistoryPdf(params);
+      const ext = format === 'excel' ? 'xlsx' : 'pdf';
+      const type = format === 'excel'
+        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        : 'application/pdf';
+      const url = URL.createObjectURL(new Blob([res.data], { type }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `mahsulot-tarixi-${dateFilter.date_from || 'boshi'}_${dateFilter.date_to || 'oxiri'}.${ext}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Yuklab bo\'lmadi');
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="page-header">
@@ -342,6 +384,16 @@ export default function ProductsPage({ embedded = false }) {
               <Plus size={14} /> Mahsulot qo'shish
             </button>
           )}
+          <button
+            onClick={() => selectMode ? exitSelectMode() : setSelectMode(true)}
+            className={`btn-sm flex items-center gap-1 rounded-lg px-3 border ${
+              selectMode
+                ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700'
+                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            <CheckSquare size={14} /> {selectMode ? 'Belgilashni yopish' : 'Belgilash'}
+          </button>
         </div>
       </div>
 
@@ -418,6 +470,41 @@ export default function ProductsPage({ embedded = false }) {
         )}
       </div>
 
+      {/* Belgilash / eksport paneli */}
+      {selectMode && (
+        <div className="card p-3 border border-blue-200 bg-blue-50/50 flex flex-wrap items-center gap-2 sticky top-2 z-20">
+          <span className="text-sm font-semibold text-gray-800">
+            {selectedIds.size} ta mahsulot belgilandi
+          </span>
+          <button onClick={selectAllShown}
+            className="btn-sm bg-white border border-gray-200 rounded-lg px-3 text-gray-600 hover:bg-gray-50">
+            Hammasini belgilash ({shownProducts.length})
+          </button>
+          {selectedIds.size > 0 && (
+            <button onClick={clearSelection}
+              className="btn-sm bg-white border border-gray-200 rounded-lg px-3 text-gray-600 hover:bg-gray-50">
+              Tozalash
+            </button>
+          )}
+          <span className="text-xs text-gray-500 flex items-center gap-1">
+            <Calendar size={12} /> Davr: {dateFilter.date_from || '—'} — {dateFilter.date_to || '—'}
+            <span className="text-gray-400">(yuqoridagi sana tugmalaridan tanlanadi)</span>
+          </span>
+          <div className="ml-auto flex gap-2">
+            <button onClick={() => exportHistory('excel')}
+              disabled={!selectedIds.size || !!exporting}
+              className="btn-sm flex items-center gap-1 rounded-lg px-3 bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
+              <FileSpreadsheet size={14} /> {exporting === 'excel' ? 'Yuklanmoqda...' : 'Excel'}
+            </button>
+            <button onClick={() => exportHistory('pdf')}
+              disabled={!selectedIds.size || !!exporting}
+              className="btn-sm flex items-center gap-1 rounded-lg px-3 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
+              <FileText size={14} /> {exporting === 'pdf' ? 'Yuklanmoqda...' : 'PDF'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {isLoading ? (
           <div className="col-span-3 text-center py-12 text-gray-400">Yuklanmoqda...</div>
@@ -437,10 +524,20 @@ export default function ProductsPage({ embedded = false }) {
             )}
           </div>
         ) : shownProducts.map(p => (
-          <div key={p.id} className={`card ${!p.is_active ? 'opacity-60' : ''}`}>
+          <div key={p.id}
+            onClick={selectMode ? () => toggleSelect(p.id) : undefined}
+            className={`card ${!p.is_active ? 'opacity-60' : ''} ${selectMode ? 'cursor-pointer transition' : ''} ${selectMode && selectedIds.has(p.id) ? 'ring-2 ring-blue-500 bg-blue-50/40' : ''}`}>
             <div className="flex items-start justify-between mb-3">
-              <div>
-                <h3 className="font-semibold text-gray-900">{p.name}</h3>
+              <div className="flex items-start gap-2">
+                {selectMode && (
+                  <span className="flex-shrink-0 mt-0.5">
+                    {selectedIds.has(p.id)
+                      ? <CheckSquare size={18} className="text-blue-600" />
+                      : <Square size={18} className="text-gray-300" />}
+                  </span>
+                )}
+                <div>
+                  <h3 className="font-semibold text-gray-900">{p.name}</h3>
                 <p className="text-xs text-gray-500">{p.type} · {p.unit}</p>
                 {p.rang && (
                   <span className="inline-flex items-center gap-1 mt-1 text-xs text-gray-600">
@@ -448,6 +545,7 @@ export default function ProductsPage({ embedded = false }) {
                     {p.rang}
                   </span>
                 )}
+                </div>
               </div>
               <span className={p.is_active ? 'badge-green' : 'badge-gray'}>
                 {p.is_active ? 'Faol' : 'Nofaol'}
@@ -507,6 +605,7 @@ export default function ProductsPage({ embedded = false }) {
               )}
             </div>
 
+            {!selectMode && (
             <div className="flex gap-2 mt-4 flex-wrap">
               <button onClick={() => setHistoryProduct(p)}
                 className="btn-sm flex-1 bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200 rounded-lg px-2 flex items-center gap-1 justify-center">
@@ -531,6 +630,7 @@ export default function ProductsPage({ embedded = false }) {
                 </button>
               )}
             </div>
+            )}
           </div>
         ))}
       </div>

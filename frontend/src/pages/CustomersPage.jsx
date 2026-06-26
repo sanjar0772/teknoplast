@@ -674,9 +674,8 @@ export default function CustomersPage({ embedded = false }) {
               </div>
             </div>
 
-            {/* Vozvratlar (qaytarishlar) tarixi */}
-            {detail.returns?.length > 0 && (
-              <div>
+            {/* Vozvratlar (qaytarishlar) tarixi — doim ko'rinadi */}
+            <div>
                 <div className="flex items-center gap-2 mb-2">
                   <RotateCcw size={15} className="text-orange-600" />
                   <h5 className="font-semibold text-gray-700 text-sm">Vozvratlar (qaytarishlar)</h5>
@@ -687,7 +686,9 @@ export default function CustomersPage({ embedded = false }) {
                       <tr><th>Sana</th><th>Mahsulot</th><th>Miqdor</th><th>Holati</th><th>Summa</th><th>Sabab</th><th className="no-print">Amal</th></tr>
                     </thead>
                     <tbody>
-                      {detail.returns.map(r => {
+                      {!detail.returns?.length ? (
+                        <tr><td colSpan={7} className="text-center py-6 text-gray-400">Bu mijozda vozvrat yo'q</td></tr>
+                      ) : detail.returns.map(r => {
                         const defective = r.condition === 'DEFECTIVE';
                         return (
                           <tr key={r.id}>
@@ -709,15 +710,16 @@ export default function CustomersPage({ embedded = false }) {
                           </tr>
                         );
                       })}
+                      {detail.returns?.length > 0 && (
                       <tr className="bg-gray-50 font-bold">
                         <td colSpan={4} className="text-right text-gray-600">Jami qaytarilgan:</td>
                         <td colSpan={3} className="text-orange-700">{fmt(detail.returns.reduce((a, r) => a + parseFloat(r.amount || 0), 0))} so'm</td>
                       </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
               </div>
-            )}
           </div>
         )}
       </Modal>

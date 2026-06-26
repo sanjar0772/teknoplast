@@ -25,7 +25,11 @@ router.get('/', async (req, res, next) => {
     let idx = 1;
     if (is_active !== 'all') { sql += ` AND c.is_active = $${idx++}`; params.push(is_active === 'true'); }
     if (type)      { sql += ` AND c.customer_type = $${idx++}`; params.push(type); }
-    if (search)    { sql += ` AND (c.name ILIKE $${idx} OR c.phone ILIKE $${idx} OR c.company_name ILIKE $${idx})`; params.push(`%${search}%`); idx++; }
+    if (search)    {
+      const like = `%${search}%`;
+      sql += ` AND (c.name ILIKE $${idx} OR c.phone ILIKE $${idx + 1} OR c.company_name ILIKE $${idx + 2})`;
+      params.push(like, like, like); idx += 3;
+    }
     if (date_from) { sql += ` AND DATE(c.created_at) >= $${idx++}`; params.push(date_from); }
     if (date_to)   { sql += ` AND DATE(c.created_at) <= $${idx++}`; params.push(date_to); }
     sql += ' GROUP BY c.id ORDER BY total_purchases DESC, c.name';

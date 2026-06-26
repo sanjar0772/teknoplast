@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { RotateCcw, Warehouse, AlertTriangle, Coins, X, Search, Printer, Plus, Package, User, ArrowLeft, Check, FileText } from 'lucide-react';
+import { RotateCcw, Warehouse, AlertTriangle, Coins, X, Search, Printer, Plus, Package, User, ArrowLeft, Check, FileText, Trash2 } from 'lucide-react';
 import { salesAPI } from '../services/api';
+import useAuthStore from '../store/authStore';
 import VozvratFakturaModal from '../components/VozvratFakturaModal';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -25,6 +26,7 @@ function Modal({ open, onClose, title, children, wide }) {
 
 export default function VozvratlarPage() {
   const qc = useQueryClient();
+  const { isOwner } = useAuthStore();
   const [dateFilter, setDateFilter] = useState({ date_from: '', date_to: '' });
   const [datePreset, setDatePreset] = useState('all');
   const [search, setSearch] = useState('');
@@ -132,6 +134,16 @@ export default function VozvratlarPage() {
     onError: (err) => toast.error(err?.response?.data?.error || 'Vozvratda xato'),
   });
 
+  // Barcha vozvratlar tarixini o'chirish (0 qilish) — faqat OWNER
+  const resetMutation = useMutation({
+    mutationFn: () => salesAPI.resetReturns().then(r => r.data),
+    onSuccess: (d) => {
+      toast.success(`${d?.count ?? 0} ta vozvrat o'chirildi`);
+      qc.invalidateQueries({ queryKey: ['returns-all'] });
+    },
+    onError: (e) => toast.error(e?.response?.data?.error || 'Tozalashda xato'),
+  });
+
   const openPicker = () => {
     setStep('customer');
     setPickerSearch('');
@@ -233,6 +245,14 @@ export default function VozvratlarPage() {
             <button onClick={() => window.print()} className="btn-secondary btn-sm">
               <Printer size={14} /> Chop etish
             </button>
+            {isOwner() && (
+              <button
+                onClick={() => { if (window.confirm('Barcha vozvratlar tarixi o\'chiriladi (0 qilinadi). Sotuv/ombor o\'zgarmaydi. Davom etamizmi?')) resetMutation.mutate(); }}
+                disabled={resetMutation.isPending}
+                className="btn-sm bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg px-3 flex items-center gap-1 disabled:opacity-50">
+                <Trash2 size={14} /> {resetMutation.isPending ? 'O\'chirilmoqda...' : 'Tozalash'}
+              </button>
+            )}
           </div>
         </div>
 

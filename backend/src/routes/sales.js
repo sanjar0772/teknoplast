@@ -798,4 +798,17 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
   } catch (err) { next(err); }
 });
 
+// POST /api/sales/returns/reset — barcha vozvratlar tarixini o'chirish (0 qilish) — faqat OWNER.
+// Faqat sale_returns yozuvlari o'chadi; sotuv/ombor/moliyaga tegmaydi (ular allaqachon qo'llanilgan).
+router.post('/returns/reset', requireRole('OWNER'), async (req, res, next) => {
+  try {
+    await saleReturns.ensureReturnsSchema();
+    const c = await query('SELECT COUNT(*) as count FROM sale_returns', []);
+    const count = parseInt(c.rows[0]?.count ?? c.rows[0]?.['COUNT(*)'] ?? 0);
+    await query('DELETE FROM sale_returns', []);
+    logAudit(req, { action: 'RESET_RETURNS', table: 'sale_returns', recordId: 'ALL', newValues: { deleted: count } });
+    res.json({ count });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

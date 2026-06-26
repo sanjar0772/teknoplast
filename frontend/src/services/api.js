@@ -60,6 +60,7 @@ export const salesAPI = {
   getReturns: (id) => api.get(`/sales/${id}/returns`),
   getAllReturns: (params) => api.get('/sales/returns/all', { params }),
   resetReturns: () => api.post('/sales/returns/reset'),
+  resetSales: () => api.post('/sales/reset'),
   delete: (id) => api.delete(`/sales/${id}`),
 };
 

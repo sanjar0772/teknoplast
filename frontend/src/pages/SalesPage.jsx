@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
-import { Plus, Download, Search, X, CheckCircle, Clock, AlertCircle, FileText, Printer, Pencil, ChevronDown, ChevronRight, RotateCcw, CalendarDays } from 'lucide-react';
+import { Plus, Download, Search, X, CheckCircle, Clock, AlertCircle, FileText, Printer, Pencil, ChevronDown, ChevronRight, RotateCcw, CalendarDays, Trash2 } from 'lucide-react';
 import { salesAPI, productsAPI, reportsAPI, customersAPI } from '../services/api';
 import { downloadQR } from '../utils/qr';
 import useAuthStore from '../store/authStore';
@@ -133,6 +133,20 @@ export default function SalesPage({ embedded = false }) {
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       setShowModal(false);
     },
+  });
+
+  // Barcha savdo + to'lov + vozvratlarni o'chirish (0 qilish) — faqat OWNER
+  const resetSalesMutation = useMutation({
+    mutationFn: () => salesAPI.resetSales().then(r => r.data),
+    onSuccess: (d) => {
+      toast.success(`${d?.count ?? 0} ta savdo o'chirildi — savdo va vozvratlar 0`);
+      qc.invalidateQueries({ queryKey: ['sales'] });
+      qc.invalidateQueries({ queryKey: ['sales-summary'] });
+      qc.invalidateQueries({ queryKey: ['returns-all'] });
+      qc.invalidateQueries({ queryKey: ['debts'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+    onError: (e) => toast.error(e?.response?.data?.error || 'Tozalashda xato'),
   });
 
   const statusMutation = useMutation({
@@ -324,6 +338,18 @@ export default function SalesPage({ embedded = false }) {
           <button onClick={downloadExcel} className="btn-secondary btn-sm">
             <Download size={14} /> Excel
           </button>
+          {isOwner() && (
+            <button
+              onClick={() => {
+                if (!window.confirm('DIQQAT! Barcha savdo, to\'lov va vozvratlar butunlay o\'chiriladi (0 bo\'ladi). Qarzlar ham 0 bo\'ladi. Ombor/mahsulot/mijozlarga tegmaydi. Davom etamizmi?')) return;
+                if (!window.confirm('Bu amalni ortga qaytarib bo\'lmaydi. Rostdan ham hammasini o\'chiramizmi?')) return;
+                resetSalesMutation.mutate();
+              }}
+              disabled={resetSalesMutation.isPending}
+              className="btn-sm bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg px-3 flex items-center gap-1 disabled:opacity-50">
+              <Trash2 size={14} /> {resetSalesMutation.isPending ? 'O\'chirilmoqda...' : 'Savdoni 0 qilish'}
+            </button>
+          )}
           {canCreate && (
             <button onClick={() => { reset(); setShowModal(true); }} className="btn-primary btn-sm">
               <Plus size={14} /> Sotuv qo'shish

@@ -798,6 +798,28 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
   } catch (err) { next(err); }
 });
 
+// POST /api/sales/reset — barcha savdo + to'lov + vozvratlarni o'chirish (0 qilish) — faqat OWNER.
+// Ombor/mahsulot/mijozlarga tegmaydi. Qarzlar ham 0 bo'ladi (savdolar o'chgani uchun).
+router.post('/reset', requireRole('OWNER'), async (req, res, next) => {
+  try {
+    await saleReturns.ensureReturnsSchema();
+    const sc = await query('SELECT COUNT(*) as count FROM sales', []);
+    const salesCount = parseInt(sc.rows[0]?.count ?? sc.rows[0]?.['COUNT(*)'] ?? 0);
+    const client = await require('../db').getClient();
+    try {
+      await client.query('BEGIN');
+      try { await client.query('DELETE FROM payments'); } catch (e) { /* jadval bo'lmasligi mumkin */ }
+      try { await client.query('DELETE FROM sale_returns'); } catch (e) { /* jadval bo'lmasligi mumkin */ }
+      await client.query('DELETE FROM sales');
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK'); throw e;
+    } finally { client.release(); }
+    logAudit(req, { action: 'RESET_SALES', table: 'sales', recordId: 'ALL', newValues: { deleted_sales: salesCount } });
+    res.json({ count: salesCount });
+  } catch (err) { next(err); }
+});
+
 // POST /api/sales/returns/reset — barcha vozvratlar tarixini o'chirish (0 qilish) — faqat OWNER.
 // Faqat sale_returns yozuvlari o'chadi; sotuv/ombor/moliyaga tegmaydi (ular allaqachon qo'llanilgan).
 router.post('/returns/reset', requireRole('OWNER'), async (req, res, next) => {

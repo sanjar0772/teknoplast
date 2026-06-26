@@ -39,6 +39,7 @@ export default function VozvratlarPage() {
   const [selectedCustomer, setSelectedCustomer] = useState(null); // { key, id, name, sales }
   const [selectedItems, setSelectedItems] = useState({});         // { [saleId]: { quantity, condition } }
   const [bulkReason, setBulkReason] = useState('');
+  const [bulkSettlement, setBulkSettlement] = useState('DEBT'); // DEBT | REFUND | CREDIT — summani qanday yopish
 
   const applyPreset = (preset) => {
     setDatePreset(preset);
@@ -107,11 +108,11 @@ export default function VozvratlarPage() {
   }, [selectedCustomer, pickerSearch]);
 
   const bulkMutation = useMutation({
-    mutationFn: async ({ items, reason }) => {
+    mutationFn: async ({ items, reason, settlement }) => {
       const results = [];
       // Ketma-ket yuboramiz — har bir sotuv alohida vozvrat qilinadi
       for (const it of items) {
-        const res = await salesAPI.returnSale(it.id, { quantity: it.quantity, reason, condition: it.condition });
+        const res = await salesAPI.returnSale(it.id, { quantity: it.quantity, reason, condition: it.condition, settlement });
         results.push(res.data);
       }
       return results;
@@ -150,6 +151,7 @@ export default function VozvratlarPage() {
     setSelectedCustomer(null);
     setSelectedItems({});
     setBulkReason('');
+    setBulkSettlement('DEBT');
     setPicker(true);
   };
   const closePicker = () => {
@@ -158,6 +160,7 @@ export default function VozvratlarPage() {
     setSelectedCustomer(null);
     setSelectedItems({});
     setBulkReason('');
+    setBulkSettlement('DEBT');
     setPickerSearch('');
   };
 
@@ -209,7 +212,8 @@ export default function VozvratlarPage() {
       if (q > max) return toast.error(`"${sale?.product_name}" — faqat ${max} ${sale?.unit || 'dona'} qaytarish mumkin`);
       items.push({ id, quantity: q, condition: it.condition });
     }
-    bulkMutation.mutate({ items, reason: bulkReason.trim() });
+    const settlement = bulkSettlement === 'REFUND' ? 'REFUND' : 'BALANCE';
+    bulkMutation.mutate({ items, reason: bulkReason.trim(), settlement });
   };
 
   const summary = data?.summary || {};
@@ -476,6 +480,24 @@ export default function VozvratlarPage() {
                 </div>
               );
             })}
+          </div>
+
+          {/* Vozvrat summasi qayerga ketsin? */}
+          <div>
+            <label className="label">Summa qayerga ketsin? * (barcha tanlanganlar uchun)</label>
+            <div className="space-y-2">
+              {[
+                { key: 'DEBT',   title: '➖ Qarzdan ayirsin',      desc: 'Qarz shu summaga kamayadi (naqd berilmaydi)' },
+                { key: 'REFUND', title: '💵 Naqd qaytarib berish', desc: 'Mijozga naqd pul qaytariladi' },
+                { key: 'CREDIT', title: '⭐ Haqdor bo‘lib qolsin',  desc: 'Mijoz shu summaga haqdor bo‘ladi (keyingi xaridda)' },
+              ].map(opt => (
+                <button key={opt.key} type="button" onClick={() => setBulkSettlement(opt.key)}
+                  className={`w-full rounded-xl border p-2.5 text-sm text-left transition ${bulkSettlement === opt.key ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-300' : 'border-gray-200 hover:border-gray-300'}`}>
+                  <div className="font-medium text-gray-900">{opt.title}</div>
+                  <div className="text-[11px] text-gray-500">{opt.desc}</div>
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>

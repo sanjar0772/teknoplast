@@ -241,6 +241,7 @@ export default function MachinesPage() {
   const [editMachine, setEditMachine] = useState(null);
   const [cycleFor, setCycleFor] = useState(null);     // cycle-time modal
   const [downtimeFor, setDowntimeFor] = useState(null); // holat/nosozlik modal
+  const [choosing, setChoosing] = useState(false);    // "Stanok yoki Mashina" tanlash
 
   const { data, isLoading } = useQuery({
     queryKey: ['machines'],
@@ -274,6 +275,14 @@ export default function MachinesPage() {
     setShowModal(true);
   };
 
+  // Qo'shish tugmasi bosilganda — avval "Stanok yoki Mashina" so'raladi
+  const openAdd = (type) => {
+    reset({ type, status: 'WORKING' });
+    setEditMachine(null);
+    setChoosing(false);
+    setShowModal(true);
+  };
+
   const canWrite = isOwner() || isProductionHead() || isCycleTime();
   const machines = data?.machines || [];
   const working = machines.filter(m => m.status === 'WORKING').length;
@@ -285,8 +294,8 @@ export default function MachinesPage() {
       <div className="page-header">
         <h1 className="page-title">Mashinalar</h1>
         {canWrite && (
-          <button onClick={() => { reset(); setEditMachine(null); setShowModal(true); }} className="btn-primary btn-sm">
-            <Plus size={14} /> Mashina qo'shish
+          <button onClick={() => setChoosing(true)} className="btn-primary btn-sm">
+            <Plus size={14} /> Qo'shish
           </button>
         )}
       </div>
@@ -332,7 +341,10 @@ export default function MachinesPage() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-gray-900">{m.name}</h3>
-                    <p className="text-xs text-gray-500">{m.location || 'Joyi ko\'rsatilmagan'}</p>
+                    <p className="text-xs text-gray-500">
+                      <span className="font-medium text-gray-600">{m.type === 'MASHINA' ? 'Mashina' : 'Stanok'}</span>
+                      {' · '}{m.location || 'Joyi ko\'rsatilmagan'}
+                    </p>
                   </div>
                 </div>
                 <span className={st.cls}>{st.label}</span>
@@ -389,6 +401,13 @@ export default function MachinesPage() {
         title={editMachine ? 'Mashinani tahrirlash' : 'Yangi Mashina'}>
         <form onSubmit={handleSubmit(d => saveMutation.mutate(d))} className="space-y-4">
           <div>
+            <label className="label">Turi</label>
+            <select {...register('type')} className="select">
+              <option value="STANOK">Stanok</option>
+              <option value="MASHINA">Mashina</option>
+            </select>
+          </div>
+          <div>
             <label className="label">Nomi *</label>
             <input {...register('name', { required: true })} className="input" />
           </div>
@@ -434,6 +453,22 @@ export default function MachinesPage() {
             <button type="submit" disabled={saveMutation.isPending} className="btn-primary flex-1">Saqlash</button>
           </div>
         </form>
+      </Modal>
+
+      {/* "Nima qo'shamiz?" — Stanok yoki Mashina */}
+      <Modal open={choosing} onClose={() => setChoosing(false)} title="Nima qo'shamiz?">
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={() => openAdd('STANOK')}
+            className="flex flex-col items-center gap-2 py-6 rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition">
+            <Cog size={30} className="text-blue-600" />
+            <span className="font-semibold text-gray-800">Stanok</span>
+          </button>
+          <button onClick={() => openAdd('MASHINA')}
+            className="flex flex-col items-center gap-2 py-6 rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition">
+            <Cog size={30} className="text-gray-500" />
+            <span className="font-semibold text-gray-800">Mashina</span>
+          </button>
+        </div>
       </Modal>
 
       {cycleFor && <CycleTimeModal machine={cycleFor} canWrite={canWrite} onClose={() => setCycleFor(null)} />}

@@ -27,10 +27,10 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), [
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { name, code, status, operator_id, last_service_date, next_service_date, daily_production_capacity, location } = req.body;
+    const { name, code, type, status, operator_id, last_service_date, next_service_date, daily_production_capacity, location } = req.body;
     const result = await query(
-      'INSERT INTO machines (name, code, status, operator_id, last_service_date, next_service_date, daily_production_capacity, location) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-      [name, code || null, status || 'WORKING', operator_id || null, last_service_date, next_service_date, daily_production_capacity || 0, location]
+      'INSERT INTO machines (name, code, type, status, operator_id, last_service_date, next_service_date, daily_production_capacity, location) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+      [name, code || null, type || 'STANOK', status || 'WORKING', operator_id || null, last_service_date, next_service_date, daily_production_capacity || 0, location]
     );
     res.status(201).json({ machine: result.rows[0] });
   } catch (err) { next(err); }
@@ -39,10 +39,10 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), [
 // PUT /api/machines/:id
 router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async (req, res, next) => {
   try {
-    const { name, code, status, operator_id, last_service_date, next_service_date, daily_production_capacity, location } = req.body;
+    const { name, code, type, status, operator_id, last_service_date, next_service_date, daily_production_capacity, location } = req.body;
     const result = await query(
-      'UPDATE machines SET name=$1,code=$2,status=$3,operator_id=$4,last_service_date=$5,next_service_date=$6,daily_production_capacity=$7,location=$8,updated_at=NOW() WHERE id=$9 RETURNING *',
-      [name, code, status, operator_id, last_service_date, next_service_date, daily_production_capacity, location, req.params.id]
+      'UPDATE machines SET name=$1,code=$2,type=$3,status=$4,operator_id=$5,last_service_date=$6,next_service_date=$7,daily_production_capacity=$8,location=$9,updated_at=NOW() WHERE id=$10 RETURNING *',
+      [name, code || null, type || 'STANOK', status, operator_id, last_service_date, next_service_date, daily_production_capacity, location, req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Mashina topilmadi' });
     res.json({ machine: result.rows[0] });

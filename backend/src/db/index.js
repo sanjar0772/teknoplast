@@ -73,6 +73,10 @@ if (USE_PG) {
       .replace(/::TIMESTAMP/gi, '')
       .replace(/::INTEGER/gi, '')
       .replace(/TEXT\[\]/gi, 'TEXT')
+      // ILIKE — kirill harflar uchun ham katta/kichikni farqlamasligi kerak.
+      // SQLite LIKE faqat lotinni qo'llaydi; shu sabab ikkala tomonni Unicode
+      // ulower() bilan kichik harfga keltiramiz ($N allaqachon ? ga aylangan).
+      .replace(/([\w.]+)\s+ILIKE\s+\?/gi, 'ulower($1) LIKE ulower(?)')
       .replace(/ILIKE/gi, 'LIKE')
       .replace(/is_active\s*=\s*true/gi, 'is_active=1')
       .replace(/is_active\s*=\s*false/gi, 'is_active=0')
@@ -190,6 +194,17 @@ if (USE_PG) {
       createSampleData();
       saveDBSync();
       console.log('✅ SQLite bazasi yaratildi');
+    }
+
+    // Kirill (va boshqa Unicode) harflar uchun katta/kichikni farqlamaydigan qidiruv.
+    // SQLite'ning o'rnatilgan lower/LIKE faqat lotin (ASCII) ni qo'llaydi —
+    // JS toLowerCase esa kirillni ham to'g'ri kichik harfga keltiradi.
+    try {
+      const uni = (s) => (s === null || s === undefined ? null : String(s).toLowerCase());
+      _db.create_function('ulower', uni);
+      try { _db.create_function('lower', uni); } catch (e) { /* o'rnatilganni almashtirib bo'lmasa — ulower yetarli */ }
+    } catch (e) {
+      console.warn('ulower funksiyasini ro\'yxatdan o\'tkazib bo\'lmadi:', e.message);
     }
 
     _db.run('PRAGMA foreign_keys = ON');

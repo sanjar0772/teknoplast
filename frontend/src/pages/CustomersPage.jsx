@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import {
   Plus, Search, X, Phone, Building2, MapPin, Eye,
-  Trash2, Users, Crown, Store, ShoppingBag, AlertTriangle, Pencil, Download, Coins
+  Trash2, Users, Crown, Store, ShoppingBag, AlertTriangle, Pencil, Download, Coins, RotateCcw, Warehouse
 } from 'lucide-react';
 import { customersAPI, salesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
@@ -600,6 +600,46 @@ export default function CustomersPage({ embedded = false }) {
                 </table>
               </div>
             </div>
+
+            {/* Vozvratlar (qaytarishlar) tarixi */}
+            {detail.returns?.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <RotateCcw size={15} className="text-orange-600" />
+                  <h5 className="font-semibold text-gray-700 text-sm">Vozvratlar (qaytarishlar)</h5>
+                </div>
+                <div className="border border-gray-100 rounded-xl overflow-hidden">
+                  <table className="table text-sm">
+                    <thead>
+                      <tr><th>Sana</th><th>Mahsulot</th><th>Miqdor</th><th>Holati</th><th>Summa</th><th>Sabab</th></tr>
+                    </thead>
+                    <tbody>
+                      {detail.returns.map(r => {
+                        const defective = r.condition === 'DEFECTIVE';
+                        return (
+                          <tr key={r.id}>
+                            <td className="whitespace-nowrap">{new Date(r.return_date).toLocaleDateString('uz-UZ')}</td>
+                            <td className="text-gray-700">{r.product_name}{r.rang ? ` · ${r.rang}` : ''}</td>
+                            <td className="whitespace-nowrap">{fmt(r.quantity)} {r.unit || 'dona'}</td>
+                            <td>
+                              {defective
+                                ? <span className="badge bg-red-50 text-red-600 flex items-center gap-1 w-fit"><AlertTriangle size={11} /> Brak</span>
+                                : <span className="badge bg-emerald-50 text-emerald-600 flex items-center gap-1 w-fit"><Warehouse size={11} /> Omborga</span>}
+                            </td>
+                            <td className="font-semibold text-orange-700 whitespace-nowrap">{fmt(r.amount)} so'm</td>
+                            <td className="text-gray-500 max-w-[180px]">{r.reason}</td>
+                          </tr>
+                        );
+                      })}
+                      <tr className="bg-gray-50 font-bold">
+                        <td colSpan={4} className="text-right text-gray-600">Jami qaytarilgan:</td>
+                        <td colSpan={2} className="text-orange-700">{fmt(detail.returns.reduce((a, r) => a + parseFloat(r.amount || 0), 0))} so'm</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </Modal>

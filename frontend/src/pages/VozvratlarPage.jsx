@@ -27,6 +27,7 @@ export default function VozvratlarPage() {
   const [dateFilter, setDateFilter] = useState({ date_from: '', date_to: '' });
   const [datePreset, setDatePreset] = useState('all');
   const [search, setSearch] = useState('');
+  const [receiptFor, setReceiptFor] = useState(null); // vozvrat cheki uchun
 
   // ── Vozvrat oqimi: 1) mijoz tanlash → 2) mahsulotlarni belgilash (bir nechtasini birdan) ──
   const [picker, setPicker] = useState(false);
@@ -298,19 +299,19 @@ export default function VozvratlarPage() {
             <thead>
               <tr>
                 <th>Sana</th><th>Mahsulot</th><th>Mijoz</th><th>Miqdor</th>
-                <th>Holati</th><th>Summa</th><th>Ziyon</th><th>Sabab</th><th>Xodim</th>
+                <th>Holati</th><th>Summa</th><th>Ziyon</th><th>Sabab</th><th>Xodim</th><th className="no-print">Amal</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={9} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
+                <tr><td colSpan={10} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
               ) : !all.length ? (
-                <tr><td colSpan={9} className="text-center py-10 text-gray-400">
+                <tr><td colSpan={10} className="text-center py-10 text-gray-400">
                   <RotateCcw size={28} className="mx-auto mb-2 text-gray-300" />
                   Hali vozvrat (qaytarish) yo'q
                 </td></tr>
               ) : !returns.length ? (
-                <tr><td colSpan={9} className="text-center py-10 text-gray-400">
+                <tr><td colSpan={10} className="text-center py-10 text-gray-400">
                   <Search size={24} className="mx-auto mb-2 text-gray-300" />
                   "{search}" bo'yicha topilmadi
                 </td></tr>
@@ -336,6 +337,11 @@ export default function VozvratlarPage() {
                     </td>
                     <td className="max-w-[200px]"><span className="text-sm text-gray-600">{r.reason}</span></td>
                     <td className="text-xs text-gray-400 whitespace-nowrap">{r.created_by_name || '—'}</td>
+                    <td className="no-print">
+                      <button onClick={() => setReceiptFor(r)} className="btn-secondary btn-sm" title="Vozvrat cheki">
+                        <Printer size={12} /> Chek
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -467,6 +473,57 @@ export default function VozvratlarPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Vozvrat cheki (shot-faktura) */}
+      {receiptFor && (
+        <div className="fixed inset-0 z-[60] flex items-start justify-center p-4 overflow-y-auto">
+          <div className="absolute inset-0 bg-black/50 print:hidden" onClick={() => setReceiptFor(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden my-8">
+            <button onClick={() => setReceiptFor(null)}
+              className="absolute top-3 right-3 z-10 text-gray-400 hover:text-gray-700 bg-white rounded-full p-1 shadow print:hidden">
+              <X size={18} />
+            </button>
+            <div id="vozvrat-chek-print" className="px-5 py-5 font-mono text-[13px] leading-tight text-gray-900">
+              <div className="text-center border-b border-dashed border-gray-300 pb-2 mb-2">
+                <div className="text-lg font-bold tracking-wide">TEKNOPLAST</div>
+                <div className="text-[11px] text-gray-500">Plastik mahsulotlar zavodi</div>
+              </div>
+              <div className="text-[11px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-2">
+                <div className="flex justify-between"><span>Chek turi:</span><span className="font-bold">VOZVRAT</span></div>
+                <div className="flex justify-between"><span>Sana:</span><span>{new Date(receiptFor.return_date || receiptFor.created_at).toLocaleDateString('uz-UZ')}</span></div>
+                {receiptFor.order_ref && <div className="flex justify-between"><span>Chek №:</span><span>{receiptFor.order_ref}</span></div>}
+                <div className="flex justify-between"><span>Mijoz:</span><span className="font-bold">{receiptFor.customer_name || '—'}</span></div>
+                {receiptFor.created_by_name && <div className="flex justify-between"><span>Xodim:</span><span>{receiptFor.created_by_name}</span></div>}
+              </div>
+              <div className="border-b border-dashed border-gray-300 pb-2 mb-2">
+                <div className="font-medium">{receiptFor.product_name}{receiptFor.rang ? ` · ${receiptFor.rang}` : ''}</div>
+                <div className="flex justify-between text-gray-600">
+                  <span>{fmt(receiptFor.quantity)} {receiptFor.unit || 'dona'} × {fmt(receiptFor.unit_price)}</span>
+                  <span className="font-bold text-gray-900">{fmt(receiptFor.amount)} so'm</span>
+                </div>
+              </div>
+              <div className="text-[12px] space-y-0.5 border-b border-dashed border-gray-300 pb-2 mb-2">
+                <div className="flex justify-between"><span>Holati:</span>
+                  <span className="font-bold">{receiptFor.condition === 'DEFECTIVE' ? 'Brak (ziyon)' : 'Omborga qaytdi'}</span></div>
+                {receiptFor.condition === 'DEFECTIVE' && parseFloat(receiptFor.loss_amount) > 0 && (
+                  <div className="flex justify-between text-red-600"><span>Ziyon:</span><span className="font-bold">{fmt(receiptFor.loss_amount)} so'm</span></div>
+                )}
+                {parseFloat(receiptFor.refund_amount) > 0 && (
+                  <div className="flex justify-between text-blue-700"><span>Qaytarilgan pul:</span><span className="font-bold">{fmt(receiptFor.refund_amount)} so'm</span></div>
+                )}
+              </div>
+              <div className="text-[11px]"><span className="text-gray-500">Sabab: </span>{receiptFor.reason}</div>
+              <div className="text-center text-[10px] text-gray-400 mt-3">Vozvrat cheki · TEKNOPLAST</div>
+            </div>
+            <div className="flex gap-2 px-4 pb-4 print:hidden">
+              <button onClick={() => setReceiptFor(null)} className="btn-secondary flex-1 text-sm">Yopish</button>
+              <button onClick={() => window.print()} className="btn-primary flex-1 text-sm">
+                <Printer size={13} /> Chop etish
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

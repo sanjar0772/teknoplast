@@ -85,11 +85,26 @@ router.get('/:id', async (req, res, next) => {
       ORDER BY pm.payment_date DESC, pm.created_at DESC
     `, [req.params.id]);
 
+    // Vozvratlar (qaytarishlar) tarixi — shu mijozning vozvratlari
+    let returns = [];
+    try {
+      const rr = await query(`
+        SELECT sr.id, sr.quantity, sr.unit_price, sr.amount, sr.refund_amount,
+               sr.reason, sr.return_date, sr.condition, sr.loss_amount, sr.rang,
+               p.name AS product_name, p.unit
+        FROM sale_returns sr LEFT JOIN products p ON sr.product_id = p.id
+        WHERE sr.customer_id = $1
+        ORDER BY COALESCE(sr.return_date, sr.created_at) DESC
+      `, [req.params.id]);
+      returns = rr.rows;
+    } catch (e) { returns = []; }
+
     res.json({
       customer: customer.rows[0],
       sales: sales.rows,
       stats: stats.rows[0],
       payments: payments.rows,
+      returns,
     });
   } catch (err) { next(err); }
 });

@@ -121,6 +121,13 @@ export default function QuickSalePage() {
 
   const products = (productsData?.products || []).filter(p => p.kind !== 'KOMPONENT');
 
+  // Tanlangan mijozning umumiy balansi: total_debt > 0 => qarzdor, < 0 => haqdor, 0 => teng
+  const selectedCustomer = useMemo(
+    () => customersData?.customers?.find(c => String(c.id) === String(s.customerId)) || null,
+    [customersData, s.customerId]
+  );
+  const custBalance = selectedCustomer ? Math.round(parseFloat(selectedCustomer.total_debt) || 0) : 0;
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return products.slice(0, 30);
@@ -217,6 +224,7 @@ export default function QuickSalePage() {
       qc.invalidateQueries({ queryKey: ['sales'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       qc.invalidateQueries({ queryKey: ['customers'] });
+      qc.invalidateQueries({ queryKey: ['customers-list'] });
       qc.invalidateQueries({ queryKey: ['fulfillment'] });
       const { idx, customerId: cId } = checkoutRef.current;
       const cust = customersData?.customers?.find(c => c.id === cId);
@@ -509,23 +517,44 @@ export default function QuickSalePage() {
         {/* O'NG: Savat */}
         <div className="lg:col-span-3 space-y-2">
           {/* Mijoz / sana */}
-          <div className="card p-3 grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] text-gray-500 font-medium">Mijoz *</label>
-              <select
-                value={s.customerId}
-                onChange={e => setField('customerId', e.target.value)}
-                className={`select text-xs py-1.5 ${!s.customerId ? 'border-red-300' : ''}`}
-              >
-                <option value="" disabled>— Tanlang —</option>
-                {customersData?.customers?.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ''}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-gray-500 font-medium">Sana</label>
-              <input type="date" value={s.saleDate} onChange={e => setField('saleDate', e.target.value)} className="input text-xs py-1.5" />
+          <div className="card p-3 space-y-2">
+            {/* Tanlangan mijozning umumiy balansi — sananing tepasida */}
+            {s.customerId && (
+              custBalance > 0 ? (
+                <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-3 py-1.5">
+                  <span className="text-[11px] font-medium text-red-600">⚠️ Mijoz qarzi (umumiy)</span>
+                  <span className="text-sm font-bold text-red-600">{fmt(custBalance)} so'm</span>
+                </div>
+              ) : custBalance < 0 ? (
+                <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5">
+                  <span className="text-[11px] font-medium text-blue-700">⭐ Mijoz haqdor (umumiy)</span>
+                  <span className="text-sm font-bold text-blue-700">+{fmt(-custBalance)} so'm</span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-1.5">
+                  <span className="text-[11px] font-medium text-yellow-700">✅ Qarzi yo'q</span>
+                  <span className="text-sm font-bold text-yellow-700">0 so'm</span>
+                </div>
+              )
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-gray-500 font-medium">Mijoz *</label>
+                <select
+                  value={s.customerId}
+                  onChange={e => setField('customerId', e.target.value)}
+                  className={`select text-xs py-1.5 ${!s.customerId ? 'border-red-300' : ''}`}
+                >
+                  <option value="" disabled>— Tanlang —</option>
+                  {customersData?.customers?.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ''}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 font-medium">Sana</label>
+                <input type="date" value={s.saleDate} onChange={e => setField('saleDate', e.target.value)} className="input text-xs py-1.5" />
+              </div>
             </div>
           </div>
 

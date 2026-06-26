@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
@@ -7,6 +7,7 @@ import {
   Trash2, Users, Crown, Store, ShoppingBag, AlertTriangle, Pencil, Download, Coins, RotateCcw, Warehouse, FileText
 } from 'lucide-react';
 import VozvratFakturaModal from '../components/VozvratFakturaModal';
+import CustomerFakturaModal from '../components/CustomerFakturaModal';
 import { customersAPI, salesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -48,6 +49,7 @@ export default function CustomersPage({ embedded = false }) {
   const [filter, setFilter] = useState({ search: '', type: '', date_from: '', date_to: '' });
   const [datePreset, setDatePreset] = useState('all');
   const [fakturaRet, setFakturaRet] = useState(null); // vozvrat schyot-fakturasi
+  const [showCustFaktura, setShowCustFaktura] = useState(false); // mijoz schyot-fakturasi
 
   const applyPreset = (preset) => {
     setDatePreset(preset);
@@ -89,6 +91,36 @@ export default function CustomersPage({ embedded = false }) {
     queryFn: () => customersAPI.getById(detailId).then(r => r.data),
     enabled: !!detailId,
   });
+
+  // Mijozning barcha harakatlari (xarid + to'lov + vozvrat) — birlashtirilgan ro'yxat.
+  // Xarid asl summasida (joriy total + shu savdoning vozvratlari) olinadi, shunda
+  // xarid − to'lov − vozvrat = qoldiq qarz (stats bilan mos).
+  const ledger = useMemo(() => {
+    if (!detail) return { rows: [], totals: { xarid: 0, tolov: 0, vozvrat: 0, qoldiq: 0 } };
+    const retBySale = {};
+    (detail.returns || []).forEach(r => {
+      if (r.sale_id) retBySale[r.sale_id] = (retBySale[r.sale_id] || 0) + (parseFloat(r.amount) || 0);
+    });
+    const rows = [];
+    let xarid = 0, tolov = 0, vozvrat = 0;
+    (detail.sales || []).forEach(s => {
+      const orig = (parseFloat(s.total_amount) || 0) + (retBySale[s.id] || 0);
+      xarid += orig;
+      rows.push({ date: s.sale_date, type: 'Xarid', label: s.product_name, sign: 1, amount: orig });
+    });
+    (detail.payments || []).forEach(p => {
+      const amt = parseFloat(p.amount) || 0;
+      tolov += amt;
+      rows.push({ date: p.payment_date, type: "To'lov", label: PAY_METHOD[p.method] || p.method || '—', sign: -1, amount: amt });
+    });
+    (detail.returns || []).forEach(r => {
+      const amt = parseFloat(r.amount) || 0;
+      vozvrat += amt;
+      rows.push({ date: r.return_date, type: 'Vozvrat', label: `${r.product_name || 'Mahsulot'}${r.rang ? ' · ' + r.rang : ''}`, sign: -1, amount: amt });
+    });
+    rows.sort((a, b) => new Date(a.date) - new Date(b.date));
+    return { rows, totals: { xarid, tolov, vozvrat, qoldiq: xarid - tolov - vozvrat } };
+  }, [detail]);
 
   const { data: productsData } = useQuery({
     queryKey: ['products'],
@@ -440,6 +472,45 @@ export default function CustomersPage({ embedded = false }) {
               </div>
             </div>
 
+            {/* Barcha harakatlar (xarid + to'lov + vozvrat) */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h5 className="font-semibold text-gray-700 text-sm flex items-center gap-1.5">
+                  <FileText size={15} className="text-blue-600" /> Barcha harakatlar
+                </h5>
+                <button onClick={() => setShowCustFaktura(true)} className="btn-secondary btn-sm" title="Barcha harakatlar bo'yicha schyot-faktura">
+                  <FileText size={13} /> Schyot-faktura
+                </button>
+              </div>
+              <div className="border border-gray-100 rounded-xl overflow-hidden">
+                <table className="table text-sm">
+                  <thead>
+                    <tr><th>Sana</th><th>Turi</th><th>Tafsilot</th><th className="text-right">Summa</th></tr>
+                  </thead>
+                  <tbody>
+                    {!ledger.rows.length ? (
+                      <tr><td colSpan={4} className="text-center py-6 text-gray-400">Harakatlar yo'q</td></tr>
+                    ) : ledger.rows.map((e, i) => (
+                      <tr key={i}>
+                        <td className="whitespace-nowrap">{new Date(e.date).toLocaleDateString('uz-UZ')}</td>
+                        <td>
+                          <span className={`badge ${e.type === 'Xarid' ? 'badge-blue' : e.type === "To'lov" ? 'badge-green' : 'bg-orange-50 text-orange-600'}`}>{e.type}</span>
+                        </td>
+                        <td className="text-gray-600">{e.label}</td>
+                        <td className={`text-right font-semibold whitespace-nowrap ${e.sign < 0 ? 'text-green-700' : 'text-blue-700'}`}>
+                          {e.sign < 0 ? '−' : '+'}{fmt(e.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="bg-gray-50 font-bold">
+                      <td colSpan={3} className="text-right text-gray-600">Qoldiq qarz:</td>
+                      <td className="text-right text-red-600">{fmt(ledger.totals.qoldiq)} so'm</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             {/* Purchase history */}
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -652,6 +723,9 @@ export default function CustomersPage({ embedded = false }) {
       </Modal>
 
       {fakturaRet && <VozvratFakturaModal ret={fakturaRet} customerName={detail?.customer?.name} onClose={() => setFakturaRet(null)} />}
+      {showCustFaktura && detail && (
+        <CustomerFakturaModal customer={detail.customer} rows={ledger.rows} totals={ledger.totals} onClose={() => setShowCustFaktura(false)} />
+      )}
     </div>
   );
 }

@@ -251,18 +251,53 @@ function historyRangeSubtitle(start_date, end_date) {
   return 'Davr: Barchasi';
 }
 
+// Qisqacha: har mahsulot bitta qator — jami kirim, chiqim, sotuv summasi, joriy ombor
+async function buildSelectedProductsSummaryRows(idsParam, start_date, end_date) {
+  const ids = String(idsParam || '').split(',').map(s => s.trim()).filter(Boolean);
+  const rows = [];
+  for (const id of ids) {
+    const res = await fetchProductHistory(id, start_date, end_date);
+    if (!res) continue;
+    let kirim = 0, chiqim = 0, sotuvSum = 0;
+    res.history.forEach(h => {
+      if (h.qty > 0) kirim += h.qty; else chiqim += -h.qty;
+      if (h.type === 'sotuv') sotuvSum += (h.amount || 0);
+    });
+    rows.push({
+      product: res.product.name,
+      kirim, chiqim, sotuv_sum: sotuvSum,
+      stock: parseFloat(res.product.stock_quantity) || 0,
+    });
+  }
+  rows.sort((a, b) => String(a.product).localeCompare(String(b.product)));
+  return rows;
+}
+
+const PRODUCT_SUMMARY_COLUMNS = [
+  { header: 'Mahsulot',         key: 'product',   w: 30 },
+  { header: 'Kirim (jami)',     key: 'kirim',     w: 13, align: 'right', total: true },
+  { header: 'Chiqim (sotildi)', key: 'chiqim',    w: 14, align: 'right', total: true },
+  { header: 'Sotuv summasi',    key: 'sotuv_sum', w: 18, align: 'right', money: true, total: true },
+  { header: 'Joriy ombor',      key: 'stock',     w: 13, align: 'right' },
+];
+
 // GET /api/products/history/export/excel?ids=&start_date=&end_date=
 router.get('/history/export/excel', async (req, res, next) => {
   try {
-    const { ids, start_date, end_date } = req.query;
+    const { ids, start_date, end_date, mode } = req.query;
     if (!ids) return res.status(400).json({ error: 'Mahsulot tanlanmagan' });
-    const rows = await buildSelectedProductsHistoryRows(ids, start_date, end_date);
+    const brief = mode === 'brief';
+    const rows = brief
+      ? await buildSelectedProductsSummaryRows(ids, start_date, end_date)
+      : await buildSelectedProductsHistoryRows(ids, start_date, end_date);
     const reportService = require('../services/reportService');
     const buffer = await reportService.generateInventoryExcel({
-      title: 'Mahsulot tarixi', columns: PRODUCT_HISTORY_COLUMNS, rows,
+      title: brief ? 'Mahsulotlar — qisqacha' : 'Mahsulot tarixi',
+      columns: brief ? PRODUCT_SUMMARY_COLUMNS : PRODUCT_HISTORY_COLUMNS,
+      rows,
     });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="mahsulot-tarixi-${start_date || 'boshi'}_${end_date || 'oxiri'}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="mahsulot-${brief ? 'qisqacha' : 'tarixi'}-${start_date || 'boshi'}_${end_date || 'oxiri'}.xlsx"`);
     res.send(Buffer.from(buffer));
   } catch (err) { next(err); }
 });
@@ -270,16 +305,21 @@ router.get('/history/export/excel', async (req, res, next) => {
 // GET /api/products/history/export/pdf?ids=&start_date=&end_date=
 router.get('/history/export/pdf', async (req, res, next) => {
   try {
-    const { ids, start_date, end_date } = req.query;
+    const { ids, start_date, end_date, mode } = req.query;
     if (!ids) return res.status(400).json({ error: 'Mahsulot tanlanmagan' });
-    const rows = await buildSelectedProductsHistoryRows(ids, start_date, end_date);
+    const brief = mode === 'brief';
+    const rows = brief
+      ? await buildSelectedProductsSummaryRows(ids, start_date, end_date)
+      : await buildSelectedProductsHistoryRows(ids, start_date, end_date);
     const reportService = require('../services/reportService');
     const buffer = await reportService.generateInventoryPDF({
-      title: 'Mahsulot tarixi', columns: PRODUCT_HISTORY_COLUMNS, rows,
+      title: brief ? 'Mahsulotlar — qisqacha' : 'Mahsulot tarixi',
+      columns: brief ? PRODUCT_SUMMARY_COLUMNS : PRODUCT_HISTORY_COLUMNS,
+      rows,
       subtitle: historyRangeSubtitle(start_date, end_date),
     });
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="mahsulot-tarixi-${start_date || 'boshi'}_${end_date || 'oxiri'}.pdf"`);
+    res.setHeader('Content-Disposition', `inline; filename="mahsulot-${brief ? 'qisqacha' : 'tarixi'}-${start_date || 'boshi'}_${end_date || 'oxiri'}.pdf"`);
     res.send(Buffer.from(buffer));
   } catch (err) { next(err); }
 });

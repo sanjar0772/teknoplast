@@ -199,6 +199,7 @@ export default function ProductsPage({ embedded = false }) {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [exporting, setExporting] = useState(null); // 'pdf' | 'excel' | null
+  const [exportChoice, setExportChoice] = useState(null); // 'excel' | 'pdf' — "umumiy/qisqacha" so'rash oynasi
 
   const applyPreset = (preset) => {
     setDatePreset(preset);
@@ -343,12 +344,14 @@ export default function ProductsPage({ embedded = false }) {
   const exitSelectMode = () => { setSelectMode(false); clearSelection(); };
 
   // Tanlangan mahsulotlar tarixini joriy davr bo'yicha PDF/Excel qilib yuklab olish
-  const exportHistory = async (format) => {
+  const exportHistory = async (format, mode) => {
     if (!selectedIds.size) return toast.error('Avval mahsulot(lar)ni belgilang');
+    setExportChoice(null);
     setExporting(format);
     const params = { ids: Array.from(selectedIds).join(',') };
     if (dateFilter.date_from) params.start_date = dateFilter.date_from;
     if (dateFilter.date_to)   params.end_date   = dateFilter.date_to;
+    if (mode) params.mode = mode;
     try {
       const res = format === 'excel'
         ? await productsAPI.exportHistoryExcel(params)
@@ -360,7 +363,7 @@ export default function ProductsPage({ embedded = false }) {
       const url = URL.createObjectURL(new Blob([res.data], { type }));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `mahsulot-tarixi-${dateFilter.date_from || 'boshi'}_${dateFilter.date_to || 'oxiri'}.${ext}`;
+      a.download = `mahsulot-${mode === 'brief' ? 'qisqacha' : 'tarixi'}-${dateFilter.date_from || 'boshi'}_${dateFilter.date_to || 'oxiri'}.${ext}`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -470,12 +473,12 @@ export default function ProductsPage({ embedded = false }) {
             <span className="text-gray-400">(yuqoridagi sana tugmalaridan tanlanadi)</span>
           </span>
           <div className="ml-auto flex gap-2">
-            <button onClick={() => exportHistory('excel')}
+            <button onClick={() => setExportChoice('excel')}
               disabled={!selectedIds.size || !!exporting}
               className="btn-sm flex items-center gap-1 rounded-lg px-3 bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
               <FileSpreadsheet size={14} /> {exporting === 'excel' ? 'Yuklanmoqda...' : 'Excel'}
             </button>
-            <button onClick={() => exportHistory('pdf')}
+            <button onClick={() => setExportChoice('pdf')}
               disabled={!selectedIds.size || !!exporting}
               className="btn-sm flex items-center gap-1 rounded-lg px-3 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
               <FileText size={14} /> {exporting === 'pdf' ? 'Yuklanmoqda...' : 'PDF'}
@@ -483,6 +486,23 @@ export default function ProductsPage({ embedded = false }) {
           </div>
         </div>
       )}
+
+      {/* Eksport ko'rinishi — Umumiy statistika yoki Qisqacha */}
+      <Modal open={!!exportChoice} onClose={() => setExportChoice(null)}
+        title={`${exportChoice === 'excel' ? 'Excel' : 'PDF'} — qaysi ko'rinishda?`}>
+        <div className="space-y-3">
+          <button onClick={() => exportHistory(exportChoice, 'full')}
+            className="w-full text-left rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50 p-3 transition">
+            <div className="font-semibold text-gray-800">Umumiy statistika</div>
+            <div className="text-xs text-gray-500 mt-0.5">Har bir harakat alohida qator — kirim, sotuv, ishlab chiqarish (sana bilan).</div>
+          </button>
+          <button onClick={() => exportHistory(exportChoice, 'brief')}
+            className="w-full text-left rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50 p-3 transition">
+            <div className="font-semibold text-gray-800">Qisqacha</div>
+            <div className="text-xs text-gray-500 mt-0.5">Har mahsulot bitta qatorda — jami kirim, chiqim, sotuv summasi, joriy ombor.</div>
+          </button>
+        </div>
+      </Modal>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {isLoading ? (

@@ -92,8 +92,10 @@ router.get('/:id', async (req, res, next) => {
         SELECT sr.id, sr.sale_id, sr.quantity, sr.unit_price, sr.amount, sr.refund_amount,
                sr.reason, sr.return_date, sr.condition, sr.loss_amount, sr.rang,
                p.name AS product_name, p.unit
-        FROM sale_returns sr LEFT JOIN products p ON sr.product_id = p.id
-        WHERE sr.customer_id = $1
+        FROM sale_returns sr
+        LEFT JOIN products p ON sr.product_id = p.id
+        LEFT JOIN sales s ON sr.sale_id = s.id
+        WHERE sr.customer_id = $1 OR s.customer_id = $1
         ORDER BY COALESCE(sr.return_date, sr.created_at) DESC
       `, [req.params.id]);
       returns = rr.rows;

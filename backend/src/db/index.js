@@ -659,6 +659,30 @@ if (USE_PG) {
       updated_at TEXT DEFAULT (datetime('now'))
     )`);
 
+    // Stanok cycle-time: har stanok uchun bir nechta mahsulot, har biriga sekund/dona
+    _db.run(`CREATE TABLE IF NOT EXISTS machine_cycle_times (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      machine_id TEXT NOT NULL REFERENCES machines(id),
+      product_id TEXT NOT NULL REFERENCES products(id),
+      cycle_seconds REAL DEFAULT 0,
+      set_by TEXT REFERENCES users(id),
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(machine_id, product_id)
+    )`);
+
+    // Stanok nosozlik / to'xtab qolish jurnali (vaqt oralig'i + sabab)
+    _db.run(`CREATE TABLE IF NOT EXISTS machine_downtime (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      machine_id TEXT NOT NULL REFERENCES machines(id),
+      status TEXT DEFAULT 'BROKEN',
+      reason TEXT,
+      started_at TEXT,
+      ended_at TEXT,
+      recorded_by TEXT REFERENCES users(id),
+      created_at TEXT DEFAULT (datetime('now'))
+    )`);
+
     _db.run(`CREATE TABLE IF NOT EXISTS employee_production (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       employee_id TEXT NOT NULL REFERENCES employees(id),

@@ -31,6 +31,10 @@ const ROLE_PERMISSIONS = {
     'raw_materials:read', 'raw_materials:write',
     'inventory:read', 'expenses:read', 'expenses:write'
   ],
+  CYCLE_TIME: [
+    'machines:read', 'machines:write',
+    'products:read'
+  ],
 };
 
 const requireRole = (...roles) => (req, res, next) => {

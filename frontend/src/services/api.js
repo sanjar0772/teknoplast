@@ -171,6 +171,11 @@ export const machinesAPI = {
   create: (data) => api.post('/machines', data),
   update: (id, data) => api.put(`/machines/${id}`, data),
   updateStatus: (id, data) => api.put(`/machines/${id}/status`, data),
+  getCycleTimes: (id) => api.get(`/machines/${id}/cycle-times`),
+  setCycleTime: (id, data) => api.post(`/machines/${id}/cycle-times`, data),
+  deleteCycleTime: (id, productId) => api.delete(`/machines/${id}/cycle-times/${productId}`),
+  getDowntime: (id) => api.get(`/machines/${id}/downtime`),
+  addDowntime: (id, data) => api.post(`/machines/${id}/downtime`, data),
 };
 
 // Reports

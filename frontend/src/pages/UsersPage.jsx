@@ -14,6 +14,7 @@ const ROLES = [
   { value: 'KIRIMCHI',        label: 'Mahsulot Kirimchi',           cls: 'badge-gray' },
   { value: 'OMBORCHI',        label: 'Omborchi',                    cls: 'badge-gray' },
   { value: 'TAMINOTCHI',      label: "Ta'minotchi",                 cls: 'badge-green' },
+  { value: 'CYCLE_TIME',      label: 'Cycle-time operatori',        cls: 'badge-blue' },
 ];
 const roleInfo = (r) => ROLES.find(x => x.value === r) || { label: r, cls: 'badge-gray' };
 

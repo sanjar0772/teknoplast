@@ -71,6 +71,7 @@ const useAuthStore = create((set, get) => ({
   isKirimchi: () => ['OWNER', 'KIRIMCHI'].includes(get().user?.role),
   isOmborchi: () => ['OWNER', 'OMBORCHI'].includes(get().user?.role),
   isTaminotchi: () => ['OWNER', 'TAMINOTCHI'].includes(get().user?.role),
+  isCycleTime: () => ['OWNER', 'CYCLE_TIME'].includes(get().user?.role),
 }));
 
 export default useAuthStore;

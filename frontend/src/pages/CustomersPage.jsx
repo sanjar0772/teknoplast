@@ -4,8 +4,9 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import {
   Plus, Search, X, Phone, Building2, MapPin, Eye,
-  Trash2, Users, Crown, Store, ShoppingBag, AlertTriangle, Pencil, Download, Coins, RotateCcw, Warehouse
+  Trash2, Users, Crown, Store, ShoppingBag, AlertTriangle, Pencil, Download, Coins, RotateCcw, Warehouse, FileText
 } from 'lucide-react';
+import VozvratFakturaModal from '../components/VozvratFakturaModal';
 import { customersAPI, salesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -46,6 +47,7 @@ export default function CustomersPage({ embedded = false }) {
   const qc = useQueryClient();
   const [filter, setFilter] = useState({ search: '', type: '', date_from: '', date_to: '' });
   const [datePreset, setDatePreset] = useState('all');
+  const [fakturaRet, setFakturaRet] = useState(null); // vozvrat schyot-fakturasi
 
   const applyPreset = (preset) => {
     setDatePreset(preset);
@@ -611,7 +613,7 @@ export default function CustomersPage({ embedded = false }) {
                 <div className="border border-gray-100 rounded-xl overflow-hidden">
                   <table className="table text-sm">
                     <thead>
-                      <tr><th>Sana</th><th>Mahsulot</th><th>Miqdor</th><th>Holati</th><th>Summa</th><th>Sabab</th></tr>
+                      <tr><th>Sana</th><th>Mahsulot</th><th>Miqdor</th><th>Holati</th><th>Summa</th><th>Sabab</th><th className="no-print">Amal</th></tr>
                     </thead>
                     <tbody>
                       {detail.returns.map(r => {
@@ -628,12 +630,17 @@ export default function CustomersPage({ embedded = false }) {
                             </td>
                             <td className="font-semibold text-orange-700 whitespace-nowrap">{fmt(r.amount)} so'm</td>
                             <td className="text-gray-500 max-w-[180px]">{r.reason}</td>
+                            <td className="no-print">
+                              <button onClick={() => setFakturaRet(r)} className="btn-secondary btn-sm" title="Vozvrat schyot-fakturasi">
+                                <FileText size={12} /> Faktura
+                              </button>
+                            </td>
                           </tr>
                         );
                       })}
                       <tr className="bg-gray-50 font-bold">
                         <td colSpan={4} className="text-right text-gray-600">Jami qaytarilgan:</td>
-                        <td colSpan={2} className="text-orange-700">{fmt(detail.returns.reduce((a, r) => a + parseFloat(r.amount || 0), 0))} so'm</td>
+                        <td colSpan={3} className="text-orange-700">{fmt(detail.returns.reduce((a, r) => a + parseFloat(r.amount || 0), 0))} so'm</td>
                       </tr>
                     </tbody>
                   </table>
@@ -643,6 +650,8 @@ export default function CustomersPage({ embedded = false }) {
           </div>
         )}
       </Modal>
+
+      {fakturaRet && <VozvratFakturaModal ret={fakturaRet} customerName={detail?.customer?.name} onClose={() => setFakturaRet(null)} />}
     </div>
   );
 }

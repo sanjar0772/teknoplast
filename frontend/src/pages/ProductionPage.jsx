@@ -24,6 +24,7 @@ export default function ProductionPage() {
   const [rangeEnd, setRangeEnd] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
   const [selectedEmpIds, setSelectedEmpIds] = useState([]);
   const [shiftFilter, setShiftFilter] = useState(''); // '' = hammasi, '1-SMENA', '2-SMENA' — faqat Stanokchiga ta'sir qiladi
+  const [compactMode, setCompactMode] = useState(false);
   const empIdsInitialized = useRef(false);
 
   const { data: summary } = useQuery({
@@ -381,6 +382,10 @@ export default function ProductionPage() {
         <div className="flex items-center justify-between mb-4 no-print">
           <h2 className="text-sm font-semibold text-gray-700">Davr bo'yicha statistika — Stanokchi/Detalchi</h2>
           <div className="flex gap-2">
+            <button onClick={() => setCompactMode(m => !m)}
+              className={`btn-sm rounded-lg px-3 flex items-center gap-1 border text-sm font-medium ${compactMode ? 'bg-purple-600 text-white border-purple-600' : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'}`}>
+              {compactMode ? '≡ Batafsil' : '⊟ Jipslash'}
+            </button>
             <button onClick={downloadRangeExcel} className="btn-secondary btn-sm">
               <Download size={14} /> Excel
             </button>
@@ -466,67 +471,102 @@ export default function ProductionPage() {
           )}
         </div>
 
-        <div className="table-container">
-          <table className="table">
-            <thead>
-              <tr><th>Xodim</th><th>Turi</th><th>Ish kunlari</th><th>Jami ishlab chiqargan</th><th>Hisoblangan haq</th></tr>
-            </thead>
-            <tbody>
-              {!selectedEmpIds.length ? (
-                <tr><td colSpan={5} className="text-center py-6 text-gray-400">Xodim tanlang</td></tr>
-              ) : !rangeSummary?.summary?.length ? (
-                <tr><td colSpan={5} className="text-center py-6 text-gray-400">Ma'lumot yo'q</td></tr>
-              ) : (
-                <>
-                  {rangeStanokchiRows.map(row => (
-                    <tr key={row.employee_id}>
-                      <td className="font-medium">{row.name}</td>
-                      <td>Stanokchi <span className="text-xs text-gray-400">({row.shift === '2-SMENA' ? '2-Smena' : '1-Smena'})</span></td>
-                      <td>{row.work_days} kun</td>
-                      <td>{fmt(row.total_produced)} dona</td>
-                      <td className="font-semibold text-green-700">{fmt(row.total_earned)} so'm</td>
-                    </tr>
-                  ))}
-                  {rangeStanokchiRows.length > 0 && (
-                    <tr className="bg-blue-50/60 font-semibold">
-                      <td colSpan={2}>Jami — Stanokchi{shiftFilter && ` (${shiftFilter === '1-SMENA' ? '1-Smena' : '2-Smena'})`}</td>
-                      <td>{sumField(rangeStanokchiRows, 'work_days')} kun</td>
-                      <td>{fmt(sumField(rangeStanokchiRows, 'total_produced'))} dona</td>
-                      <td className="text-green-700">{fmt(sumField(rangeStanokchiRows, 'total_earned'))} so'm</td>
-                    </tr>
-                  )}
-                  {rangeDetalchiRows.map(row => (
-                    <tr key={row.employee_id}>
-                      <td className="font-medium">{row.name}</td>
-                      <td>Detalchi</td>
-                      <td>{row.work_days} kun</td>
-                      <td>{fmt(row.total_produced)} dona</td>
-                      <td className="font-semibold text-green-700">{fmt(row.total_earned)} so'm</td>
-                    </tr>
-                  ))}
-                  {rangeDetalchiRows.length > 0 && (
-                    <tr className="bg-orange-50/60 font-semibold">
-                      <td colSpan={2}>Jami — Detalchi (hammasi)</td>
-                      <td>{sumField(rangeDetalchiRows, 'work_days')} kun</td>
-                      <td>{fmt(sumField(rangeDetalchiRows, 'total_produced'))} dona</td>
-                      <td className="text-green-700">{fmt(sumField(rangeDetalchiRows, 'total_earned'))} so'm</td>
-                    </tr>
-                  )}
-                </>
-              )}
-            </tbody>
-            {rangeSummary?.summary?.length > 0 && (
-              <tfoot>
-                <tr className="font-semibold bg-gray-100">
-                  <td colSpan={2}>Umumiy Jami</td>
-                  <td>{sumField(rangeSummary.summary, 'work_days')} kun</td>
-                  <td>{fmt(sumField(rangeSummary.summary, 'total_produced'))} dona</td>
-                  <td className="text-green-700">{fmt(sumField(rangeSummary.summary, 'total_earned'))} so'm</td>
+        {compactMode && rangeSummary?.summary?.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Davr</th>
+                  <th>Tanlangan xodimlar</th>
+                  <th>Stanokchi ish kunlari</th>
+                  <th>Stanokchi ishlab chiqargan</th>
+                  <th>Stanokchi haq</th>
+                  <th>Detalchi ish kunlari</th>
+                  <th>Detalchi ishlab chiqargan</th>
+                  <th>Detalchi haq</th>
+                  <th className="bg-gray-50">Umumiy haq</th>
                 </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                <tr className="font-semibold bg-purple-50">
+                  <td className="whitespace-nowrap text-gray-700">
+                    {new Date(rangeStart + 'T12:00:00').toLocaleDateString('uz-UZ')} — {new Date(rangeEnd + 'T12:00:00').toLocaleDateString('uz-UZ')}
+                  </td>
+                  <td className="text-gray-600">{selectedEmpIds.length} ta</td>
+                  <td className="text-blue-700">{sumField(rangeStanokchiRows, 'work_days')} kun</td>
+                  <td className="text-blue-700">{fmt(sumField(rangeStanokchiRows, 'total_produced'))} dona</td>
+                  <td className="text-blue-700">{fmt(sumField(rangeStanokchiRows, 'total_earned'))} so'm</td>
+                  <td className="text-orange-700">{sumField(rangeDetalchiRows, 'work_days')} kun</td>
+                  <td className="text-orange-700">{fmt(sumField(rangeDetalchiRows, 'total_produced'))} dona</td>
+                  <td className="text-orange-700">{fmt(sumField(rangeDetalchiRows, 'total_earned'))} so'm</td>
+                  <td className="text-green-700 text-base bg-gray-50">{fmt(sumField(rangeSummary.summary, 'total_earned'))} so'm</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr><th>Xodim</th><th>Turi</th><th>Ish kunlari</th><th>Jami ishlab chiqargan</th><th>Hisoblangan haq</th></tr>
+              </thead>
+              <tbody>
+                {!selectedEmpIds.length ? (
+                  <tr><td colSpan={5} className="text-center py-6 text-gray-400">Xodim tanlang</td></tr>
+                ) : !rangeSummary?.summary?.length ? (
+                  <tr><td colSpan={5} className="text-center py-6 text-gray-400">Ma'lumot yo'q</td></tr>
+                ) : (
+                  <>
+                    {rangeStanokchiRows.map(row => (
+                      <tr key={row.employee_id}>
+                        <td className="font-medium">{row.name}</td>
+                        <td>Stanokchi <span className="text-xs text-gray-400">({row.shift === '2-SMENA' ? '2-Smena' : '1-Smena'})</span></td>
+                        <td>{row.work_days} kun</td>
+                        <td>{fmt(row.total_produced)} dona</td>
+                        <td className="font-semibold text-green-700">{fmt(row.total_earned)} so'm</td>
+                      </tr>
+                    ))}
+                    {rangeStanokchiRows.length > 0 && (
+                      <tr className="bg-blue-50/60 font-semibold">
+                        <td colSpan={2}>Jami — Stanokchi{shiftFilter && ` (${shiftFilter === '1-SMENA' ? '1-Smena' : '2-Smena'})`}</td>
+                        <td>{sumField(rangeStanokchiRows, 'work_days')} kun</td>
+                        <td>{fmt(sumField(rangeStanokchiRows, 'total_produced'))} dona</td>
+                        <td className="text-green-700">{fmt(sumField(rangeStanokchiRows, 'total_earned'))} so'm</td>
+                      </tr>
+                    )}
+                    {rangeDetalchiRows.map(row => (
+                      <tr key={row.employee_id}>
+                        <td className="font-medium">{row.name}</td>
+                        <td>Detalchi</td>
+                        <td>{row.work_days} kun</td>
+                        <td>{fmt(row.total_produced)} dona</td>
+                        <td className="font-semibold text-green-700">{fmt(row.total_earned)} so'm</td>
+                      </tr>
+                    ))}
+                    {rangeDetalchiRows.length > 0 && (
+                      <tr className="bg-orange-50/60 font-semibold">
+                        <td colSpan={2}>Jami — Detalchi (hammasi)</td>
+                        <td>{sumField(rangeDetalchiRows, 'work_days')} kun</td>
+                        <td>{fmt(sumField(rangeDetalchiRows, 'total_produced'))} dona</td>
+                        <td className="text-green-700">{fmt(sumField(rangeDetalchiRows, 'total_earned'))} so'm</td>
+                      </tr>
+                    )}
+                  </>
+                )}
+              </tbody>
+              {rangeSummary?.summary?.length > 0 && (
+                <tfoot>
+                  <tr className="font-semibold bg-gray-100">
+                    <td colSpan={2}>Umumiy Jami</td>
+                    <td>{sumField(rangeSummary.summary, 'work_days')} kun</td>
+                    <td>{fmt(sumField(rangeSummary.summary, 'total_produced'))} dona</td>
+                    <td className="text-green-700">{fmt(sumField(rangeSummary.summary, 'total_earned'))} so'm</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Daily detail */}

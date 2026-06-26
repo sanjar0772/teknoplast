@@ -242,6 +242,7 @@ export default function ProductsPage({ embedded = false }) {
       qc.invalidateQueries({ queryKey: ['products'] });
       setShowModal(false); setEditProduct(null);
     },
+    onError: (e) => toast.error(e.response?.data?.error || 'Saqlashda xato'),
   });
 
   const stockMutation = useMutation({
@@ -251,6 +252,7 @@ export default function ProductsPage({ embedded = false }) {
       qc.invalidateQueries({ queryKey: ['products'] });
       setStockModal(null);
     },
+    onError: (e) => toast.error(e.response?.data?.error || 'Ombor yangilashda xato'),
   });
 
   const pricingMutation = useMutation({
@@ -260,6 +262,7 @@ export default function ProductsPage({ embedded = false }) {
       qc.invalidateQueries({ queryKey: ['products'] });
       setPricingModal(null);
     },
+    onError: (e) => toast.error(e.response?.data?.error || 'Narx saqlashda xato'),
   });
 
   // BOM (komponentlar tarkibi)

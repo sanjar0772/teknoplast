@@ -12,17 +12,16 @@ const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n
 export default function ProductionPage() {
   const { isOwner, isProductionHead, isKirimchi } = useAuthStore();
   const qc = useQueryClient();
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const localDate = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+  const localMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
+  const [month, setMonth] = useState(localMonth);
+  const [date, setDate] = useState(localDate);
   const [showBulk, setShowBulk] = useState(false);
   const [historyEmpId, setHistoryEmpId] = useState('');
 
   // Davr bo'yicha statistika (Stanokchi/Detalchi)
-  const [rangeStart, setRangeStart] = useState(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
-  });
-  const [rangeEnd, setRangeEnd] = useState(new Date().toISOString().slice(0, 10));
+  const [rangeStart, setRangeStart] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; });
+  const [rangeEnd, setRangeEnd] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
   const [selectedEmpIds, setSelectedEmpIds] = useState([]);
   const [shiftFilter, setShiftFilter] = useState(''); // '' = hammasi, '1-SMENA', '2-SMENA' — faqat Stanokchiga ta'sir qiladi
   const empIdsInitialized = useRef(false);
@@ -110,6 +109,7 @@ export default function ProductionPage() {
       qc.invalidateQueries({ queryKey: ['production'] });
       setShowBulk(false);
     },
+    onError: (e) => toast.error(e.response?.data?.error || 'Saqlashda xato'),
   });
 
   const deleteMutation = useMutation({

@@ -449,30 +449,6 @@ export default function ProductsPage({ embedded = false }) {
         </div>
       </div>
 
-      {/* Sana filtri tugmalari */}
-      <div className="flex flex-wrap items-center gap-2 -mt-2">
-        <span className="text-xs text-gray-500 font-medium flex items-center gap-1"><Calendar size={13} /> Davr:</span>
-        {DATE_PRESETS.map(p => (
-          <button key={p.key} onClick={() => setDatePreset(p.key)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              datePreset === p.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}>{p.label}</button>
-        ))}
-        <button onClick={() => setDatePreset('custom')}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
-            datePreset === 'custom' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}><Calendar size={11} /> Boshqa</button>
-        {datePreset === 'custom' && (
-          <div className="flex gap-2 items-center">
-            <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
-              className="input text-xs py-1 px-2 w-32" placeholder="Dan" />
-            <span className="text-gray-400 text-xs">—</span>
-            <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
-              className="input text-xs py-1 px-2 w-32" placeholder="Gacha" />
-          </div>
-        )}
-      </div>
-
       {/* Belgilash / eksport paneli */}
       {selectMode && (
         <div className="card p-3 border border-blue-200 bg-blue-50/50 flex flex-wrap items-center gap-2 sticky top-2 z-20">

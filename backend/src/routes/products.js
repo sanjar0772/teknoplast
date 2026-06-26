@@ -5,6 +5,7 @@ const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
 const { logAudit } = require('../services/auditService');
 const ledger = require('../services/rawMaterialLedger');
+const { addColorStock, getColorStock } = require('../utils/colorStock');
 
 const router = express.Router();
 router.use(authenticate);
@@ -296,10 +297,16 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
     const { name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, rang, kind, created_at } = req.body;
     // Qo'shilgan sana — qo'lda kiritilsa o'sha sana, aks holda bugun
     const createdAt = created_at ? String(created_at).slice(0, 10) : new Date().toISOString();
+    const initStock = parseFloat(stock_quantity) || 0;
     const result = await query(
       'INSERT INTO products (name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, rang, kind, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
-      [name, type, description, price, daily_production || 0, stock_quantity || 0, raw_material_id || null, unit || 'dona', rang || null, kind === 'KOMPONENT' ? 'KOMPONENT' : 'TAYYOR', createdAt]
+      [name, type, description, price, daily_production || 0, initStock, raw_material_id || null, unit || 'dona', rang || null, kind === 'KOMPONENT' ? 'KOMPONENT' : 'TAYYOR', createdAt]
     );
+    // Boshlang'ich ombor bo'lsa — mahsulotning O'Z rangi buketiga ham yozamiz
+    // (aks holda umumiy qoldiq bor, lekin rang bo'yicha sotib bo'lmaydigan "fantom ombor" hosil bo'ladi)
+    if (initStock > 0) {
+      try { await addColorStock(query, result.rows[0].id, rang || '', initStock); } catch (e) { /* buket alohida — asosiy yozuv saqlandi */ }
+    }
     res.status(201).json({ product: result.rows[0] });
   } catch (err) { next(err); }
 });
@@ -476,12 +483,37 @@ router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'SALES_HEAD'), async 
     const { name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, is_active, rang, created_at } = req.body;
     // Qo'shilgan sana — berilsa yangilanadi, aks holda eskisi qoladi
     const createdAt = created_at ? String(created_at).slice(0, 10) : null;
-    const result = await query(
-      'UPDATE products SET name=$1,type=$2,description=$3,price=$4,daily_production=$5,stock_quantity=$6,raw_material_id=$7,unit=$8,is_active=$9,rang=$10,created_at=COALESCE($11, created_at),updated_at=NOW() WHERE id=$12 RETURNING *',
-      [name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, is_active, rang || null, createdAt, req.params.id]
-    );
-    if (!result.rows.length) return res.status(404).json({ error: 'Mahsulot topilmadi' });
-    res.json({ product: result.rows[0] });
+    const newStock = parseFloat(stock_quantity) || 0;
+    const newRang = rang || '';
+
+    const client = await require('../db').getClient();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        'UPDATE products SET name=$1,type=$2,description=$3,price=$4,daily_production=$5,stock_quantity=$6,raw_material_id=$7,unit=$8,is_active=$9,rang=$10,created_at=COALESCE($11, created_at),updated_at=NOW() WHERE id=$12 RETURNING *',
+        [name, type, description, price, daily_production, newStock, raw_material_id, unit, is_active, rang || null, createdAt, req.params.id]
+      );
+      if (!result.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Mahsulot topilmadi' }); }
+
+      // Rang buketini moslaymiz: mahsulotning O'Z rangi buketi = yangi qoldiq − (boshqa rang buketlari).
+      // Nom/narx tahririda (qoldiq va boshqa buketlar o'zgarmasa) bu hech narsani buzmaydi.
+      const otherR = await client.query(
+        "SELECT COALESCE(SUM(quantity),0) AS s FROM product_color_stock WHERE product_id=$1 AND rang <> $2",
+        [req.params.id, newRang]
+      );
+      const otherSum = parseFloat(otherR.rows[0]?.s || 0);
+      const target = Math.max(0, newStock - otherSum);
+      const curBucket = await getColorStock(client.query, req.params.id, newRang);
+      if (target !== curBucket) await addColorStock(client.query, req.params.id, newRang, target - curBucket);
+
+      await client.query('COMMIT');
+      res.json({ product: result.rows[0] });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
   } catch (err) { next(err); }
 });
 
@@ -492,14 +524,37 @@ router.put('/:id/stock', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), 
     if (!['add', 'subtract', 'set'].includes(operation)) {
       return res.status(400).json({ error: 'Operation: add, subtract, yoki set' });
     }
-    let sql;
-    if (operation === 'add')      sql = 'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at=NOW() WHERE id=$2 RETURNING *';
-    if (operation === 'subtract') sql = 'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at=NOW() WHERE id=$2 RETURNING *';
-    if (operation === 'set')      sql = 'UPDATE products SET stock_quantity = $1, updated_at=NOW() WHERE id=$2 RETURNING *';
+    const qty = parseFloat(quantity) || 0;
 
-    const result = await query(sql, [quantity, req.params.id]);
-    if (!result.rows.length) return res.status(404).json({ error: 'Mahsulot topilmadi' });
-    res.json({ product: result.rows[0] });
+    const cur = await query("SELECT stock_quantity, COALESCE(rang,'') AS rang FROM products WHERE id=$1", [req.params.id]);
+    if (!cur.rows.length) return res.status(404).json({ error: 'Mahsulot topilmadi' });
+    const oldStock = parseFloat(cur.rows[0].stock_quantity || 0);
+    const rang = cur.rows[0].rang || '';
+
+    let newStock;
+    if (operation === 'add')      newStock = oldStock + qty;
+    else if (operation === 'subtract') newStock = Math.max(0, oldStock - qty);
+    else                          newStock = qty; // set
+    const delta = newStock - oldStock; // shu o'zgarishni rang buketiga ham qo'llaymiz
+
+    const client = await require('../db').getClient();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        'UPDATE products SET stock_quantity = $1, updated_at=NOW() WHERE id=$2 RETURNING *',
+        [newStock, req.params.id]
+      );
+      // Umumiy qoldiq o'zgarishini mahsulotning O'Z rangi buketiga ko'chiramiz —
+      // shunda savdo oynasidagi rang qoldig'i umumiy qoldiq bilan mos bo'ladi.
+      if (delta !== 0) await addColorStock(client.query, req.params.id, rang, delta);
+      await client.query('COMMIT');
+      res.json({ product: result.rows[0] });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
   } catch (err) { next(err); }
 });
 

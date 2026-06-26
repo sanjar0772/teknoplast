@@ -63,7 +63,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'inventory-export-excel-pdf', commit: 'v90' });
+  res.json({ version: 'color-stock-reconcile', commit: 'v91' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)
@@ -153,6 +153,12 @@ require('./services/salesReset')
 require('./services/saleDateFix')
   .ensureSaleDatesFixed()
   .catch(e => console.error('Sale date fix init xato:', e.message));
+
+// BIR MARTALIK: rang ombori (product_color_stock) buketlarini umumiy qoldiq bilan
+// moslashtirish — v22 dan oldingi "fantom ombor" (sotib bo'lmaydigan qoldiq) ni tuzatadi.
+require('./services/colorStockReconcile')
+  .ensureColorStockReconciled()
+  .catch(e => console.error('Rang ombori reconcile init xato:', e.message));
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

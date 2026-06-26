@@ -146,7 +146,12 @@ require('./services/salesReset')
   .ensureSalesWiped()
   .catch(e => console.error('Sotuv tozalash init xato:', e.message))
   .then(() => require('./services/debtorsSeed').ensureDebtors2026())
-  .catch(e => console.error('Qarzdorlar seed init xato:', e.message));
+  .catch(e => console.error('Qarzdorlar seed init xato:', e.message))
+  // BIR MARTALIK (egasi talabi 2026-06-26): 2026-06-22 dan keyin yig'ilgan yangi
+  // sotuv+qarzlarni yana tozalash. Backup avtomatik olinadi; ombor/mahsulot/mijoz saqlanadi.
+  // Yangi sentinel bayroq → faqat bir marta ishlaydi, keyingi sotuvlar xavfsiz.
+  .then(() => require('./services/salesReset').ensureSalesWiped('sales_wiped_2026_06_26'))
+  .catch(e => console.error('Sotuv tozalash (2026-06-26) init xato:', e.message));
 
 // BIR MARTALIK: eski sessiya sanasi tufayli noto'g'ri yozilган savdo sanalarini
 // order_ref (haqiqiy yaratilган kun) bo'yicha to'g'rilash (sentinel bilan himoyalangan).

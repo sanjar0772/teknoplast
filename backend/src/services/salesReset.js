@@ -51,12 +51,12 @@ async function countRows(table) {
   } catch { return 0; }
 }
 
-async function ensureSalesWiped() {
+async function ensureSalesWiped(flag = FLAG) {
   try {
     await ensureFlagsTable();
 
-    if (await isFlagSet(FLAG)) {
-      console.log("🧹 Sotuv/qarz tozalash allaqachon bajarilgan — o'tkazildi");
+    if (await isFlagSet(flag)) {
+      console.log(`🧹 Sotuv/qarz tozalash (${flag}) allaqachon bajarilgan — o'tkazildi`);
       return;
     }
 
@@ -75,7 +75,7 @@ async function ensureSalesWiped() {
       try { await client.query('DELETE FROM sale_returns'); } catch (e) { /* jadval bo'lmasligi mumkin */ }
       await client.query('DELETE FROM sales');
       // Sentinel + import bloki
-      await client.query('INSERT INTO app_flags (key, value) VALUES ($1, $2)', [FLAG, new Date().toISOString()]);
+      await client.query('INSERT INTO app_flags (key, value) VALUES ($1, $2)', [flag, new Date().toISOString()]);
       try {
         await client.query('INSERT INTO app_flags (key, value) VALUES ($1, $2)', ['debtors_import_disabled', '1']);
       } catch (e) { /* allaqachon bor bo'lishi mumkin */ }

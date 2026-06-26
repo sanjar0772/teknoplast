@@ -1087,4 +1087,138 @@ async function generateInventoryPDF({ title, columns, rows, subtitle }) {
   });
 }
 
-module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF, generateInventoryExcel, generateInventoryPDF };
+// ── Tovar aylanmasi (ombor) — davr bo'yicha qoldiq + kirim + chiqim ──
+async function generateTurnoverExcel({ rows, start_date, end_date, warehouse }) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Teknoplast';
+  const sheet = wb.addWorksheet('Tovar aylanmasi');
+
+  sheet.mergeCells('A1:L1');
+  sheet.getCell('A1').value = 'TOVAR AYLANMASI';
+  sheet.getCell('A1').alignment = { horizontal: 'center' };
+  sheet.getCell('A1').font = { bold: true, size: 13 };
+  sheet.mergeCells('A2:L2');
+  sheet.getCell('A2').value = `Davr: ${start_date || '...'} — ${end_date || '...'}`;
+  sheet.getCell('A2').alignment = { horizontal: 'center' };
+  sheet.mergeCells('A3:L3');
+  sheet.getCell('A3').value = `OMBOR: ${warehouse || 'Bosh ombor'} (so'm)`;
+  sheet.getCell('A3').alignment = { horizontal: 'center' };
+  sheet.getCell('A3').font = { bold: true };
+
+  const h1 = 5, h2 = 6;
+  [{ c: 1, w: 5, t: '№' }, { c: 2, w: 32, t: 'Mahsulot nomi' }, { c: 3, w: 13, t: 'Kirim narxi' }, { c: 4, w: 13, t: 'Sotuv narxi' }].forEach(s => {
+    sheet.mergeCells(h1, s.c, h2, s.c);
+    sheet.getCell(h1, s.c).value = s.t;
+    sheet.getColumn(s.c).width = s.w;
+  });
+  [{ s: 5, t: 'Davr boshidagi qoldiq' }, { s: 7, t: 'KIRIM' }, { s: 9, t: 'CHIQIM' }, { s: 11, t: 'Davr oxiridagi qoldiq' }].forEach(g => {
+    sheet.mergeCells(h1, g.s, h1, g.s + 1);
+    sheet.getCell(h1, g.s).value = g.t;
+    sheet.getCell(h2, g.s).value = 'Soni';
+    sheet.getCell(h2, g.s + 1).value = 'Summa';
+    sheet.getColumn(g.s).width = 11;
+    sheet.getColumn(g.s + 1).width = 18;
+  });
+  [h1, h2].forEach(r => {
+    const row = sheet.getRow(r);
+    row.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    row.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    for (let c = 1; c <= 12; c++) sheet.getCell(r, c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
+  });
+
+  let r = h2 + 1;
+  rows.forEach((d, i) => {
+    const cells = [i + 1, d.product, Math.round(d.kirim_narxi), Math.round(d.sotuv_narxi),
+      d.open_qty, Math.round(d.open_sum), d.kirim_qty, Math.round(d.kirim_sum),
+      d.chiqim_qty, Math.round(d.chiqim_sum), d.close_qty, Math.round(d.close_sum)];
+    cells.forEach((v, idx) => { sheet.getCell(r, idx + 1).value = v; });
+    r++;
+  });
+  const sum = k => Math.round(rows.reduce((a, x) => a + (parseFloat(x[k]) || 0), 0));
+  const tot = [null, 'JAMI', null, null, sum('open_qty'), sum('open_sum'), sum('kirim_qty'), sum('kirim_sum'), sum('chiqim_qty'), sum('chiqim_sum'), sum('close_qty'), sum('close_sum')];
+  tot.forEach((v, idx) => { if (v != null) sheet.getCell(r, idx + 1).value = v; });
+  sheet.getRow(r).font = { bold: true };
+  [3, 4, 6, 8, 10, 12].forEach(c => { sheet.getColumn(c).numFmt = '#,##0'; });
+
+  return wb.xlsx.writeBuffer();
+}
+
+async function generateTurnoverPDF({ rows, start_date, end_date, warehouse }) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 28, size: 'A4', layout: 'landscape' });
+    registerCyrillicFonts(doc);
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const M = 28, W = 842 - M * 2;
+    const money = n => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
+
+    doc.fontSize(14).font('Arial-Bold').fillColor('#111').text('TOVAR AYLANMASI', M, M, { width: W, align: 'center' });
+    doc.fontSize(9).font('Arial').fillColor('#555').text(`Davr: ${start_date || '...'} — ${end_date || '...'}`, M, doc.y + 2, { width: W, align: 'center' });
+    doc.fontSize(10).font('Arial-Bold').fillColor('#111').text(`OMBOR: ${warehouse || 'Bosh ombor'} (so'm)`, M, doc.y + 2, { width: W, align: 'center' });
+    let y = doc.y + 8;
+
+    const cols = [
+      { key: 'n', t: '№', w: 22, a: 'center' },
+      { key: 'product', t: 'Mahsulot nomi', w: 148, a: 'left' },
+      { key: 'kirim_narxi', t: 'Kirim narxi', w: 58, a: 'right' },
+      { key: 'sotuv_narxi', t: 'Sotuv narxi', w: 58, a: 'right' },
+      { key: 'open_qty', t: 'Soni', w: 48, a: 'right' },
+      { key: 'open_sum', t: 'Summa', w: 80, a: 'right' },
+      { key: 'kirim_qty', t: 'Soni', w: 42, a: 'right' },
+      { key: 'kirim_sum', t: 'Summa', w: 70, a: 'right' },
+      { key: 'chiqim_qty', t: 'Soni', w: 48, a: 'right' },
+      { key: 'chiqim_sum', t: 'Summa', w: 74, a: 'right' },
+      { key: 'close_qty', t: 'Soni', w: 48, a: 'right' },
+      { key: 'close_sum', t: 'Summa', w: 80, a: 'right' },
+    ];
+    let x0 = M;
+    cols.forEach(c => { c.x = x0; x0 += c.w; });
+    const col = k => cols.find(c => c.key === k);
+
+    const drawHeader = (yy) => {
+      doc.font('Arial-Bold').fontSize(7.5).fillColor('#111');
+      [{ g: 'Davr boshidagi qoldiq', a: 'open_qty', b: 'open_sum' }, { g: 'KIRIM', a: 'kirim_qty', b: 'kirim_sum' },
+       { g: 'CHIQIM', a: 'chiqim_qty', b: 'chiqim_sum' }, { g: 'Davr oxiridagi qoldiq', a: 'close_qty', b: 'close_sum' }].forEach(gr => {
+        const a = col(gr.a), b = col(gr.b);
+        doc.text(gr.g, a.x, yy, { width: (b.x + b.w) - a.x, align: 'center' });
+      });
+      const yy2 = yy + 11;
+      cols.forEach(c => doc.text(c.t, c.x + 2, yy2, { width: c.w - 4, align: c.a }));
+      const ly = yy2 + 11;
+      doc.moveTo(M, ly).lineTo(M + W, ly).lineWidth(0.5).strokeColor('#333').stroke();
+      return ly + 3;
+    };
+
+    y = drawHeader(y);
+    doc.font('Arial').fontSize(7);
+    rows.forEach((d, i) => {
+      if (y > 545) { doc.addPage(); y = 30; y = drawHeader(y); doc.font('Arial').fontSize(7); }
+      const vals = {
+        n: i + 1, product: d.product, kirim_narxi: money(d.kirim_narxi), sotuv_narxi: money(d.sotuv_narxi),
+        open_qty: money(d.open_qty), open_sum: money(d.open_sum), kirim_qty: money(d.kirim_qty), kirim_sum: money(d.kirim_sum),
+        chiqim_qty: money(d.chiqim_qty), chiqim_sum: money(d.chiqim_sum), close_qty: money(d.close_qty), close_sum: money(d.close_sum),
+      };
+      doc.fillColor('#111');
+      cols.forEach(c => doc.text(String(vals[c.key]), c.x + 2, y, { width: c.w - 4, align: c.a }));
+      const h = Math.max(doc.heightOfString(String(d.product), { width: col('product').w - 4 }), 10);
+      doc.moveTo(M, y + h + 2).lineTo(M + W, y + h + 2).lineWidth(0.2).strokeColor('#ddd').stroke();
+      y += h + 4;
+    });
+
+    const tot = k => money(rows.reduce((a, x) => a + (parseFloat(x[k]) || 0), 0));
+    doc.moveTo(M, y).lineTo(M + W, y).lineWidth(0.6).strokeColor('#333').stroke(); y += 3;
+    doc.font('Arial-Bold').fontSize(7.5).fillColor('#111');
+    doc.text('JAMI', col('product').x + 2, y, { width: col('product').w - 4 });
+    ['open_qty', 'open_sum', 'kirim_qty', 'kirim_sum', 'chiqim_qty', 'chiqim_sum', 'close_qty', 'close_sum'].forEach(k => {
+      const c = col(k);
+      doc.text(tot(k), c.x + 2, y, { width: c.w - 4, align: 'right' });
+    });
+
+    doc.end();
+  });
+}
+
+module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF, generateInventoryExcel, generateInventoryPDF, generateTurnoverExcel, generateTurnoverPDF };

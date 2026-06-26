@@ -284,6 +284,76 @@ router.get('/history/export/pdf', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Tovar aylanmasi (ombor) — tanlangan mahsulotlar bo'yicha davr hisoboti ──
+// Davr boshidagi qoldiq + KIRIM (kirim + ishlab chiqarish) + CHIQIM (sotuv) + davr oxiridagi qoldiq.
+// Qoldiq joriy ombordan (stock_quantity) tiklanadi: oxiri = joriy − davrdan keyingi harakatlar;
+// boshi = oxiri − davrdagi harakatlar. Shunda boshi + kirim − chiqim = oxiri (balanslashadi).
+const WAREHOUSE_NAME = 'Bosh ombor';
+async function computeTurnoverRows(idsParam, start_date, end_date) {
+  const ids = String(idsParam || '').split(',').map(s => s.trim()).filter(Boolean);
+  const rows = [];
+  for (const id of ids) {
+    const p = await query('SELECT id, name, stock_quantity, price, cost_price FROM products WHERE id = $1', [id]);
+    if (!p.rows.length) continue;
+    const prod = p.rows[0];
+    const sotuv = parseFloat(prod.price) || 0;
+    const kirimNarx = parseFloat(prod.cost_price) || sotuv;
+    const stock = parseFloat(prod.stock_quantity) || 0;
+
+    const hist = await fetchProductHistory(id, null, null); // barcha harakatlar
+    let kirimQty = 0, chiqimQty = 0, signedAfter = 0, signedPeriod = 0;
+    for (const h of (hist ? hist.history : [])) {
+      const d = h.date ? String(h.date).slice(0, 10) : '';
+      if (!d) continue;
+      if (end_date && d > end_date) signedAfter += h.qty;
+      const inPeriod = (!start_date || d >= start_date) && (!end_date || d <= end_date);
+      if (inPeriod) {
+        signedPeriod += h.qty;
+        if (h.qty > 0) kirimQty += h.qty; else chiqimQty += -h.qty;
+      }
+    }
+    const closeQty = stock - signedAfter;
+    const openQty = closeQty - signedPeriod;
+    rows.push({
+      product: prod.name,
+      kirim_narxi: kirimNarx, sotuv_narxi: sotuv,
+      open_qty: openQty, open_sum: openQty * sotuv,
+      kirim_qty: kirimQty, kirim_sum: kirimQty * kirimNarx,
+      chiqim_qty: chiqimQty, chiqim_sum: chiqimQty * sotuv,
+      close_qty: closeQty, close_sum: closeQty * sotuv,
+    });
+  }
+  return rows;
+}
+
+// GET /api/products/turnover/excel?ids=&start_date=&end_date=
+router.get('/turnover/excel', async (req, res, next) => {
+  try {
+    const { ids, start_date, end_date } = req.query;
+    if (!ids) return res.status(400).json({ error: 'Mahsulot tanlanmagan' });
+    const rows = await computeTurnoverRows(ids, start_date, end_date);
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateTurnoverExcel({ rows, start_date, end_date, warehouse: WAREHOUSE_NAME });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="tovar-aylanmasi-${start_date || 'boshi'}_${end_date || 'oxiri'}.xlsx"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) { next(err); }
+});
+
+// GET /api/products/turnover/pdf?ids=&start_date=&end_date=
+router.get('/turnover/pdf', async (req, res, next) => {
+  try {
+    const { ids, start_date, end_date } = req.query;
+    if (!ids) return res.status(400).json({ error: 'Mahsulot tanlanmagan' });
+    const rows = await computeTurnoverRows(ids, start_date, end_date);
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateTurnoverPDF({ rows, start_date, end_date, warehouse: WAREHOUSE_NAME });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="tovar-aylanmasi-${start_date || 'boshi'}_${end_date || 'oxiri'}.pdf"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) { next(err); }
+});
+
 // POST /api/products
 router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
   body('name').notEmpty().trim(),

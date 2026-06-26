@@ -40,6 +40,12 @@ export default function InventoryPage() {
   const [rmStockForm, setRmStockForm] = useState({ quantity: 0, operation: 'add' });
   const [bomModal, setBomModal] = useState(null); // { id, name } — tarkibni ko'rish/tahrirlash
   const [bomAddForm, setBomAddForm] = useState({ component_id: '', qty: 1 });
+  // Tovar aylanmasi (ombor) hisoboti — mahsulot tanlab, davr bo'yicha PDF/Excel
+  const [turnoverOpen, setTurnoverOpen] = useState(false);
+  const [tFrom, setTFrom] = useState(() => new Date().getFullYear() + '-01-01');
+  const [tTo, setTTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [tSel, setTSel] = useState(() => new Set());
+  const [tExporting, setTExporting] = useState(null);
 
   const { data: products } = useQuery({
     queryKey: ['inventory-products'],
@@ -187,6 +193,24 @@ export default function InventoryPage() {
     }
   };
 
+  // Tovar aylanmasi — tanlash va eksport
+  const tToggle = (id) => setTSel(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const exportTurnover = async (format) => {
+    if (!tSel.size) return toast.error('Mahsulot tanlang');
+    setTExporting(format);
+    const params = { ids: Array.from(tSel).join(','), start_date: tFrom || undefined, end_date: tTo || undefined };
+    try {
+      const res = format === 'excel' ? await productsAPI.turnoverExcel(params) : await productsAPI.turnoverPdf(params);
+      const ext = format === 'excel' ? 'xlsx' : 'pdf';
+      const type = format === 'excel' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf';
+      const url = URL.createObjectURL(new Blob([res.data], { type }));
+      const a = document.createElement('a');
+      a.href = url; a.download = `tovar-aylanmasi-${tFrom || 'boshi'}_${tTo || 'oxiri'}.${ext}`; a.click();
+      URL.revokeObjectURL(url);
+    } catch { toast.error('Yuklab bo\'lmadi'); }
+    finally { setTExporting(null); }
+  };
+
   const TABS = [
     { key: 'products',   label: 'Tayyor mahsulotlar',     icon: Package },
     { key: 'production', label: 'Ishlab chiqarish ombori', icon: Factory },
@@ -204,6 +228,11 @@ export default function InventoryPage() {
           <button onClick={() => downloadInventory('pdf')} className="btn-secondary btn-sm" title="PDF formatida yuklab olish">
             <FileText size={14} /> PDF
           </button>
+          {tab !== 'raw' && (
+            <button onClick={() => setTurnoverOpen(true)} className="btn-secondary btn-sm" title="Tovar aylanmasi — davr bo'yicha qoldiq/kirim/chiqim">
+              <Warehouse size={14} /> Tovar aylanmasi
+            </button>
+          )}
           {tab === 'products' && canManageProducts && (
             <button onClick={() => navigate('/intake')} className="btn-primary btn-sm">
               <PackagePlus size={14} /> Mahsulot kirimi (Kirim sahifasi)
@@ -221,6 +250,57 @@ export default function InventoryPage() {
           )}
         </div>
       </div>
+
+      {/* Tovar aylanmasi hisoboti — mahsulot tanlab, davr bo'yicha PDF/Excel */}
+      <Modal open={turnoverOpen} onClose={() => setTurnoverOpen(false)} title="Tovar aylanmasi hisoboti">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label text-xs">Davr boshi</label>
+              <input type="date" value={tFrom} onChange={e => setTFrom(e.target.value)} className="input" />
+            </div>
+            <div>
+              <label className="label text-xs">Davr oxiri</label>
+              <input type="date" value={tTo} onChange={e => setTTo(e.target.value)} className="input" />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700">{tSel.size} ta tanlandi</span>
+            <div className="flex gap-2">
+              <button onClick={() => setTSel(new Set(finishedProducts.map(p => p.id)))}
+                className="btn-sm bg-white border border-gray-200 rounded-lg px-3 text-gray-600 hover:bg-gray-50">Hammasi</button>
+              {tSel.size > 0 && (
+                <button onClick={() => setTSel(new Set())}
+                  className="btn-sm bg-white border border-gray-200 rounded-lg px-3 text-gray-600 hover:bg-gray-50">Tozalash</button>
+              )}
+            </div>
+          </div>
+
+          <div className="max-h-60 overflow-y-auto border border-gray-100 rounded-lg divide-y divide-gray-50">
+            {finishedProducts.length === 0 ? (
+              <p className="text-center text-gray-400 py-6 text-sm">Mahsulot yo'q</p>
+            ) : finishedProducts.map(p => (
+              <label key={p.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50">
+                <input type="checkbox" checked={tSel.has(p.id)} onChange={() => tToggle(p.id)} className="w-4 h-4" />
+                <span className="text-sm text-gray-800 flex-1">{p.name}</span>
+                <span className="text-xs text-gray-400">{p.stock_quantity} {p.unit}</span>
+              </label>
+            ))}
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button onClick={() => exportTurnover('excel')} disabled={!tSel.size || !!tExporting}
+              className="btn-sm flex-1 flex items-center justify-center gap-1 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
+              <FileSpreadsheet size={14} /> {tExporting === 'excel' ? 'Yuklanmoqda...' : 'Excel'}
+            </button>
+            <button onClick={() => exportTurnover('pdf')} disabled={!tSel.size || !!tExporting}
+              className="btn-sm flex-1 flex items-center justify-center gap-1 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
+              <FileText size={14} /> {tExporting === 'pdf' ? 'Yuklanmoqda...' : 'PDF'}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Tabs */}
       {TABS.length > 1 && (

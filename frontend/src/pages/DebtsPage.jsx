@@ -8,7 +8,7 @@ import { COMPANY } from '../constants/company';
 
 const METHOD_LABEL = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', DISCOUNT: '🏷️ Skidka', OTHER: 'Boshqa' };
 
-// To'lov tarixi modal — ichida o'zi fetch qiladi
+// To'lov tarixi modal — schyot-faktura formatida, chop etish mumkin
 function PaymentHistoryModal({ group, onClose }) {
   const { data, isLoading } = useQuery({
     queryKey: ['debt-payments', group?.key],
@@ -25,44 +25,102 @@ function PaymentHistoryModal({ group, onClose }) {
   const totalPaid = (data || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="font-bold text-gray-900">To'lov tarixi</h3>
-            <p className="text-sm text-gray-500">{group.customer}</p>
+    <div className="fixed inset-0 z-[60] flex items-start justify-center p-4 overflow-y-auto">
+      <div className="absolute inset-0 bg-black/50 print:hidden" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-8">
+        <button onClick={onClose}
+          className="absolute top-3 right-3 z-10 text-gray-400 hover:text-gray-700 bg-white rounded-full p-1 shadow print:hidden">
+          <X size={18} />
+        </button>
+        <div id="payment-history-print" className="px-6 py-6 text-[13px] text-gray-900">
+          {/* Header — kompaniya rekvizitlari */}
+          <div className="flex items-start justify-between border-b border-gray-200 pb-3 mb-3 gap-3">
+            <div className="min-w-0">
+              <h2 className="text-base font-bold leading-tight">{COMPANY.name}</h2>
+              <div className="text-[11px] text-gray-500 leading-snug mt-0.5 space-y-px">
+                <div>Манзил: {COMPANY.address}</div>
+                <div>Тел: {COMPANY.phone} · ИНН: {COMPANY.inn}</div>
+                <div>Х/р: {COMPANY.account} · МФО: {COMPANY.mfo}</div>
+                <div>Банк: {COMPANY.bank}</div>
+              </div>
+            </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-bold">TO'LOV TARIXI SCHYOT-FAKTURASI</h3>
+            <span className="text-xs text-gray-500">Sana: {new Date().toLocaleDateString('uz-UZ')}</span>
+          </div>
+
+          <div className="text-xs text-gray-600 mb-4">
+            <span className="text-gray-400">Mijoz: </span>
+            <span className="font-medium text-gray-800">{group.customer}</span>
+            {group.phone && <span className="text-gray-400"> · {group.phone}</span>}
+          </div>
+
+          {isLoading ? (
+            <p className="text-center py-8 text-gray-400">Yuklanmoqda...</p>
+          ) : !data?.length ? (
+            <p className="text-center py-8 text-gray-400">Hali to'lov qilinmagan</p>
+          ) : (
+            <>
+              <table className="w-full text-[13px] mb-4">
+                <thead>
+                  <tr className="border-b border-gray-300 text-gray-500 text-xs">
+                    <th className="text-left py-1 w-6">#</th>
+                    <th className="text-left py-1">Sana</th>
+                    <th className="text-left py-1">To'lov usuli</th>
+                    <th className="text-right py-1">Summa</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.map((p, i) => (
+                    <tr key={i} className="border-b border-gray-100">
+                      <td className="py-1 text-gray-400">{i + 1}</td>
+                      <td className="py-1">{new Date(p.payment_date).toLocaleDateString('uz-UZ')}</td>
+                      <td className="py-1 text-gray-700">{METHOD_LABEL[p.method] || p.method}</td>
+                      <td className="py-1 text-right font-semibold text-green-700">{fmt(p.amount)} so'm</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-gray-300 font-bold">
+                    <td className="py-1.5" colSpan={3}>Jami to'langan</td>
+                    <td className="py-1.5 text-right text-green-700">{fmt(totalPaid)} so'm</td>
+                  </tr>
+                </tfoot>
+              </table>
+
+              <div className="flex items-start justify-between pt-1 border-t border-gray-200">
+                <div className="text-xs text-gray-500 space-y-1">
+                  <div>Umumiy qarz: <span className="font-medium text-gray-700">{fmt(group.totalAmount)} so'm</span></div>
+                  <div>Jami to'langan: <span className="font-medium text-green-700">{fmt(totalPaid)} so'm</span></div>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs text-gray-400">Qolgan qarz: </span>
+                  <span className="text-xl font-bold text-red-600">{fmt(group.totalDebt)} <span className="text-sm font-medium">so'm</span></span>
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="flex justify-between mt-10 text-xs text-gray-600">
+            <div className="text-center"><div className="border-t border-gray-400 w-44 pt-1">Qabul qildi (imzo)</div></div>
+            <div className="text-center"><div className="border-t border-gray-400 w-44 pt-1">Mijoz (imzo)</div></div>
+          </div>
+
+          <p className="text-[10px] text-gray-300 mt-4 text-center">TEKNOPLAST tizimi · to'lov tarixi hujjati</p>
         </div>
 
-        {isLoading ? (
-          <p className="text-center py-8 text-gray-400">Yuklanmoqda...</p>
-        ) : !data?.length ? (
-          <p className="text-center py-8 text-gray-400">Hali to'lov qilinmagan</p>
-        ) : (
-          <div className="space-y-2">
-            {data.map((p, i) => (
-              <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-                <div>
-                  <div className="text-sm font-medium text-gray-800">
-                    {new Date(p.payment_date).toLocaleDateString('uz-UZ')}
-                  </div>
-                  <div className="text-xs text-gray-400">{METHOD_LABEL[p.method] || p.method}</div>
-                </div>
-                <span className="font-bold text-green-700">{fmt(p.amount)} so'm</span>
-              </div>
-            ))}
-            <div className="flex justify-between items-center pt-2 mt-1 border-t border-gray-200">
-              <span className="text-sm font-semibold text-gray-600">Jami to'langan:</span>
-              <span className="font-bold text-green-700 text-base">{fmt(totalPaid)} so'm</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-semibold text-gray-600">Qolgan qarz:</span>
-              <span className="font-bold text-red-600 text-base">{fmt(group.totalDebt)} so'm</span>
-            </div>
-          </div>
-        )}
+        <div className="flex gap-2 px-6 pb-5 print:hidden">
+          <button onClick={onClose} className="btn-secondary flex-1 text-sm">Yopish</button>
+          <button onClick={() => {
+            document.body.classList.add('printing-payment-history');
+            window.print();
+            setTimeout(() => document.body.classList.remove('printing-payment-history'), 1000);
+          }} className="btn-primary flex-1 text-sm">
+            <Printer size={13} /> Chop etish
+          </button>
+        </div>
       </div>
     </div>
   );

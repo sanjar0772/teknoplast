@@ -89,6 +89,19 @@
   body.printing-debt-faktura #debts-print,
   body.printing-debt-faktura #debts-print * { visibility: hidden !important; }
 
+  /* To'lov tarixi schyot-fakturasi chop etish */
+  #payment-history-print, #payment-history-print * { visibility: visible !important; }
+  #payment-history-print {
+    position: absolute !important;
+    left: 0; top: 0;
+    width: 100% !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  #payment-history-print * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  body.printing-payment-history #debts-print,
+  body.printing-payment-history #debts-print * { visibility: hidden !important; }
+
   /* Xodim QR begiklari chop etish */
   body.printing-badges .badge-print-zone,
   body.printing-badges .badge-print-zone * { visibility: visible !important; }

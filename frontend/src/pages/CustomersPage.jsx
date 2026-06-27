@@ -52,6 +52,7 @@ export default function CustomersPage({ embedded = false }) {
   const [showCustFaktura, setShowCustFaktura] = useState(false); // mijoz schyot-fakturasi
   const [detailDates, setDetailDates] = useState({ date_from: '', date_to: '' });
   const [detailPreset, setDetailPreset] = useState('all');
+  const [detailTab, setDetailTab] = useState('all');
 
   const applyDetailPreset = (preset) => {
     setDetailPreset(preset);
@@ -448,7 +449,7 @@ export default function CustomersPage({ embedded = false }) {
       </Modal>
 
       {/* Detail Modal */}
-      <Modal open={!!detailId} onClose={() => { setDetailId(null); setSaleForm(null); setDetailDates({ date_from: '', date_to: '' }); setDetailPreset('all'); }} title="Mijoz tafsiloti" wide>
+      <Modal open={!!detailId} onClose={() => { setDetailId(null); setSaleForm(null); setDetailDates({ date_from: '', date_to: '' }); setDetailPreset('all'); setDetailTab('all'); }} title="Mijoz tafsiloti" wide>
         {!detail ? (
           <p className="text-center py-8 text-gray-400">Yuklanmoqda...</p>
         ) : (
@@ -530,8 +531,28 @@ export default function CustomersPage({ embedded = false }) {
               )}
             </div>
 
+            {/* Bo'lim tanlash tugmalari */}
+            <div className="flex gap-2 flex-wrap">
+              {[
+                { key: 'all',      label: 'Barcha harakatlar', icon: '📋' },
+                { key: 'sales',    label: 'Xaridlar tarixi',   icon: '🛒' },
+                { key: 'payments', label: "To'lovlar tarixi",   icon: '💰' },
+                { key: 'returns',  label: 'Vozvratlar',         icon: '🔄' },
+              ].map(t => (
+                <button key={t.key}
+                  onClick={() => setDetailTab(t.key)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors flex items-center gap-1.5 ${
+                    detailTab === t.key
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-600'
+                  }`}>
+                  <span>{t.icon}</span> {t.label}
+                </button>
+              ))}
+            </div>
+
             {/* Barcha harakatlar (xarid + to'lov + vozvrat) */}
-            <div>
+            {(detailTab === 'all') && <div>
               <div className="flex items-center justify-between mb-2">
                 <h5 className="font-semibold text-gray-700 text-sm flex items-center gap-1.5">
                   <FileText size={15} className="text-blue-600" /> Barcha harakatlar
@@ -567,10 +588,10 @@ export default function CustomersPage({ embedded = false }) {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </div>}
 
             {/* Purchase history */}
-            <div>
+            {(detailTab === 'all' || detailTab === 'sales') && <div>
               <div className="flex items-center justify-between mb-2">
                 <h5 className="font-semibold text-gray-700 text-sm">Xaridlar tarixi</h5>
                 <button onClick={openAddSale} className="btn-primary btn-sm">
@@ -697,10 +718,10 @@ export default function CustomersPage({ embedded = false }) {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </div>}
 
             {/* To'lovlar tarixi */}
-            <div>
+            {(detailTab === 'all' || detailTab === 'payments') && <div>
               <div className="flex items-center gap-2 mb-2">
                 <Coins size={15} className="text-green-600" />
                 <h5 className="font-semibold text-gray-700 text-sm">To'lovlar tarixi</h5>
@@ -730,10 +751,10 @@ export default function CustomersPage({ embedded = false }) {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </div>}
 
-            {/* Vozvratlar (qaytarishlar) tarixi — doim ko'rinadi */}
-            <div>
+            {/* Vozvratlar (qaytarishlar) tarixi */}
+            {(detailTab === 'all' || detailTab === 'returns') && <div>
                 <div className="flex items-center gap-2 mb-2">
                   <RotateCcw size={15} className="text-orange-600" />
                   <h5 className="font-semibold text-gray-700 text-sm">Vozvratlar (qaytarishlar)</h5>
@@ -777,7 +798,7 @@ export default function CustomersPage({ embedded = false }) {
                     </tbody>
                   </table>
                 </div>
-              </div>
+              </div>}
           </div>
         )}
       </Modal>

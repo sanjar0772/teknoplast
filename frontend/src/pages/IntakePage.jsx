@@ -393,6 +393,8 @@ function WorkerOutputTab({ canApprove }) {
     const emp = empMap[empId];
     const p = prodMap[prodId];
     if (!emp) return '';
+    // Komponent — bitta narx (tayyor/yarim farqi yo'q, mahsulot narxi)
+    if (p && p.kind === 'KOMPONENT') return p.price || '';
     if (emp.type === 'STANOKCHI' && p) {
       return ptype === 'SEMI_FINISHED' ? (p.stanokchi_semi_rate || '') : (p.stanokchi_rate || '');
     }
@@ -408,6 +410,8 @@ function WorkerOutputTab({ canApprove }) {
     // entry.tarif kiritilgan bo'lsa — uni ishlatamiz
     if (entry.tarif !== '' && parseFloat(entry.tarif) >= 0) return qty * parseFloat(entry.tarif);
     const p = prodMap[entry.product_id];
+    // Komponent — mahsulot narxi
+    if (p?.kind === 'KOMPONENT') return qty * (parseFloat(p.price) || 0);
     if (emp.type === 'STANOKCHI') {
       const rate = entry.production_type === 'SEMI_FINISHED' ? (p?.stanokchi_semi_rate || 0) : (p?.stanokchi_rate || 0);
       return qty * rate;
@@ -422,17 +426,26 @@ function WorkerOutputTab({ canApprove }) {
     setEntries(prev => prev.map((e, idx) => {
       if (idx !== i) return e;
       const next = { ...e, [field]: value };
-      if (field === 'employee_id') {
-        const emp = empMap[value];
-        if (emp?.type === 'DETALCHI') next.production_type = 'SEMI_FINISHED';
-        else next.production_type = 'FINISHED';
-        next.tarif = autoTarif(value, next.product_id, next.production_type);
-      }
-      if (field === 'product_id' || field === 'production_type') {
-        next.tarif = autoTarif(next.employee_id, field === 'product_id' ? value : next.product_id, field === 'production_type' ? value : next.production_type);
-      }
+      const emp = empMap[next.employee_id];
       if (field === 'product_id') {
-        next.rang = prodMap[value]?.rang || '';
+        const p = prodMap[value];
+        // Komponent tanlansa — turi avtomatik 'KOMPONENT'
+        if (p?.kind === 'KOMPONENT') {
+          next.production_type = 'KOMPONENT';
+        } else if (e.production_type === 'KOMPONENT') {
+          // Oldin komponent edi, endi tayyor mahsulot — turni tiklaymiz
+          next.production_type = emp?.type === 'DETALCHI' ? 'SEMI_FINISHED' : 'FINISHED';
+        }
+        next.rang = p?.rang || '';
+      }
+      if (field === 'employee_id') {
+        const p = prodMap[next.product_id];
+        if (p?.kind === 'KOMPONENT') next.production_type = 'KOMPONENT';
+        else if (emp?.type === 'DETALCHI') next.production_type = 'SEMI_FINISHED';
+        else next.production_type = 'FINISHED';
+      }
+      if (field === 'employee_id' || field === 'product_id' || field === 'production_type') {
+        next.tarif = autoTarif(next.employee_id, next.product_id, next.production_type);
       }
       return next;
     }));
@@ -459,7 +472,9 @@ function WorkerOutputTab({ canApprove }) {
         employee_id: e.employee_id,
         product_id: e.product_id || null,
         quantity_produced: parseFloat(e.quantity_produced),
-        production_type: empMap[e.employee_id]?.type === 'DETALCHI' ? 'SEMI_FINISHED' : (e.production_type || 'FINISHED'),
+        production_type: prodMap[e.product_id]?.kind === 'KOMPONENT'
+          ? 'KOMPONENT'
+          : (empMap[e.employee_id]?.type === 'DETALCHI' ? 'SEMI_FINISHED' : (e.production_type || 'FINISHED')),
         daily_tariff: e.tarif !== '' ? parseFloat(e.tarif) : undefined,
         rang: e.rang || null,
       })),
@@ -644,9 +659,11 @@ function WorkerOutputTab({ canApprove }) {
                       </div>
                     </div>
 
-                    {/* Tur */}
+                    {/* Tur — komponent tanlanса avtomatik "Komponent" */}
                     <div className="col-span-6 sm:col-span-1">
-                      {emp?.type === 'STANOKCHI' ? (
+                      {prodMap[entry.product_id]?.kind === 'KOMPONENT' ? (
+                        <span className="text-xs text-indigo-600 font-semibold px-1 whitespace-nowrap">🔧 Komponent</span>
+                      ) : emp?.type === 'STANOKCHI' ? (
                         <select
                           value={entry.production_type}
                           onChange={e => updateEntry(i, 'production_type', e.target.value)}

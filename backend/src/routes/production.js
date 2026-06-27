@@ -160,9 +160,10 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
     let calculated_amount = 0;
     let daily_tariff = emp.rows[0].daily_tariff;
 
-    // Ishlab chiqarish turi: STANOKCHI tayyor/yarim tanlaydi; DETALCHI doim yarim tayyor
+    // Ishlab chiqarish turi: STANOKCHI tayyor/yarim tanlaydi; DETALCHI doim yarim tayyor.
+    // Komponent (KOMPONENT) — turdan qat'i nazar saqlanadi.
     let ptype = production_type || 'FINISHED';
-    if (employee_type === 'DETALCHI') ptype = 'SEMI_FINISHED';
+    if (employee_type === 'DETALCHI' && ptype !== 'KOMPONENT') ptype = 'SEMI_FINISHED';
 
     // Agar Kirimchi tomonidan maxsus tarif berilgan bo'lsa — uni ishlatamiz
     if (custom_tariff && parseFloat(custom_tariff) > 0) {
@@ -173,6 +174,7 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
       const product = prod.rows[0] || {};
       if (product.kind === 'KOMPONENT') {
         // Komponent ishlab chiqarish — bitta narx (tayyor/yarim farqi yo'q)
+        ptype = 'KOMPONENT';
         daily_tariff = product.price || 0;
         calculated_amount = quantity_produced * daily_tariff;
       } else if (employee_type === 'STANOKCHI') {
@@ -253,9 +255,10 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async 
           let daily_tariff = empDailyTariff;
           let calculated_amount = 0;
 
-          // Ishlab chiqarish turi: STANOKCHI tayyor/yarim; DETALCHI doim yarim tayyor
+          // Ishlab chiqarish turi: STANOKCHI tayyor/yarim; DETALCHI doim yarim tayyor.
+          // Komponent (KOMPONENT) — turdan qat'i nazar saqlanadi.
           let ptype = entry.production_type || 'FINISHED';
-          if (employee_type === 'DETALCHI') ptype = 'SEMI_FINISHED';
+          if (employee_type === 'DETALCHI' && ptype !== 'KOMPONENT') ptype = 'SEMI_FINISHED';
 
           // Agar Kirimchi maxsus tarif bergan bo'lsa — uni ishlatamiz
           if (entry.daily_tariff && parseFloat(entry.daily_tariff) > 0) {
@@ -266,6 +269,7 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async 
             const product = prod.rows[0] || {};
             if (product.kind === 'KOMPONENT') {
               // Komponent ishlab chiqarish — bitta narx (tayyor/yarim farqi yo'q)
+              ptype = 'KOMPONENT';
               daily_tariff = product.price || 0;
               calculated_amount = entry.quantity_produced * daily_tariff;
             } else if (employee_type === 'STANOKCHI') {

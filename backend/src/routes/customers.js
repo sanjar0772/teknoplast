@@ -30,8 +30,21 @@ router.get('/', async (req, res, next) => {
       sql += ` AND (c.name ILIKE $${idx} OR c.phone ILIKE $${idx + 1} OR c.company_name ILIKE $${idx + 2})`;
       params.push(like, like, like); idx += 3;
     }
-    if (date_from) { sql += ` AND DATE(c.created_at) >= $${idx++}`; params.push(date_from); }
-    if (date_to)   { sql += ` AND DATE(c.created_at) <= $${idx++}`; params.push(date_to); }
+    if (date_from || date_to) {
+      const saleConds = [], retConds = [];
+      if (date_from) {
+        saleConds.push(`DATE(s2.sale_date) >= $${idx}`); params.push(date_from); idx++;
+        retConds.push(`DATE(COALESCE(sr2.return_date, sr2.created_at)) >= $${idx}`); params.push(date_from); idx++;
+      }
+      if (date_to) {
+        saleConds.push(`DATE(s2.sale_date) <= $${idx}`); params.push(date_to); idx++;
+        retConds.push(`DATE(COALESCE(sr2.return_date, sr2.created_at)) <= $${idx}`); params.push(date_to); idx++;
+      }
+      sql += ` AND (
+        EXISTS (SELECT 1 FROM sales s2 WHERE s2.customer_id = c.id AND ${saleConds.join(' AND ')})
+        OR EXISTS (SELECT 1 FROM sale_returns sr2 WHERE sr2.customer_id = c.id AND ${retConds.join(' AND ')})
+      )`;
+    }
     sql += ' GROUP BY c.id ORDER BY total_purchases DESC, c.name';
 
     const result = await query(sql, params);

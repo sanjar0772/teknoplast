@@ -168,7 +168,8 @@ export default function ProductionPage() {
       const emp = empMap[empId];
       const items = e.items.map(item => {
         const next = { ...item };
-        if (emp?.type === 'DETALCHI') next.production_type = 'SEMI_FINISHED';
+        if (prodMap[next.product_id]?.kind === 'KOMPONENT') next.production_type = 'KOMPONENT';
+        else if (emp?.type === 'DETALCHI') next.production_type = 'SEMI_FINISHED';
         else if (emp?.type === 'STANOKCHI' && !next.production_type) next.production_type = 'FINISHED';
         next.tarif = autoTarif(empId, next.product_id, next.production_type);
         return next;
@@ -187,7 +188,16 @@ export default function ProductionPage() {
           const match = (products?.products || []).find(p => p.name === value);
           next.product_id = match ? match.id : '';
           next.rang = match ? (match.rang || '') : '';
-          if (match) next.tarif = autoTarif(e.employee_id, match.id, next.production_type);
+          if (match) {
+            // Komponent tanlansa — turi avtomatik 'KOMPONENT'
+            if (match.kind === 'KOMPONENT') {
+              next.production_type = 'KOMPONENT';
+            } else if (item.production_type === 'KOMPONENT') {
+              // Oldin komponent edi, endi tayyor mahsulot — turni tiklaymiz
+              next.production_type = empMap[e.employee_id]?.type === 'DETALCHI' ? 'SEMI_FINISHED' : 'FINISHED';
+            }
+            next.tarif = autoTarif(e.employee_id, match.id, next.production_type);
+          }
         }
         if (field === 'production_type') {
           next.tarif = autoTarif(e.employee_id, next.product_id, value);
@@ -236,7 +246,8 @@ export default function ProductionPage() {
         .map(item => {
           const emp = empMap[e.employee_id];
           let production_type = item.production_type || 'FINISHED';
-          if (emp?.type === 'DETALCHI') production_type = 'SEMI_FINISHED';
+          if (prodMap[item.product_id]?.kind === 'KOMPONENT') production_type = 'KOMPONENT';
+          else if (emp?.type === 'DETALCHI') production_type = 'SEMI_FINISHED';
           return {
             employee_id: e.employee_id,
             product_id: item.product_id,
@@ -360,7 +371,7 @@ export default function ProductionPage() {
                         </span>
                       ) : <span className="text-gray-300">—</span>}
                     </td>
-                    <td>{row.production_type === 'SEMI_FINISHED' ? 'Yarim' : row.production_type === 'FINISHED' ? 'Tayyor' : '—'}</td>
+                    <td>{row.production_type === 'KOMPONENT' ? '🔧 Komponent' : row.production_type === 'SEMI_FINISHED' ? 'Yarim' : row.production_type === 'FINISHED' ? 'Tayyor' : '—'}</td>
                     <td className="font-semibold">{fmt(row.quantity_produced)} dona</td>
                     <td className="text-gray-500">{fmt(row.daily_tariff)} so'm</td>
                     <td className="font-bold text-green-700">{fmt(row.calculated_amount)} so'm</td>
@@ -594,7 +605,7 @@ export default function ProductionPage() {
                       </span>
                     ) : <span className="text-gray-300">—</span>}
                   </td>
-                  <td>{row.production_type === 'SEMI_FINISHED' ? 'Yarim tayyor' : row.production_type === 'FINISHED' ? 'Tayyor' : '—'}</td>
+                  <td>{row.production_type === 'KOMPONENT' ? '🔧 Komponent' : row.production_type === 'SEMI_FINISHED' ? 'Yarim tayyor' : row.production_type === 'FINISHED' ? 'Tayyor' : '—'}</td>
                   <td>{fmt(row.quantity_produced)} dona</td>
                   <td>{fmt(row.daily_tariff)} so'm/dona</td>
                   <td className="font-semibold text-green-700">{fmt(row.calculated_amount)} so'm</td>
@@ -705,9 +716,11 @@ export default function ProductionPage() {
                               {item.rang && <span style={{ display:'inline-block', width:9, height:9, borderRadius:'50%', flexShrink:0, background: RANG_COLORS[item.rang] || '#999', border:'1px solid #ccc' }} />}
                             </div>
                           </div>
-                          {/* Tur */}
+                          {/* Tur — komponent tanlanса avtomatik "Komponent" */}
                           <div className="col-span-2">
-                            {isStanokchi ? (
+                            {prodMap[item.product_id]?.kind === 'KOMPONENT' ? (
+                              <span className="text-xs text-indigo-600 font-semibold whitespace-nowrap">🔧 Komponent</span>
+                            ) : isStanokchi ? (
                               <select value={item.production_type || 'FINISHED'} onChange={e => updateItem(i, j, 'production_type', e.target.value)} className="select text-sm w-full">
                                 <option value="FINISHED">Tayyor</option>
                                 <option value="SEMI_FINISHED">Yarim</option>

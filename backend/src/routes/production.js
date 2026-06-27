@@ -346,6 +346,15 @@ router.put('/approve-day', requireRole('OWNER', 'SALES_HEAD'), async (req, res, 
       await client.query('BEGIN');
       for (const row of pending.rows) {
         if (row.product_id) {
+          // Komponent deb belgilangan bo'lsa — mahsulotni komponent (ishlab chiqarish ombori)
+          // turiga biriktiramiz. Shunda u ham Komponentlar sahifasida, ham Ishlab chiqarish
+          // omborida ko'rinadi (ikkalasi ham kind='KOMPONENT' bo'yicha filtrlaydi).
+          if (row.production_type === 'KOMPONENT') {
+            await client.query(
+              "UPDATE products SET kind='KOMPONENT', updated_at=NOW() WHERE id=$1 AND COALESCE(kind,'') <> 'KOMPONENT'",
+              [row.product_id]
+            );
+          }
           await client.query(
             'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at=NOW() WHERE id=$2',
             [row.quantity_produced, row.product_id]

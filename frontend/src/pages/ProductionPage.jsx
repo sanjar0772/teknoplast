@@ -246,7 +246,7 @@ export default function ProductionPage() {
         .map(item => {
           const emp = empMap[e.employee_id];
           let production_type = item.production_type || 'FINISHED';
-          if (prodMap[item.product_id]?.kind === 'KOMPONENT') production_type = 'KOMPONENT';
+          if (item.production_type === 'KOMPONENT' || prodMap[item.product_id]?.kind === 'KOMPONENT') production_type = 'KOMPONENT';
           else if (emp?.type === 'DETALCHI') production_type = 'SEMI_FINISHED';
           return {
             employee_id: e.employee_id,
@@ -716,17 +716,19 @@ export default function ProductionPage() {
                               {item.rang && <span style={{ display:'inline-block', width:9, height:9, borderRadius:'50%', flexShrink:0, background: RANG_COLORS[item.rang] || '#999', border:'1px solid #ccc' }} />}
                             </div>
                           </div>
-                          {/* Tur — komponent tanlanса avtomatik "Komponent" */}
+                          {/* Tur — Tayyor / Yarim / Komponent (qo'lda tanlash mumkin) */}
                           <div className="col-span-2">
-                            {prodMap[item.product_id]?.kind === 'KOMPONENT' ? (
-                              <span className="text-xs text-indigo-600 font-semibold whitespace-nowrap">🔧 Komponent</span>
-                            ) : isStanokchi ? (
+                            {isStanokchi ? (
                               <select value={item.production_type || 'FINISHED'} onChange={e => updateItem(i, j, 'production_type', e.target.value)} className="select text-sm w-full">
                                 <option value="FINISHED">Tayyor</option>
                                 <option value="SEMI_FINISHED">Yarim</option>
+                                <option value="KOMPONENT">🔧 Komponent</option>
                               </select>
                             ) : isDetalchi ? (
-                              <span className="text-xs text-orange-600">Yarim</span>
+                              <select value={item.production_type || 'SEMI_FINISHED'} onChange={e => updateItem(i, j, 'production_type', e.target.value)} className="select text-sm w-full">
+                                <option value="SEMI_FINISHED">Yarim</option>
+                                <option value="KOMPONENT">🔧 Komponent</option>
+                              </select>
                             ) : (
                               <span className="text-xs text-gray-300">—</span>
                             )}

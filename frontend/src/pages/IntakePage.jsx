@@ -474,7 +474,7 @@ function WorkerOutputTab({ canApprove }) {
         employee_id: e.employee_id,
         product_id: e.product_id || null,
         quantity_produced: parseFloat(e.quantity_produced),
-        production_type: prodMap[e.product_id]?.kind === 'KOMPONENT'
+        production_type: (e.production_type === 'KOMPONENT' || prodMap[e.product_id]?.kind === 'KOMPONENT')
           ? 'KOMPONENT'
           : (empMap[e.employee_id]?.type === 'DETALCHI' ? 'SEMI_FINISHED' : (e.production_type || 'FINISHED')),
         daily_tariff: e.tarif !== '' ? parseFloat(e.tarif) : undefined,
@@ -661,11 +661,9 @@ function WorkerOutputTab({ canApprove }) {
                       </div>
                     </div>
 
-                    {/* Tur — komponent tanlanса avtomatik "Komponent" */}
+                    {/* Tur — Tayyor / Yarim / Komponent (qo'lda tanlash mumkin) */}
                     <div className="col-span-6 sm:col-span-1">
-                      {prodMap[entry.product_id]?.kind === 'KOMPONENT' ? (
-                        <span className="text-xs text-indigo-600 font-semibold px-1 whitespace-nowrap">🔧 Komponent</span>
-                      ) : emp?.type === 'STANOKCHI' ? (
+                      {emp?.type === 'STANOKCHI' ? (
                         <select
                           value={entry.production_type}
                           onChange={e => updateEntry(i, 'production_type', e.target.value)}
@@ -673,9 +671,17 @@ function WorkerOutputTab({ canApprove }) {
                         >
                           <option value="FINISHED">Tayyor</option>
                           <option value="SEMI_FINISHED">Yarim</option>
+                          <option value="KOMPONENT">🔧 Komponent</option>
                         </select>
                       ) : isDetalchi ? (
-                        <span className="text-xs text-orange-600 font-medium px-1">Yarim</span>
+                        <select
+                          value={entry.production_type === 'KOMPONENT' ? 'KOMPONENT' : 'SEMI_FINISHED'}
+                          onChange={e => updateEntry(i, 'production_type', e.target.value)}
+                          className="select text-sm w-full"
+                        >
+                          <option value="SEMI_FINISHED">Yarim</option>
+                          <option value="KOMPONENT">🔧 Komponent</option>
+                        </select>
                       ) : (
                         <span className="text-xs text-gray-300 px-1">—</span>
                       )}

@@ -5,7 +5,7 @@ const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n
 
 // Mijozning barcha harakatlari (xarid + to'lov + vozvrat) bo'yicha schyot-faktura.
 // rows — [{ date, type, label, sign, amount }], totals — { xarid, tolov, vozvrat, qoldiq }.
-export default function CustomerFakturaModal({ customer, rows = [], totals = {}, onClose }) {
+export default function CustomerFakturaModal({ customer, rows = [], totals = {}, overallDebt, onClose }) {
   if (!customer) return null;
   return (
     <div className="fixed inset-0 z-[70] flex items-start justify-center p-4 overflow-y-auto">
@@ -76,6 +76,19 @@ export default function CustomerFakturaModal({ customer, rows = [], totals = {},
             <div>Jami vozvrat: <span className="font-semibold text-orange-700">{fmt(totals.vozvrat)}</span></div>
             <div>Qoldiq qarz: <span className="font-bold text-red-600">{fmt(totals.qoldiq)} so'm</span></div>
           </div>
+
+          {overallDebt != null && (
+            <div className={`rounded-lg p-2.5 mt-4 flex items-center justify-between ${
+              overallDebt > 0 ? 'bg-red-50 border border-red-200' : overallDebt < 0 ? 'bg-blue-50 border border-blue-200' : 'bg-green-50 border border-green-200'
+            }`}>
+              <span className="text-xs font-medium text-gray-700">
+                {overallDebt > 0 ? 'Joriy umumiy qarz:' : overallDebt < 0 ? 'Mijoz haqdor:' : 'Qarz yo\'q'}
+              </span>
+              <span className={`text-base font-bold ${overallDebt > 0 ? 'text-red-600' : overallDebt < 0 ? 'text-blue-600' : 'text-green-600'}`}>
+                {overallDebt < 0 ? '+' : ''}{fmt(Math.abs(overallDebt))} so'm
+              </span>
+            </div>
+          )}
 
           <div className="flex justify-between mt-10 text-xs text-gray-600">
             <div className="text-center"><div className="border-t border-gray-400 w-44 pt-1">Yetkazib beruvchi (imzo)</div></div>

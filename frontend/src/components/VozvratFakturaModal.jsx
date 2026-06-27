@@ -6,7 +6,7 @@ const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n
 // Vozvrat schyot-fakturasi — rasmiy hujjat ko'rinishida (chek emas).
 // ret — sale_returns yozuvi (product_name, quantity, unit_price, amount, refund_amount,
 // loss_amount, condition, reason, rang, return_date, order_ref, customer_name).
-export default function VozvratFakturaModal({ ret, customerName, onClose }) {
+export default function VozvratFakturaModal({ ret, customerName, overallDebt, onClose }) {
   if (!ret) return null;
   const defective = ret.condition === 'DEFECTIVE';
   const no = ret.order_ref || (ret.id ? String(ret.id).slice(0, 8) : '—');
@@ -95,6 +95,19 @@ export default function VozvratFakturaModal({ ret, customerName, onClose }) {
               )}
             </div>
           </div>
+
+          {overallDebt != null && (
+            <div className={`rounded-lg p-2.5 mt-4 flex items-center justify-between ${
+              overallDebt > 0 ? 'bg-red-50 border border-red-200' : overallDebt < 0 ? 'bg-blue-50 border border-blue-200' : 'bg-green-50 border border-green-200'
+            }`}>
+              <span className="text-xs font-medium text-gray-700">
+                {overallDebt > 0 ? 'Joriy umumiy qarz:' : overallDebt < 0 ? 'Mijoz haqdor:' : 'Qarz yo\'q'}
+              </span>
+              <span className={`text-base font-bold ${overallDebt > 0 ? 'text-red-600' : overallDebt < 0 ? 'text-blue-600' : 'text-green-600'}`}>
+                {overallDebt < 0 ? '+' : ''}{fmt(Math.abs(overallDebt))} so'm
+              </span>
+            </div>
+          )}
 
           <div className="flex justify-between mt-10 text-xs text-gray-600">
             <div className="text-center"><div className="border-t border-gray-400 w-44 pt-1">Qabul qildi (imzo)</div></div>

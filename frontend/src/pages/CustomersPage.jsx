@@ -907,9 +907,9 @@ export default function CustomersPage({ embedded = false }) {
         )}
       </Modal>
 
-      {fakturaRet && <VozvratFakturaModal ret={fakturaRet} customerName={detail?.customer?.name} onClose={() => setFakturaRet(null)} />}
+      {fakturaRet && <VozvratFakturaModal ret={fakturaRet} customerName={detail?.customer?.name} overallDebt={detail?.overall_debt} onClose={() => setFakturaRet(null)} />}
       {showCustFaktura && detail && (
-        <CustomerFakturaModal customer={detail.customer} rows={ledger.rows} totals={ledger.totals} onClose={() => setShowCustFaktura(false)} />
+        <CustomerFakturaModal customer={detail.customer} rows={ledger.rows} totals={ledger.totals} overallDebt={detail.overall_debt} onClose={() => setShowCustFaktura(false)} />
       )}
     </div>
   );

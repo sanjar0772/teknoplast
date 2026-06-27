@@ -33,7 +33,7 @@ router.get('/', async (req, res, next) => {
     const { date, month, employee_id } = req.query;
     let sql = `
       SELECT ep.*, e.name as employee_name, e.type as employee_type,
-             p.name as product_name
+             p.name as product_name, p.kind as product_kind
       FROM employee_production ep
       JOIN employees e ON ep.employee_id = e.id
       LEFT JOIN products p ON ep.product_id = p.id
@@ -312,7 +312,7 @@ router.get('/pending', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (
   try {
     const result = await query(`
       SELECT ep.*, e.name as employee_name, e.type as employee_type,
-             p.name as product_name
+             p.name as product_name, p.kind as product_kind
       FROM employee_production ep
       JOIN employees e ON ep.employee_id = e.id
       LEFT JOIN products p ON ep.product_id = p.id

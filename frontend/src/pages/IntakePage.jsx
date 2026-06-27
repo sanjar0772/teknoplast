@@ -379,6 +379,9 @@ function WorkerOutputTab({ canApprove }) {
 
   const workers = (empData?.employees || []).filter(e => e.type === 'STANOKCHI' || e.type === 'DETALCHI');
   const products = prodData?.products || [];
+  // Mahsulotlarni tur bo'yicha ajratamiz — komponent tanlash aniq ko'rinishi uchun
+  const componentOptions = products.filter(p => p.kind === 'KOMPONENT');
+  const finishedOptions = products.filter(p => p.kind !== 'KOMPONENT');
 
   const empMap = {};
   workers.forEach(e => { empMap[e.id] = e; });
@@ -517,6 +520,11 @@ function WorkerOutputTab({ canApprove }) {
                   {g.rows.map(r => (
                     <div key={r.id} className="flex items-center gap-3 text-sm text-gray-700">
                       <span className="font-medium">{r.product_name || '—'}</span>
+                      {r.product_id && (
+                        r.product_kind === 'KOMPONENT'
+                          ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-medium">🔧 Komponent</span>
+                          : <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">📦 Tayyor</span>
+                      )}
                       {r.rang && (
                         <span className="flex items-center gap-1">
                           <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background: RANG_COLORS[r.rang] || '#999' }} />
@@ -588,7 +596,7 @@ function WorkerOutputTab({ canApprove }) {
                       </select>
                     </div>
 
-                    {/* Mahsulot */}
+                    {/* Mahsulot — komponent va tayyor alohida guruhlangan */}
                     <div className="col-span-12 sm:col-span-2">
                       <select
                         value={entry.product_id}
@@ -596,10 +604,27 @@ function WorkerOutputTab({ canApprove }) {
                         className="select text-sm w-full"
                       >
                         <option value="">— Mahsulot —</option>
-                        {products.map(p => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
+                        {componentOptions.length > 0 && (
+                          <optgroup label="🔧 Komponentlar (ishlab chiqarish ombori)">
+                            {componentOptions.map(p => (
+                              <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {finishedOptions.length > 0 && (
+                          <optgroup label="📦 Tayyor mahsulotlar">
+                            {finishedOptions.map(p => (
+                              <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                          </optgroup>
+                        )}
                       </select>
+                      {/* Tanlangan mahsulot turi — avtomatik ko'rsatiladi */}
+                      {entry.product_id && prodMap[entry.product_id] && (
+                        prodMap[entry.product_id].kind === 'KOMPONENT'
+                          ? <div className="mt-0.5 text-[10px] font-medium text-indigo-600">🔧 Komponent → ombor + Komponentlar</div>
+                          : <div className="mt-0.5 text-[10px] font-medium text-blue-600">📦 Tayyor mahsulot → ombor</div>
+                      )}
                     </div>
 
                     {/* Rang — ishchi qaysi rangda chiqarganini tanlaydi */}

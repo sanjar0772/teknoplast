@@ -50,6 +50,29 @@ export default function CustomersPage({ embedded = false }) {
   const [datePreset, setDatePreset] = useState('all');
   const [fakturaRet, setFakturaRet] = useState(null); // vozvrat schyot-fakturasi
   const [showCustFaktura, setShowCustFaktura] = useState(false); // mijoz schyot-fakturasi
+  const [detailDates, setDetailDates] = useState({ date_from: '', date_to: '' });
+  const [detailPreset, setDetailPreset] = useState('all');
+
+  const applyDetailPreset = (preset) => {
+    setDetailPreset(preset);
+    const today = new Date();
+    const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    if (preset === 'today') {
+      setDetailDates({ date_from: iso(today), date_to: iso(today) });
+    } else if (preset === 'week') {
+      const mon = new Date(today); mon.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+      setDetailDates({ date_from: iso(mon), date_to: iso(today) });
+    } else if (preset === 'month') {
+      const first = new Date(today.getFullYear(), today.getMonth(), 1);
+      setDetailDates({ date_from: iso(first), date_to: iso(today) });
+    } else if (preset === 'lastmonth') {
+      const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const last  = new Date(today.getFullYear(), today.getMonth(), 0);
+      setDetailDates({ date_from: iso(first), date_to: iso(last) });
+    } else {
+      setDetailDates({ date_from: '', date_to: '' });
+    }
+  };
 
   const applyPreset = (preset) => {
     setDatePreset(preset);
@@ -87,8 +110,8 @@ export default function CustomersPage({ embedded = false }) {
   });
 
   const { data: detail } = useQuery({
-    queryKey: ['customer', detailId],
-    queryFn: () => customersAPI.getById(detailId).then(r => r.data),
+    queryKey: ['customer', detailId, detailDates.date_from, detailDates.date_to],
+    queryFn: () => customersAPI.getById(detailId, detailDates).then(r => r.data),
     enabled: !!detailId,
   });
 
@@ -425,7 +448,7 @@ export default function CustomersPage({ embedded = false }) {
       </Modal>
 
       {/* Detail Modal */}
-      <Modal open={!!detailId} onClose={() => { setDetailId(null); setSaleForm(null); }} title="Mijoz tafsiloti" wide>
+      <Modal open={!!detailId} onClose={() => { setDetailId(null); setSaleForm(null); setDetailDates({ date_from: '', date_to: '' }); setDetailPreset('all'); }} title="Mijoz tafsiloti" wide>
         {!detail ? (
           <p className="text-center py-8 text-gray-400">Yuklanmoqda...</p>
         ) : (
@@ -470,6 +493,41 @@ export default function CustomersPage({ embedded = false }) {
                   {parseFloat(detail.stats.total_debt) < 0 ? '+' + fmt(Math.abs(detail.stats.total_debt)) : fmt(detail.stats.total_debt)}
                 </p>
               </div>
+            </div>
+
+            {/* Sana filtri */}
+            <div className="flex gap-2 flex-wrap items-center bg-gray-50 rounded-xl p-3">
+              {[
+                { key: 'all',       label: 'Barchasi' },
+                { key: 'today',     label: 'Bugun' },
+                { key: 'week',      label: 'Bu hafta' },
+                { key: 'month',     label: 'Bu oy' },
+                { key: 'lastmonth', label: "O'tgan oy" },
+              ].map(p => (
+                <button key={p.key}
+                  onClick={() => applyDetailPreset(p.key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                    detailPreset === p.key
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-600'
+                  }`}>
+                  {p.label}
+                </button>
+              ))}
+              <span className="text-gray-300 text-xs">|</span>
+              <input type="date" value={detailDates.date_from}
+                onChange={e => { setDetailPreset('custom'); setDetailDates(d => ({ ...d, date_from: e.target.value })); }}
+                className="input text-xs py-1.5 w-36" />
+              <span className="text-gray-400 text-xs">—</span>
+              <input type="date" value={detailDates.date_to}
+                onChange={e => { setDetailPreset('custom'); setDetailDates(d => ({ ...d, date_to: e.target.value })); }}
+                className="input text-xs py-1.5 w-36" />
+              {(detailDates.date_from || detailDates.date_to) && (
+                <button onClick={() => applyDetailPreset('all')}
+                  className="text-gray-400 hover:text-red-500" title="Tozalash">
+                  <X size={14} />
+                </button>
+              )}
             </div>
 
             {/* Barcha harakatlar (xarid + to'lov + vozvrat) */}

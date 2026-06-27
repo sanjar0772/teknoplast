@@ -74,47 +74,54 @@ router.get('/summary', async (req, res, next) => {
 // GET /api/customers/:id — mijoz tafsiloti + xaridlar tarixi
 router.get('/:id', async (req, res, next) => {
   try {
+    const { date_from, date_to } = req.query;
     const customer = await query('SELECT * FROM customers WHERE id = $1', [req.params.id]);
     if (!customer.rows.length) return res.status(404).json({ error: 'Mijoz topilmadi' });
 
-    const sales = await query(`
-      SELECT s.*, p.name as product_name, p.unit
-      FROM sales s JOIN products p ON s.product_id = p.id
-      WHERE s.customer_id = $1
-      ORDER BY s.sale_date DESC, s.created_at DESC LIMIT 50
-    `, [req.params.id]);
+    let salesSql = `SELECT s.*, p.name as product_name, p.unit
+      FROM sales s JOIN products p ON s.product_id = p.id WHERE s.customer_id = $1`;
+    const salesP = [req.params.id];
+    let si = 2;
+    if (date_from) { salesSql += ` AND DATE(s.sale_date) >= $${si++}`; salesP.push(date_from); }
+    if (date_to)   { salesSql += ` AND DATE(s.sale_date) <= $${si++}`; salesP.push(date_to); }
+    salesSql += ' ORDER BY s.sale_date DESC, s.created_at DESC LIMIT 200';
+    const sales = await query(salesSql, salesP);
 
-    const stats = await query(`
-      SELECT COUNT(*) as purchase_count,
+    let statsSql = `SELECT COUNT(*) as purchase_count,
              COALESCE(SUM(total_amount), 0) as total_purchases,
              COALESCE(SUM(total_amount - payment_amount), 0) as total_debt,
              COALESCE(AVG(total_amount), 0) as avg_purchase
-      FROM sales WHERE customer_id = $1
-    `, [req.params.id]);
+      FROM sales WHERE customer_id = $1`;
+    const statsP = [req.params.id];
+    let sti = 2;
+    if (date_from) { statsSql += ` AND DATE(sale_date) >= $${sti++}`; statsP.push(date_from); }
+    if (date_to)   { statsSql += ` AND DATE(sale_date) <= $${sti++}`; statsP.push(date_to); }
+    const stats = await query(statsSql, statsP);
 
-    // To'lovlar tarixi — shu mijozning barcha sotuvlariga tushgan to'lovlar
-    const payments = await query(`
-      SELECT pm.id, pm.amount, pm.method, pm.payment_date, pm.notes, p.name AS product_name
-      FROM payments pm
-      JOIN sales s ON pm.sale_id = s.id
-      JOIN products p ON s.product_id = p.id
-      WHERE s.customer_id = $1
-      ORDER BY pm.payment_date DESC, pm.created_at DESC
-    `, [req.params.id]);
+    let paySql = `SELECT pm.id, pm.amount, pm.method, pm.payment_date, pm.notes, p.name AS product_name
+      FROM payments pm JOIN sales s ON pm.sale_id = s.id JOIN products p ON s.product_id = p.id
+      WHERE s.customer_id = $1`;
+    const payP = [req.params.id];
+    let pi = 2;
+    if (date_from) { paySql += ` AND DATE(pm.payment_date) >= $${pi++}`; payP.push(date_from); }
+    if (date_to)   { paySql += ` AND DATE(pm.payment_date) <= $${pi++}`; payP.push(date_to); }
+    paySql += ' ORDER BY pm.payment_date DESC, pm.created_at DESC';
+    const payments = await query(paySql, payP);
 
-    // Vozvratlar (qaytarishlar) tarixi — shu mijozning vozvratlari
-    let returns = [];
-    try {
-      const rr = await query(`
-        SELECT sr.id, sr.sale_id, sr.quantity, sr.unit_price, sr.amount, sr.refund_amount,
+    let retSql = `SELECT sr.id, sr.sale_id, sr.quantity, sr.unit_price, sr.amount, sr.refund_amount,
                sr.reason, sr.return_date, sr.condition, sr.loss_amount, sr.rang,
                p.name AS product_name, p.unit
-        FROM sale_returns sr
-        LEFT JOIN products p ON sr.product_id = p.id
+        FROM sale_returns sr LEFT JOIN products p ON sr.product_id = p.id
         LEFT JOIN sales s ON sr.sale_id = s.id
-        WHERE sr.customer_id = $1 OR s.customer_id = $1
-        ORDER BY COALESCE(sr.return_date, sr.created_at) DESC
-      `, [req.params.id]);
+        WHERE (sr.customer_id = $1 OR s.customer_id = $1)`;
+    const retP = [req.params.id];
+    let ri = 2;
+    if (date_from) { retSql += ` AND DATE(COALESCE(sr.return_date, sr.created_at)) >= $${ri++}`; retP.push(date_from); }
+    if (date_to)   { retSql += ` AND DATE(COALESCE(sr.return_date, sr.created_at)) <= $${ri++}`; retP.push(date_to); }
+    retSql += ' ORDER BY COALESCE(sr.return_date, sr.created_at) DESC';
+    let returns = [];
+    try {
+      const rr = await query(retSql, retP);
       returns = rr.rows;
     } catch (e) { returns = []; }
 

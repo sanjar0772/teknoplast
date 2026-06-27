@@ -1,10 +1,12 @@
 {
+  "id": "/",
   "name": "TEKNOPLAST — Boshqaruv Tizimi",
   "short_name": "TEKNOPLAST",
   "description": "Plastik mahsulotlar zavodi boshqaruv tizimi — savdo, ombor, qarzlar, hisobotlar.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "fullscreen"],
   "orientation": "any",
   "background_color": "#ffffff",
   "theme_color": "#2563eb",

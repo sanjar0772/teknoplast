@@ -83,6 +83,20 @@ app.use(express.static(frontendDist, {
   },
 }));
 
+// Digital Asset Links — Android TWA/APK ilovasi brauzer manzil satrisiz, TO'LIQ
+// EKRANDA ochilishi uchun zarur. PWABuilder APK yasaganda bergan JSON'ni Railway'da
+// ASSETLINKS_JSON env'iga qo'ying (eng oson — qayta deploy kerak emas), yoki
+// frontend/public/.well-known/assetlinks.json fayliga yozing.
+// MUHIM: bu route SPA fallback'dan OLDIN turishi shart (aks holda index.html qaytadi).
+app.get('/.well-known/assetlinks.json', (req, res) => {
+  res.type('application/json');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  if (process.env.ASSETLINKS_JSON) return res.send(process.env.ASSETLINKS_JSON);
+  const f = path.join(frontendDist, '.well-known', 'assetlinks.json');
+  if (fs.existsSync(f)) return res.sendFile(f);
+  res.send('[]');
+});
+
 // SPA fallback — barcha yo'llar index.html'ga (kesh yo'q)
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/')) return next();

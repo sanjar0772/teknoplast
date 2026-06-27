@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "uz.teknoplast.app",
+      "sha256_cert_fingerprints": [
+        "PWABUILDER_BERGAN_SHA256_BARMOQ_IZINI_SHU_YERGA_QOYING"
+      ]
+    }
+  }
+]

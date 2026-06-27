@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
@@ -53,6 +53,7 @@ export default function CustomersPage({ embedded = false }) {
   const [detailDates, setDetailDates] = useState({ date_from: '', date_to: '' });
   const [detailPreset, setDetailPreset] = useState('all');
   const [detailTab, setDetailTab] = useState('all');
+  const [expandedOps, setExpandedOps] = useState({});
 
   const applyDetailPreset = (preset) => {
     setDetailPreset(preset);
@@ -127,10 +128,27 @@ export default function CustomersPage({ embedded = false }) {
     });
     const rows = [];
     let xarid = 0, tolov = 0, vozvrat = 0;
+    const salesByRef = {};
     (detail.sales || []).forEach(s => {
-      const orig = (parseFloat(s.total_amount) || 0) + (retBySale[s.id] || 0);
-      xarid += orig;
-      rows.push({ date: s.sale_date, type: 'Xarid', label: s.product_name, sign: 1, amount: orig });
+      const ref = s.order_ref || s.id;
+      if (!salesByRef[ref]) salesByRef[ref] = [];
+      salesByRef[ref].push(s);
+    });
+    Object.entries(salesByRef).forEach(([ref, items]) => {
+      const totalAmt = items.reduce((sum, s) => sum + (parseFloat(s.total_amount) || 0) + (retBySale[s.id] || 0), 0);
+      xarid += totalAmt;
+      if (items.length === 1) {
+        rows.push({ date: items[0].sale_date, type: 'Xarid', label: items[0].product_name, sign: 1, amount: totalAmt });
+      } else {
+        rows.push({
+          date: items[0].sale_date, type: 'Xarid', sign: 1, amount: totalAmt, ref,
+          label: `${items.length} ta mahsulot`,
+          items: items.map(s => ({
+            name: s.product_name, quantity: s.quantity, unit: s.unit,
+            amount: (parseFloat(s.total_amount) || 0) + (retBySale[s.id] || 0),
+          })),
+        });
+      }
     });
     (detail.payments || []).forEach(p => {
       const amt = parseFloat(p.amount) || 0;
@@ -449,7 +467,7 @@ export default function CustomersPage({ embedded = false }) {
       </Modal>
 
       {/* Detail Modal */}
-      <Modal open={!!detailId} onClose={() => { setDetailId(null); setSaleForm(null); setDetailDates({ date_from: '', date_to: '' }); setDetailPreset('all'); setDetailTab('all'); }} title="Mijoz tafsiloti" wide>
+      <Modal open={!!detailId} onClose={() => { setDetailId(null); setSaleForm(null); setDetailDates({ date_from: '', date_to: '' }); setDetailPreset('all'); setDetailTab('all'); setExpandedOps({}); }} title="Mijoz tafsiloti" wide>
         {!detail ? (
           <p className="text-center py-8 text-gray-400">Yuklanmoqda...</p>
         ) : (
@@ -570,16 +588,32 @@ export default function CustomersPage({ embedded = false }) {
                     {!ledger.rows.length ? (
                       <tr><td colSpan={4} className="text-center py-6 text-gray-400">Harakatlar yo'q</td></tr>
                     ) : ledger.rows.map((e, i) => (
-                      <tr key={i}>
-                        <td className="whitespace-nowrap">{new Date(e.date).toLocaleDateString('uz-UZ')}</td>
-                        <td>
-                          <span className={`badge ${e.type === 'Xarid' ? 'badge-blue' : e.type === "To'lov" ? 'badge-green' : 'bg-orange-50 text-orange-600'}`}>{e.type}</span>
-                        </td>
-                        <td className="text-gray-600">{e.label}</td>
-                        <td className={`text-right font-semibold whitespace-nowrap ${e.sign < 0 ? 'text-green-700' : 'text-blue-700'}`}>
-                          {e.sign < 0 ? '−' : '+'}{fmt(e.amount)}
-                        </td>
-                      </tr>
+                      <Fragment key={i}>
+                        <tr
+                          className={e.items ? 'cursor-pointer hover:bg-blue-50/40 transition-colors' : ''}
+                          onClick={() => e.items && setExpandedOps(prev => ({ ...prev, [e.ref]: !prev[e.ref] }))}
+                        >
+                          <td className="whitespace-nowrap">{new Date(e.date).toLocaleDateString('uz-UZ')}</td>
+                          <td>
+                            <span className={`badge ${e.type === 'Xarid' ? 'badge-blue' : e.type === "To'lov" ? 'badge-green' : 'bg-orange-50 text-orange-600'}`}>{e.type}</span>
+                          </td>
+                          <td className="text-gray-600">
+                            {e.items && <span className="inline-block mr-1 text-xs text-blue-500">{expandedOps[e.ref] ? '▼' : '▶'}</span>}
+                            {e.label}
+                          </td>
+                          <td className={`text-right font-semibold whitespace-nowrap ${e.sign < 0 ? 'text-green-700' : 'text-blue-700'}`}>
+                            {e.sign < 0 ? '−' : '+'}{fmt(e.amount)}
+                          </td>
+                        </tr>
+                        {e.items && expandedOps[e.ref] && e.items.map((sub, j) => (
+                          <tr key={`${i}-${j}`} className="bg-blue-50/30 border-l-4 border-blue-400">
+                            <td></td>
+                            <td></td>
+                            <td className="text-blue-800 text-xs pl-4">— {sub.name} ({sub.quantity} {sub.unit || 'dona'})</td>
+                            <td className="text-right text-blue-600 text-xs font-medium whitespace-nowrap">{fmt(sub.amount)}</td>
+                          </tr>
+                        ))}
+                      </Fragment>
                     ))}
                     <tr className="bg-gray-50 font-bold">
                       <td colSpan={3} className="text-right text-gray-600">Qoldiq qarz:</td>

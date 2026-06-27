@@ -198,6 +198,9 @@ export default function SalesPage({ embedded = false }) {
   });
 
   const openReturn = (sale) => {
+    // Mijozning UMUMIY balansi (barcha savdolar bo'yicha): >0 qarzdor, <0 haqdor, 0 teng
+    const cust = customers?.customers?.find(c => String(c.id) === String(sale.customer_id));
+    const customerDebt = cust ? (parseFloat(cust.total_debt) || 0) : 0;
     setReturnForm({
       id: sale.id,
       product_name: sale.product_name,
@@ -209,6 +212,8 @@ export default function SalesPage({ embedded = false }) {
       quantity: parseInt(sale.quantity, 10) || 1,
       reason: '',
       condition: 'GOOD',
+      customerDebt, // mijozning umumiy qarzi (settlement variantlarini hal qiladi)
+      // Qarzi bor mijozga vozvrat — avtomatik "qarzdan ayirsin"; aks holda egasi tanlaydi
       settlement: 'DEBT', // 'DEBT' = qarzdan ayirsin · 'REFUND' = naqd qaytarsin · 'CREDIT' = haqdor bo'lsin
     });
   };
@@ -770,26 +775,37 @@ export default function SalesPage({ embedded = false }) {
                 onChange={e => setReturnForm(f => ({ ...f, reason: e.target.value }))}
               />
             </div>
-            {/* Summani qanday yopish — egasi tanlaydi */}
+            {/* Summani qanday yopish — mijozning qarz holatiga qarab */}
             <div>
               <label className="label">Summa qayerga ketsin? *</label>
-              <div className="space-y-2">
-                {[
-                  { key: 'DEBT',   title: '➖ Qarzdan ayirsin',     desc: 'Qarz shu summaga kamayadi (naqd pul berilmaydi)' },
-                  { key: 'REFUND', title: '💵 Naqd qaytarib berish', desc: 'Mijozga naqd pul qaytariladi' },
-                  { key: 'CREDIT', title: '⭐ Haqdor bo‘lib qolsin',  desc: 'Mijoz shu summaga haqdor bo‘ladi (keyingi xaridda)' },
-                ].map(opt => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    onClick={() => setReturnForm(f => ({ ...f, settlement: opt.key }))}
-                    className={`w-full rounded-xl border p-2.5 text-sm text-left transition ${returnForm.settlement === opt.key ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-300' : 'border-gray-200 hover:border-gray-300'}`}
-                  >
-                    <div className="font-medium text-gray-900">{opt.title}</div>
-                    <div className="text-[11px] text-gray-500">{opt.desc}</div>
-                  </button>
-                ))}
-              </div>
+              {(returnForm.customerDebt || 0) > 0 ? (
+                /* Qarzi bor mijoz → faqat qarzdan ayirish (avtomatik) */
+                <div className="rounded-xl border border-blue-400 bg-blue-50 ring-1 ring-blue-300 p-2.5 text-sm">
+                  <div className="font-medium text-gray-900">➖ Qarzdan ayirsin</div>
+                  <div className="text-[11px] text-gray-500">
+                    Mijozning qarzi bor ({fmt(returnForm.customerDebt)} so'm) — vozvrat summasi avtomatik qarzdan ayiriladi
+                  </div>
+                </div>
+              ) : (
+                /* Qarzi yo'q yoki haqdor → 3 ta variant */
+                <div className="space-y-2">
+                  {[
+                    { key: 'DEBT',   title: '➖ Qarzdan ayirsin',     desc: 'Qarz shu summaga kamayadi (naqd pul berilmaydi)' },
+                    { key: 'REFUND', title: '💵 Naqd qaytarib berish', desc: 'Mijozga naqd pul qaytariladi' },
+                    { key: 'CREDIT', title: '⭐ Haqdor bo‘lib qolsin',  desc: 'Mijoz shu summaga haqdor bo‘ladi (keyingi xaridda)' },
+                  ].map(opt => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setReturnForm(f => ({ ...f, settlement: opt.key }))}
+                      className={`w-full rounded-xl border p-2.5 text-sm text-left transition ${returnForm.settlement === opt.key ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-300' : 'border-gray-200 hover:border-gray-300'}`}
+                    >
+                      <div className="font-medium text-gray-900">{opt.title}</div>
+                      <div className="text-[11px] text-gray-500">{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Natija — tanlangan usul bo'yicha */}

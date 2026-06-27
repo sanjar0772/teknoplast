@@ -126,12 +126,19 @@ router.get('/:id', async (req, res, next) => {
       returns = rr.rows;
     } catch (e) { returns = []; }
 
+    const overallR = await query(
+      'SELECT COALESCE(SUM(total_amount - payment_amount), 0) as total_debt FROM sales WHERE customer_id = $1',
+      [req.params.id]
+    );
+    const overall_debt = parseFloat(overallR.rows[0]?.total_debt || 0);
+
     res.json({
       customer: customer.rows[0],
       sales: sales.rows,
       stats: stats.rows[0],
       payments: payments.rows,
       returns,
+      overall_debt,
     });
   } catch (err) { next(err); }
 });

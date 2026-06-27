@@ -887,6 +887,22 @@ export default function CustomersPage({ embedded = false }) {
                   </table>
                 </div>
               </div>}
+
+            {/* Joriy umumiy qarz — doim ko'rinadi */}
+            {detail.overall_debt != null && (
+              <div className={`rounded-xl p-3 flex items-center justify-between ${
+                detail.overall_debt > 0 ? 'bg-red-50 border border-red-200' : detail.overall_debt < 0 ? 'bg-blue-50 border border-blue-200' : 'bg-green-50 border border-green-200'
+              }`}>
+                <span className="text-sm font-medium text-gray-700">
+                  {detail.overall_debt > 0 ? '⚠️ Joriy umumiy qarz:' : detail.overall_debt < 0 ? '💎 Mijoz haqdor:' : '✅ Qarz yo\'q'}
+                </span>
+                <span className={`text-lg font-bold ${
+                  detail.overall_debt > 0 ? 'text-red-600' : detail.overall_debt < 0 ? 'text-blue-600' : 'text-green-600'
+                }`}>
+                  {detail.overall_debt < 0 ? '+' : ''}{fmt(Math.abs(detail.overall_debt))} so'm
+                </span>
+              </div>
+            )}
           </div>
         )}
       </Modal>

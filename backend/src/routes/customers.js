@@ -108,6 +108,38 @@ router.get('/:id', async (req, res, next) => {
     paySql += ' ORDER BY pm.payment_date DESC, pm.created_at DESC';
     const payments = await query(paySql, payP);
 
+    // "Savdo bilan to'langan" to'lovlar — savdo PAID/qisman yaratilganda payment_amount
+    // to'g'ridan-to'g'ri sales'ga yoziladi, lekin payments jadvalida yozuv qolmaydi.
+    // Shu yashirin to'lovni (payment_amount − shu savdoning payments yig'indisi) qo'shamiz,
+    // order_ref bo'yicha jamlab. Sana — savdo sanasi (to'lov savdo paytida bo'lgan).
+    const paidPerSaleR = await query(
+      `SELECT pm.sale_id AS sale_id, COALESCE(SUM(pm.amount), 0) AS paid
+       FROM payments pm JOIN sales s ON pm.sale_id = s.id
+       WHERE s.customer_id = $1 GROUP BY pm.sale_id`,
+      [req.params.id]
+    );
+    const paidMap = {};
+    paidPerSaleR.rows.forEach(r => { paidMap[r.sale_id] = parseFloat(r.paid) || 0; });
+    const directGroups = {};
+    for (const s of sales.rows) {
+      const direct = (parseFloat(s.payment_amount) || 0) - (paidMap[s.id] || 0);
+      if (direct > 0.01) {
+        const key = s.order_ref || s.id;
+        if (!directGroups[key]) {
+          directGroups[key] = { id: `direct-${key}`, amount: 0, method: 'CASH', payment_date: s.sale_date, product_name: s.product_name, item_count: 0 };
+        }
+        directGroups[key].amount += direct;
+        directGroups[key].item_count += 1;
+      }
+    }
+    const directPayments = Object.values(directGroups).map(g => ({
+      id: g.id, amount: g.amount, method: g.method, payment_date: g.payment_date,
+      notes: 'Savdo bilan to\'langan', direct: true,
+      product_name: g.item_count > 1 ? `${g.item_count} ta mahsulot` : g.product_name,
+    }));
+    const allPayments = [...payments.rows, ...directPayments]
+      .sort((a, b) => new Date(b.payment_date) - new Date(a.payment_date));
+
     let retSql = `SELECT sr.id, sr.sale_id, sr.quantity, sr.unit_price, sr.amount, sr.refund_amount,
                sr.reason, sr.return_date, sr.condition, sr.loss_amount, sr.rang,
                sr.settlement, sr.debt_deducted,
@@ -136,7 +168,7 @@ router.get('/:id', async (req, res, next) => {
       customer: customer.rows[0],
       sales: sales.rows,
       stats: stats.rows[0],
-      payments: payments.rows,
+      payments: allPayments,
       returns,
       overall_debt,
     });

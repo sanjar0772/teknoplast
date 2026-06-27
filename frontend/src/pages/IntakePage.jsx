@@ -371,6 +371,8 @@ function WorkerOutputTab({ canApprove }) {
       qc.invalidateQueries({ queryKey: ['production-pending'] });
       qc.invalidateQueries({ queryKey: ['production-daily', date] });
       qc.invalidateQueries({ queryKey: ['products'] });
+      // Ombor sahifasi (Ishlab chiqarish ombori tabi) ham darrov yangilanishi uchun
+      qc.invalidateQueries({ queryKey: ['inventory-products'] });
       refetchPending();
       refetchDaily();
     },

@@ -172,6 +172,7 @@ export default function CustomersPage({ embedded = false }) {
 
   // Mijoz xaridini qo'shish/tahrirlash formasi (null = yopiq, {id} bo'lsa = tahrir)
   const [saleForm, setSaleForm] = useState(null);
+  const [expandedSaleId, setExpandedSaleId] = useState(null);
   const [downloading, setDownloading] = useState(false);
 
   // Mijozning to'liq tarixini Excelda yuklab olish
@@ -720,35 +721,58 @@ export default function CustomersPage({ embedded = false }) {
               <div className="border border-gray-100 rounded-xl overflow-hidden">
                 <table className="table text-sm">
                   <thead>
-                    <tr><th>Sana</th><th>Mahsulot</th><th>Miqdor</th><th>Summa</th><th>Status</th><th>Amal</th></tr>
+                    <tr><th></th><th>Sana</th><th>Mahsulot</th><th>Miqdor</th><th>Summa</th><th>Status</th><th>Amal</th></tr>
                   </thead>
                   <tbody>
                     {!detail.sales.length ? (
-                      <tr><td colSpan={6} className="text-center py-6 text-gray-400">Hali xarid yo'q</td></tr>
-                    ) : detail.sales.map(s => (
-                      <tr key={s.id}>
-                        <td className="whitespace-nowrap">{new Date(s.sale_date).toLocaleDateString('uz-UZ')}</td>
-                        <td>{s.product_name}</td>
-                        <td>{s.quantity} {s.unit}</td>
-                        <td className="font-medium">{fmt(s.total_amount)}</td>
-                        <td><span className={STATUS_MAP[s.status]?.cls || 'badge-gray'}>{STATUS_MAP[s.status]?.label}</span></td>
-                        <td>
-                          <div className="flex gap-1">
-                            <button onClick={() => openEditSale(s)} className="btn-secondary btn-sm" title="Tahrirlash">
-                              <Pencil size={12} />
-                            </button>
-                            {isOwner() && (
-                              <button
-                                onClick={() => { if (confirm(`${s.product_name} — ${s.quantity} ${s.unit} xaridi o'chirilsinmi?`)) deleteSaleMutation.mutate(s.id); }}
-                                disabled={deleteSaleMutation.isPending}
-                                className="btn-danger btn-sm" title="O'chirish">
-                                <Trash2 size={12} />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                      <tr><td colSpan={7} className="text-center py-6 text-gray-400">Hali xarid yo'q</td></tr>
+                    ) : detail.sales.map(s => {
+                      const isOpen = expandedSaleId === s.id;
+                      return (
+                        <>
+                          <tr key={s.id}
+                            className="cursor-pointer hover:bg-blue-50/40 transition-colors"
+                            onClick={() => setExpandedSaleId(isOpen ? null : s.id)}>
+                            <td className="w-6 text-gray-400 text-xs select-none">{isOpen ? '▼' : '▶'}</td>
+                            <td className="whitespace-nowrap">{new Date(s.sale_date).toLocaleDateString('uz-UZ')}</td>
+                            <td className="font-medium text-gray-800">{s.product_name}</td>
+                            <td>{s.quantity} {s.unit}</td>
+                            <td className="font-semibold text-blue-700">{fmt(s.total_amount)} so'm</td>
+                            <td><span className={STATUS_MAP[s.status]?.cls || 'badge-gray'}>{STATUS_MAP[s.status]?.label}</span></td>
+                            <td onClick={e => e.stopPropagation()}>
+                              <div className="flex gap-1">
+                                <button onClick={() => openEditSale(s)} className="btn-secondary btn-sm" title="Tahrirlash">
+                                  <Pencil size={12} />
+                                </button>
+                                {isOwner() && (
+                                  <button
+                                    onClick={() => { if (confirm(`${s.product_name} — ${s.quantity} ${s.unit} xaridi o'chirilsinmi?`)) deleteSaleMutation.mutate(s.id); }}
+                                    disabled={deleteSaleMutation.isPending}
+                                    className="btn-danger btn-sm" title="O'chirish">
+                                    <Trash2 size={12} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                          {isOpen && (
+                            <tr key={`${s.id}-detail`} className="bg-blue-50/60">
+                              <td colSpan={7} className="px-4 py-3">
+                                <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-gray-700">
+                                  <div><span className="text-gray-400">Birlik narx:</span> <span className="font-semibold">{fmt(s.unit_price)} so'm</span></div>
+                                  <div><span className="text-gray-400">Jami summa:</span> <span className="font-semibold text-blue-700">{fmt(s.total_amount)} so'm</span></div>
+                                  <div><span className="text-gray-400">To'langan:</span> <span className="font-semibold text-green-700">{fmt(s.payment_amount)} so'm</span></div>
+                                  <div><span className="text-gray-400">Qoldiq qarz:</span> <span className={`font-semibold ${parseFloat(s.total_amount) - parseFloat(s.payment_amount) > 0 ? 'text-red-600' : 'text-green-600'}`}>{fmt(Math.max(0, parseFloat(s.total_amount) - parseFloat(s.payment_amount)))} so'm</span></div>
+                                  {s.rang && <div><span className="text-gray-400">Rang:</span> <span className="font-semibold">{s.rang}</span></div>}
+                                  {s.notes && <div className="col-span-2"><span className="text-gray-400">Izoh:</span> <span>{s.notes}</span></div>}
+                                  <div><span className="text-gray-400">ID:</span> <span className="text-gray-500">#{s.id}</span></div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

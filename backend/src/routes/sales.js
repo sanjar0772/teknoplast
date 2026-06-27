@@ -724,30 +724,30 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
     const costUnit = parseFloat(prodR.rows[0]?.cost_price) > 0 ? parseFloat(prodR.rows[0].cost_price) : unitPrice;
     const lossAmount = condition === 'DEFECTIVE' ? Math.round(costUnit * qty) : 0;
     const newQty = soldQty - qty;
-    const oldTotal = parseFloat(sale.total_amount) || 0;
-    const oldPayment = parseFloat(sale.payment_amount) || 0;
-    const oldDebt = Math.max(0, oldTotal - oldPayment);
-    const newTotal = Math.max(0, oldTotal - amount);
+    const newTotal = Math.max(0, (parseFloat(sale.total_amount) || 0) - amount);
+
+    // Mijozning UMUMIY qarzini hisoblash (barcha savdolar bo'yicha, shu savdo ham)
+    let totalDebtBefore = 0;
+    if (sale.customer_id) {
+      const debtR = await query('SELECT COALESCE(SUM(total_amount - payment_amount), 0) as total_debt FROM sales WHERE customer_id = $1', [sale.customer_id]);
+      totalDebtBefore = parseFloat(debtR.rows[0]?.total_debt || 0);
+    }
 
     // Moliyani to'g'rilash — egasi tanlagan usul bo'yicha
     let newPayment = parseFloat(sale.payment_amount) || 0;
     let refund = 0;
     if (settlement === 'REFUND') {
-      // Naqd pul qaytariladi (faqat to'langan summa doirasida; qolgani qarzdan ayiriladi)
       refund = Math.min(amount, newPayment);
       newPayment = newPayment - refund;
     } else if (settlement === 'BALANCE') {
-      // Naqd qaytarilmaydi — to'lov o'zgarmaydi. Qarz bo'lsa kamayadi,
-      // to'liq to'langan bo'lsa mijoz shu summaga haqdor bo'lib qoladi (kredit).
       refund = 0;
     } else {
-      // Eski xatti-harakat: ortiqcha to'lov bo'lsa avtomatik refund
       if (newPayment > newTotal) { refund = newPayment - newTotal; newPayment = newTotal; }
     }
 
-    // Qarzdan qancha ayirildi
-    const newDebt = Math.max(0, newTotal - newPayment);
-    const debtDeducted = Math.max(0, oldDebt - newDebt);
+    // Umumiy qarzdan qancha ayirildi (savdoga qaramasdan, umumiy qarziga qaraydi)
+    const debtReduction = amount - refund;
+    const debtDeducted = Math.max(0, Math.min(debtReduction, Math.max(0, totalDebtBefore)));
 
     // Status
     let newStatus;

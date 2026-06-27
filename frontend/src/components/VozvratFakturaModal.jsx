@@ -74,14 +74,25 @@ export default function VozvratFakturaModal({ ret, customerName, onClose }) {
               {defective && parseFloat(ret.loss_amount) > 0 && (
                 <div className="text-red-500 font-medium">Ziyon: {fmt(ret.loss_amount)} so'm</div>
               )}
+              {parseFloat(ret.debt_deducted) > 0 && (
+                <div className="text-emerald-600 font-medium">Qarzdan ayirildi: {fmt(ret.debt_deducted)} so'm</div>
+              )}
               {parseFloat(ret.refund_amount) > 0 && (
                 <div className="text-blue-600 font-medium">Qaytarilgan pul: {fmt(ret.refund_amount)} so'm</div>
               )}
               {ret.reason && <div>Sabab: <span className="text-gray-700">{ret.reason}</span></div>}
             </div>
-            <div className="text-right">
-              <span className="text-xs text-gray-400">Vozvrat summasi: </span>
-              <span className="text-xl font-bold text-blue-700">{fmt(ret.amount)} <span className="text-sm font-medium">so'm</span></span>
+            <div className="text-right space-y-1">
+              <div>
+                <span className="text-xs text-gray-400">Vozvrat summasi: </span>
+                <span className="text-xl font-bold text-blue-700">{fmt(ret.amount)} <span className="text-sm font-medium">so'm</span></span>
+              </div>
+              {parseFloat(ret.debt_deducted) > 0 && (
+                <div>
+                  <span className="text-xs text-gray-400">Qarzdan ayirildi: </span>
+                  <span className="text-lg font-bold text-emerald-600">{fmt(ret.debt_deducted)} <span className="text-sm font-medium">so'm</span></span>
+                </div>
+              )}
             </div>
           </div>
 

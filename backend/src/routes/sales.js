@@ -724,7 +724,10 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
     const costUnit = parseFloat(prodR.rows[0]?.cost_price) > 0 ? parseFloat(prodR.rows[0].cost_price) : unitPrice;
     const lossAmount = condition === 'DEFECTIVE' ? Math.round(costUnit * qty) : 0;
     const newQty = soldQty - qty;
-    const newTotal = Math.max(0, (parseFloat(sale.total_amount) || 0) - amount);
+    const oldTotal = parseFloat(sale.total_amount) || 0;
+    const oldPayment = parseFloat(sale.payment_amount) || 0;
+    const oldDebt = Math.max(0, oldTotal - oldPayment);
+    const newTotal = Math.max(0, oldTotal - amount);
 
     // Moliyani to'g'rilash — egasi tanlagan usul bo'yicha
     let newPayment = parseFloat(sale.payment_amount) || 0;
@@ -741,6 +744,10 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
       // Eski xatti-harakat: ortiqcha to'lov bo'lsa avtomatik refund
       if (newPayment > newTotal) { refund = newPayment - newTotal; newPayment = newTotal; }
     }
+
+    // Qarzdan qancha ayirildi
+    const newDebt = Math.max(0, newTotal - newPayment);
+    const debtDeducted = Math.max(0, oldDebt - newDebt);
 
     // Status
     let newStatus;
@@ -776,19 +783,19 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
         [newQty, newTotal, newPayment, newStatus, sale.id]
       );
 
-      // Vozvrat yozuvi (holati + ziyon bilan)
+      // Vozvrat yozuvi (holati + ziyon + qarzdan ayirilgani bilan)
       const retR = await client.query(
-        `INSERT INTO sale_returns (sale_id, product_id, customer_id, quantity, unit_price, amount, refund_amount, rang, reason, return_date, created_by, condition, loss_amount)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-        [sale.id, sale.product_id, sale.customer_id || null, qty, unitPrice, amount, refund, sale.rang || null, reason, new Date().toISOString().slice(0, 10), req.user.id, condition, lossAmount]
+        `INSERT INTO sale_returns (sale_id, product_id, customer_id, quantity, unit_price, amount, refund_amount, rang, reason, return_date, created_by, condition, loss_amount, settlement, debt_deducted)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+        [sale.id, sale.product_id, sale.customer_id || null, qty, unitPrice, amount, refund, sale.rang || null, reason, new Date().toISOString().slice(0, 10), req.user.id, condition, lossAmount, settlement || 'BALANCE', debtDeducted]
       );
 
       await client.query('COMMIT');
       logAudit(req, {
         action: 'SALE_RETURN', table: 'sales', recordId: sale.id,
-        newValues: { quantity: qty, amount, refund_amount: refund, reason, condition, settlement: settlement || 'AUTO', loss_amount: lossAmount, new_quantity: newQty, new_total: newTotal },
+        newValues: { quantity: qty, amount, refund_amount: refund, reason, condition, settlement: settlement || 'BALANCE', loss_amount: lossAmount, debt_deducted: debtDeducted, new_quantity: newQty, new_total: newTotal },
       });
-      res.status(201).json({ sale: upd.rows[0], return: retR.rows[0], refund_amount: refund, settlement: settlement || 'AUTO', amount, condition, loss_amount: lossAmount });
+      res.status(201).json({ sale: upd.rows[0], return: retR.rows[0], refund_amount: refund, settlement: settlement || 'BALANCE', amount, condition, loss_amount: lossAmount, debt_deducted: debtDeducted });
     } catch (e) {
       await client.query('ROLLBACK');
       throw e;

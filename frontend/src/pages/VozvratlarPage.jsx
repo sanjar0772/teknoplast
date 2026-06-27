@@ -120,7 +120,9 @@ export default function VozvratlarPage() {
     onSuccess: (results) => {
       const refund = results.reduce((a, r) => a + parseFloat(r?.refund_amount || 0), 0);
       const loss   = results.reduce((a, r) => a + parseFloat(r?.loss_amount || 0), 0);
+      const debtDed = results.reduce((a, r) => a + parseFloat(r?.debt_deducted || 0), 0);
       let msg = `${results.length} ta mahsulot qaytarildi`;
+      if (debtDed > 0) msg += ` · Qarzdan ayirildi: ${fmt(debtDed)} so'm`;
       if (refund > 0) msg += ` · Qaytariladigan pul: ${fmt(refund)} so'm`;
       if (loss > 0)   msg += ` · Ziyon: ${fmt(loss)} so'm`;
       toast.success(msg);
@@ -130,6 +132,8 @@ export default function VozvratlarPage() {
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['expenses'] });
+      qc.invalidateQueries({ queryKey: ['customers'] });
+      qc.invalidateQueries({ queryKey: ['customers-summary'] });
       closePicker();
     },
     onError: (err) => toast.error(err?.response?.data?.error || 'Vozvratda xato'),
@@ -324,19 +328,19 @@ export default function VozvratlarPage() {
             <thead>
               <tr>
                 <th>Sana</th><th>Mahsulot</th><th>Mijoz</th><th>Miqdor</th>
-                <th>Holati</th><th>Summa</th><th>Ziyon</th><th>Sabab</th><th>Xodim</th><th className="no-print">Amal</th>
+                <th>Holati</th><th>Summa</th><th>Qarzdan</th><th>Ziyon</th><th>Sabab</th><th className="no-print">Amal</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={10} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
+                <tr><td colSpan={11} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
               ) : !all.length ? (
-                <tr><td colSpan={10} className="text-center py-10 text-gray-400">
+                <tr><td colSpan={11} className="text-center py-10 text-gray-400">
                   <RotateCcw size={28} className="mx-auto mb-2 text-gray-300" />
                   Hali vozvrat (qaytarish) yo'q
                 </td></tr>
               ) : !returns.length ? (
-                <tr><td colSpan={10} className="text-center py-10 text-gray-400">
+                <tr><td colSpan={11} className="text-center py-10 text-gray-400">
                   <Search size={24} className="mx-auto mb-2 text-gray-300" />
                   "{search}" bo'yicha topilmadi
                 </td></tr>
@@ -357,6 +361,9 @@ export default function VozvratlarPage() {
                         : <span className="badge bg-emerald-50 text-emerald-600 flex items-center gap-1 w-fit"><Warehouse size={11} /> Omborga qaytdi</span>}
                     </td>
                     <td className="whitespace-nowrap">{fmt(r.amount)} so'm</td>
+                    <td className={`whitespace-nowrap font-semibold ${parseFloat(r.debt_deducted) > 0 ? 'text-emerald-600' : 'text-gray-300'}`}>
+                      {parseFloat(r.debt_deducted) > 0 ? `−${fmt(r.debt_deducted)}` : '—'}
+                    </td>
                     <td className={`whitespace-nowrap font-semibold ${defective ? 'text-red-600' : 'text-gray-300'}`}>
                       {defective ? `${fmt(r.loss_amount)} so'm` : '—'}
                     </td>

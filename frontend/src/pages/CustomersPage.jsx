@@ -161,7 +161,9 @@ export default function CustomersPage({ embedded = false }) {
       rows.push({ date: r.return_date, type: 'Vozvrat', label: `${r.product_name || 'Mahsulot'}${r.rang ? ' · ' + r.rang : ''}`, sign: -1, amount: amt });
     });
     rows.sort((a, b) => new Date(a.date) - new Date(b.date));
-    const qoldiq = detail.overall_debt != null ? detail.overall_debt : (xarid - tolov - vozvrat);
+    // Qoldiq qarz — tanlangan davr bo'yicha (backend stats.total_debt = SUM(total_amount − payment_amount)).
+    // Bu davrga mos qarzni beradi; pastdagi "Joriy umumiy qarz" esa overall_debt'dan alohida ko'rsatiladi.
+    const qoldiq = detail.stats?.total_debt != null ? parseFloat(detail.stats.total_debt) : (xarid - tolov - vozvrat);
     return { rows, totals: { xarid, tolov, vozvrat, qoldiq } };
   }, [detail]);
 
@@ -509,9 +511,9 @@ export default function CustomersPage({ embedded = false }) {
                 <p className="text-lg font-bold text-blue-700">{fmt(detail.stats.total_purchases)}</p>
               </div>
               <div className="card-sm text-center">
-                <p className="text-xs text-gray-500">{parseFloat(detail.overall_debt) < 0 ? 'Haqdor' : 'Qarz'}</p>
-                <p className={`text-lg font-bold ${parseFloat(detail.overall_debt) > 0 ? 'text-red-600' : parseFloat(detail.overall_debt) < 0 ? 'text-blue-600' : 'text-green-600'}`}>
-                  {parseFloat(detail.overall_debt) < 0 ? '+' + fmt(Math.abs(detail.overall_debt)) : fmt(detail.overall_debt)}
+                <p className="text-xs text-gray-500">{parseFloat(detail.stats.total_debt) < 0 ? 'Haqdor' : 'Qarz'}</p>
+                <p className={`text-lg font-bold ${parseFloat(detail.stats.total_debt) > 0 ? 'text-red-600' : parseFloat(detail.stats.total_debt) < 0 ? 'text-blue-600' : 'text-green-600'}`}>
+                  {parseFloat(detail.stats.total_debt) < 0 ? '+' + fmt(Math.abs(detail.stats.total_debt)) : fmt(detail.stats.total_debt)}
                 </p>
               </div>
             </div>

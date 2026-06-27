@@ -721,58 +721,88 @@ export default function CustomersPage({ embedded = false }) {
               <div className="border border-gray-100 rounded-xl overflow-hidden">
                 <table className="table text-sm">
                   <thead>
-                    <tr><th></th><th>Sana</th><th>Mahsulot</th><th>Miqdor</th><th>Summa</th><th>Status</th><th>Amal</th></tr>
+                    <tr><th></th><th>Sana</th><th>Mahsulotlar</th><th>Jami miqdor</th><th>Summa</th><th>Status</th><th>Amal</th></tr>
                   </thead>
                   <tbody>
                     {!detail.sales.length ? (
                       <tr><td colSpan={7} className="text-center py-6 text-gray-400">Hali xarid yo'q</td></tr>
-                    ) : detail.sales.map(s => {
-                      const isOpen = expandedSaleId === s.id;
-                      return (
-                        <>
-                          <tr key={s.id}
-                            className="cursor-pointer hover:bg-blue-50/40 transition-colors"
-                            onClick={() => setExpandedSaleId(isOpen ? null : s.id)}>
-                            <td className="w-6 text-gray-400 text-xs select-none">{isOpen ? '▼' : '▶'}</td>
-                            <td className="whitespace-nowrap">{new Date(s.sale_date).toLocaleDateString('uz-UZ')}</td>
-                            <td className="font-medium text-gray-800">{s.product_name}</td>
-                            <td>{s.quantity} {s.unit}</td>
-                            <td className="font-semibold text-blue-700">{fmt(s.total_amount)} so'm</td>
-                            <td><span className={STATUS_MAP[s.status]?.cls || 'badge-gray'}>{STATUS_MAP[s.status]?.label}</span></td>
-                            <td onClick={e => e.stopPropagation()}>
-                              <div className="flex gap-1">
-                                <button onClick={() => openEditSale(s)} className="btn-secondary btn-sm" title="Tahrirlash">
-                                  <Pencil size={12} />
-                                </button>
-                                {isOwner() && (
-                                  <button
-                                    onClick={() => { if (confirm(`${s.product_name} — ${s.quantity} ${s.unit} xaridi o'chirilsinmi?`)) deleteSaleMutation.mutate(s.id); }}
-                                    disabled={deleteSaleMutation.isPending}
-                                    className="btn-danger btn-sm" title="O'chirish">
-                                    <Trash2 size={12} />
-                                  </button>
+                    ) : (() => {
+                      // order_ref bo'yicha guruhlash — bitta operatsiya = bitta qator
+                      const groups = [];
+                      const seen = {};
+                      detail.sales.forEach(s => {
+                        const key = s.order_ref || String(s.id);
+                        if (!seen[key]) { seen[key] = []; groups.push({ key, items: seen[key] }); }
+                        seen[key].push(s);
+                      });
+                      return groups.map(({ key, items }) => {
+                        const isOpen = expandedSaleId === key;
+                        const totalAmt = items.reduce((a, s) => a + parseFloat(s.total_amount || 0), 0);
+                        const totalQty = items.reduce((a, s) => a + parseInt(s.quantity || 0), 0);
+                        const firstDate = items[0].sale_date;
+                        const multi = items.length > 1;
+                        const label = multi ? `${items.length} ta mahsulot` : items[0].product_name;
+                        const status = items[0].status;
+                        return (
+                          <Fragment key={key}>
+                            <tr
+                              className="cursor-pointer hover:bg-blue-50/40 transition-colors"
+                              onClick={() => setExpandedSaleId(isOpen ? null : key)}>
+                              <td className="w-6 text-gray-400 text-xs select-none">{isOpen ? '▼' : '▶'}</td>
+                              <td className="whitespace-nowrap">{new Date(firstDate).toLocaleDateString('uz-UZ')}</td>
+                              <td className="font-medium text-gray-800">{label}</td>
+                              <td>{multi ? `${totalQty} dona` : `${items[0].quantity} ${items[0].unit}`}</td>
+                              <td className="font-semibold text-blue-700">{fmt(totalAmt)} so'm</td>
+                              <td><span className={STATUS_MAP[status]?.cls || 'badge-gray'}>{STATUS_MAP[status]?.label}</span></td>
+                              <td onClick={e => e.stopPropagation()}>
+                                {!multi && (
+                                  <div className="flex gap-1">
+                                    <button onClick={() => openEditSale(items[0])} className="btn-secondary btn-sm" title="Tahrirlash">
+                                      <Pencil size={12} />
+                                    </button>
+                                    {isOwner() && (
+                                      <button
+                                        onClick={() => { if (confirm(`${items[0].product_name} — ${items[0].quantity} ${items[0].unit} xaridi o'chirilsinmi?`)) deleteSaleMutation.mutate(items[0].id); }}
+                                        disabled={deleteSaleMutation.isPending}
+                                        className="btn-danger btn-sm" title="O'chirish">
+                                        <Trash2 size={12} />
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
-                              </div>
-                            </td>
-                          </tr>
-                          {isOpen && (
-                            <tr key={`${s.id}-detail`} className="bg-blue-50/60">
-                              <td colSpan={7} className="px-4 py-3">
-                                <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-gray-700">
-                                  <div><span className="text-gray-400">Birlik narx:</span> <span className="font-semibold">{fmt(s.unit_price)} so'm</span></div>
-                                  <div><span className="text-gray-400">Jami summa:</span> <span className="font-semibold text-blue-700">{fmt(s.total_amount)} so'm</span></div>
-                                  <div><span className="text-gray-400">To'langan:</span> <span className="font-semibold text-green-700">{fmt(s.payment_amount)} so'm</span></div>
-                                  <div><span className="text-gray-400">Qoldiq qarz:</span> <span className={`font-semibold ${parseFloat(s.total_amount) - parseFloat(s.payment_amount) > 0 ? 'text-red-600' : 'text-green-600'}`}>{fmt(Math.max(0, parseFloat(s.total_amount) - parseFloat(s.payment_amount)))} so'm</span></div>
-                                  {s.rang && <div><span className="text-gray-400">Rang:</span> <span className="font-semibold">{s.rang}</span></div>}
-                                  {s.notes && <div className="col-span-2"><span className="text-gray-400">Izoh:</span> <span>{s.notes}</span></div>}
-                                  <div><span className="text-gray-400">ID:</span> <span className="text-gray-500">#{s.id}</span></div>
-                                </div>
                               </td>
                             </tr>
-                          )}
-                        </>
-                      );
-                    })}
+                            {isOpen && items.map(s => (
+                              <tr key={s.id} className="bg-blue-50/50">
+                                <td></td>
+                                <td className="text-xs text-gray-400 whitespace-nowrap">{new Date(s.sale_date).toLocaleDateString('uz-UZ')}</td>
+                                <td className="text-blue-800 text-xs">
+                                  — {s.product_name}{s.rang ? ` · ${s.rang}` : ''}
+                                </td>
+                                <td className="text-xs text-gray-600">{s.quantity} {s.unit}</td>
+                                <td className="text-xs font-semibold text-blue-700">{fmt(s.total_amount)} so'm</td>
+                                <td><span className={`${STATUS_MAP[s.status]?.cls || 'badge-gray'} text-xs`}>{STATUS_MAP[s.status]?.label}</span></td>
+                                <td onClick={e => e.stopPropagation()}>
+                                  <div className="flex gap-1">
+                                    <button onClick={() => openEditSale(s)} className="btn-secondary btn-sm" title="Tahrirlash">
+                                      <Pencil size={12} />
+                                    </button>
+                                    {isOwner() && (
+                                      <button
+                                        onClick={() => { if (confirm(`${s.product_name} — ${s.quantity} ${s.unit} xaridi o'chirilsinmi?`)) deleteSaleMutation.mutate(s.id); }}
+                                        disabled={deleteSaleMutation.isPending}
+                                        className="btn-danger btn-sm" title="O'chirish">
+                                        <Trash2 size={12} />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </Fragment>
+                        );
+                      });
+                    })()}
                   </tbody>
                 </table>
               </div>

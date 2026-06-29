@@ -86,6 +86,29 @@ export default function EmployeesPage() {
   const [qrEmployee, setQrEmployee] = useState(null);
   const [qrBulk, setQrBulk] = useState(false);
 
+  // Begiklarni ALOHIDA toza oynaga chiqarib chop etish/PDF — modal ichidagi scroll
+  // qutisi QR'larni kesib qo'ymasligi uchun. Yangi oynada hammasi to'liq chiqadi,
+  // u yerdan "Chop etish" yoki "PDF saqlash" qilib yuklab olsa bo'ladi.
+  const printBadges = () => {
+    const zone = document.querySelector('.badge-print-zone');
+    if (!zone) return;
+    const w = window.open('', '_blank', 'width=1000,height=800');
+    if (!w) { toast.error('Brauzer yangi oynani blokladi — ruxsat bering va qayta urining'); return; }
+    w.document.write(
+      '<!doctype html><html><head><meta charset="utf-8"><title>QR Begiklar</title>' +
+      '<style>' +
+      '@page { margin: 8mm; }' +
+      'body { margin:0; padding:8px; font-family: Arial, sans-serif; background:#fff; }' +
+      '.grid { display:flex; flex-wrap:wrap; gap:6px; align-content:flex-start; }' +
+      '.grid > div { page-break-inside: avoid; break-inside: avoid; }' +
+      'svg { display:block; }' +
+      '</style></head><body><div class="grid">' + zone.innerHTML + '</div>' +
+      '<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},400);};<\/script>' +
+      '</body></html>'
+    );
+    w.document.close();
+  };
+
   const { data, isLoading } = useQuery({
     queryKey: ['employees', filter],
     queryFn: () => employeesAPI.getAll({ ...filter, is_active: 'all' }).then(r => r.data),
@@ -306,12 +329,8 @@ export default function EmployeesPage() {
             </div>
             <div className="flex gap-2 mt-4">
               <button onClick={() => setQrEmployee(null)} className="btn-secondary flex-1">Yopish</button>
-              <button onClick={() => {
-                document.body.classList.add('printing-badges');
-                window.print();
-                setTimeout(() => document.body.classList.remove('printing-badges'), 1000);
-              }} className="btn-primary flex-1 flex items-center justify-center gap-1">
-                <Printer size={14} /> Chop etish
+              <button onClick={printBadges} className="btn-primary flex-1 flex items-center justify-center gap-1">
+                <Printer size={14} /> Chop etish / PDF
               </button>
             </div>
           </div>
@@ -341,12 +360,8 @@ export default function EmployeesPage() {
               </div>
               <div className="flex gap-2 mt-4">
                 <button onClick={() => setQrBulk(false)} className="btn-secondary flex-1">Yopish</button>
-                <button onClick={() => {
-                  document.body.classList.add('printing-badges');
-                  window.print();
-                  setTimeout(() => document.body.classList.remove('printing-badges'), 1000);
-                }} className="btn-primary flex-1 flex items-center justify-center gap-1">
-                  <Printer size={14} /> Hammasini chop etish
+                <button onClick={printBadges} className="btn-primary flex-1 flex items-center justify-center gap-1">
+                  <Printer size={14} /> Hammasini chop etish / PDF
                 </button>
               </div>
             </div>

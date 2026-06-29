@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause } from 'lucide-react';
+import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee } from 'lucide-react';
 import { machinesAPI, employeesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -31,6 +31,16 @@ function Modal({ open, onClose, title, children }) {
 const fmtDT = (s) => s
   ? new Date(String(s).replace(' ', 'T')).toLocaleString('uz-UZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
   : '—';
+
+// Tushlik (obed) — Toshkent vaqti bo'yicha: kunduzi 12:00–13:00, tunda 00:00–01:00.
+// Smenadagilar shu vaqtda alishadi. Vaqt o'tgach o'zi yo'qoladi.
+function getBreakInfo(date) {
+  const hhmm = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tashkent', hour: '2-digit', minute: '2-digit', hour12: false }).format(date);
+  const hh = parseInt(hhmm.slice(0, 2), 10);
+  if (hh === 12) return { active: true, range: '12:00–13:00', ends: '13:00', label: 'Kunduzgi tushlik' };
+  if (hh === 0)  return { active: true, range: '00:00–01:00', ends: '01:00', label: 'Tungi tushlik' };
+  return { active: false };
+}
 
 // Cycle-time modal — stanok → mahsulotlar → sekund/dona
 function CycleTimeModal({ machine, canWrite, onClose }) {
@@ -242,6 +252,14 @@ export default function MachinesPage() {
   const [cycleFor, setCycleFor] = useState(null);     // cycle-time modal
   const [downtimeFor, setDowntimeFor] = useState(null); // holat/nosozlik modal
   const [choosing, setChoosing] = useState(false);    // "Stanok yoki Mashina" tanlash
+  const [now, setNow] = useState(() => new Date());   // tushlik vaqtini jonli kuzatish
+
+  // Har 30 soniyada vaqtni yangilab, tushlik holatini avtomatik yoqib/o'chiramiz
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(t);
+  }, []);
+  const breakInfo = getBreakInfo(now);
 
   const { data, isLoading } = useQuery({
     queryKey: ['machines'],
@@ -307,6 +325,16 @@ export default function MachinesPage() {
         )}
       </div>
 
+      {/* Tushlik (obed) — vaqt kelganda avtomatik chiqadi */}
+      {breakInfo.active && (
+        <div className="rounded-xl bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2.5 flex items-center gap-2 text-sm font-medium">
+          <Coffee size={16} className="shrink-0" />
+          <span>
+            Hozir tushlik vaqti (obed): <strong>{breakInfo.range}</strong>. Stanoklar <strong>{breakInfo.ends}</strong> da ishga qaytadi — smenadagilar shu vaqtda alishishi mumkin.
+          </span>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         {[
@@ -367,6 +395,9 @@ export default function MachinesPage() {
                       }`}>
                       {m.is_running ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
                     </button>
+                  )}
+                  {breakInfo.active && (
+                    <span className="badge bg-amber-100 text-amber-700 flex items-center gap-1"><Coffee size={11} /> Tushlik</span>
                   )}
                   <span className={st.cls}>{st.label}</span>
                 </div>

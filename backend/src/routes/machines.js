@@ -11,7 +11,10 @@ router.use(authenticate);
 router.get('/', async (req, res, next) => {
   try {
     const result = await query(`
-      SELECT m.*, e.name as operator_name
+      SELECT m.*, e.name as operator_name,
+        (SELECT d.status FROM machine_downtime d WHERE d.machine_id = m.id AND d.ended_at IS NULL ORDER BY d.started_at DESC LIMIT 1) AS pause_status,
+        (SELECT d.reason FROM machine_downtime d WHERE d.machine_id = m.id AND d.ended_at IS NULL ORDER BY d.started_at DESC LIMIT 1) AS pause_reason,
+        (SELECT d.mold_minutes FROM machine_downtime d WHERE d.machine_id = m.id AND d.ended_at IS NULL ORDER BY d.started_at DESC LIMIT 1) AS pause_mold_minutes
       FROM machines m LEFT JOIN employees e ON m.operator_id = e.id
       WHERE m.is_active = true ORDER BY m.name
     `);
@@ -81,16 +84,48 @@ router.put('/:id/status', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'),
   } catch (err) { next(err); }
 });
 
-// PUT /api/machines/:id/running — play/pause toggle (ishlamoqda ↔ to'xtatilgan)
+// PUT /api/machines/:id/running — play/pause. Play = ishga tushadi (WORKING).
+// Pause = to'xtaydi + sabab: NOSOZ / BUZILGAN / QOLIP (qalip almashish, o'rtacha vaqt bilan).
 router.put('/:id/running', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async (req, res, next) => {
   try {
+    const id = req.params.id;
     const is_running = req.body.is_running ? 1 : 0;
-    const result = await query(
-      'UPDATE machines SET is_running=$1, updated_at=NOW() WHERE id=$2 RETURNING *',
-      [is_running, req.params.id]
+
+    if (is_running) {
+      // Play — ochiq to'xtash yozuvini yopib, holatni WORKING qilamiz
+      await query('UPDATE machine_downtime SET ended_at=NOW() WHERE machine_id=$1 AND ended_at IS NULL', [id]);
+      const r = await query(
+        "UPDATE machines SET is_running=1, status='WORKING', updated_at=NOW() WHERE id=$1 RETURNING *", [id]
+      );
+      if (!r.rows.length) return res.status(404).json({ error: 'Mashina topilmadi' });
+      return res.json({ machine: r.rows[0] });
+    }
+
+    // Pause — sababga qarab
+    const pauseKind = req.body.pause_kind || 'NOSOZ'; // NOSOZ | BUZILGAN | QOLIP
+    const reason = (req.body.reason || '').trim() || null;
+    const moldMinutes = (req.body.mold_minutes != null && req.body.mold_minutes !== '')
+      ? parseFloat(req.body.mold_minutes) : null;
+
+    // Downtime statusi + stanok sog'lik holati (QOLIP — sog'lik holatiga tegmaydi)
+    let dtStatus = 'SERVICE', machineStatus = null;
+    if (pauseKind === 'BUZILGAN') { dtStatus = 'BROKEN'; machineStatus = 'BROKEN'; }
+    else if (pauseKind === 'NOSOZ') { dtStatus = 'SERVICE'; machineStatus = 'SERVICE'; }
+    else if (pauseKind === 'QOLIP') { dtStatus = 'MOLD'; machineStatus = null; }
+
+    const upd = machineStatus
+      ? await query('UPDATE machines SET is_running=0, status=$1, updated_at=NOW() WHERE id=$2 RETURNING *', [machineStatus, id])
+      : await query('UPDATE machines SET is_running=0, updated_at=NOW() WHERE id=$1 RETURNING *', [id]);
+    if (!upd.rows.length) return res.status(404).json({ error: 'Mashina topilmadi' });
+
+    // Bitta aktiv to'xtash yozuvi: avvalgisini yopib, yangisini ochamiz
+    await query('UPDATE machine_downtime SET ended_at=NOW() WHERE machine_id=$1 AND ended_at IS NULL', [id]);
+    await query(
+      `INSERT INTO machine_downtime (machine_id, status, reason, started_at, mold_minutes, recorded_by)
+       VALUES ($1,$2,$3,NOW(),$4,$5)`,
+      [id, dtStatus, reason, moldMinutes, req.user.id]
     );
-    if (!result.rows.length) return res.status(404).json({ error: 'Mashina topilmadi' });
-    res.json({ machine: result.rows[0] });
+    res.json({ machine: upd.rows[0] });
   } catch (err) { next(err); }
 });
 

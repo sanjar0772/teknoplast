@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee } from 'lucide-react';
+import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw } from 'lucide-react';
 import { machinesAPI, employeesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -228,7 +228,9 @@ function DowntimeModal({ machine, canWrite, onClose }) {
               {rows.map(d => (
                 <div key={d.id} className="text-sm border-b border-gray-50 last:border-0 pb-1.5">
                   <div className="flex items-center justify-between">
-                    <span className={`badge ${d.status === 'BROKEN' ? 'badge-red' : 'badge-yellow'}`}>{STATUS[d.status]?.label || d.status}</span>
+                    <span className={`badge ${d.status === 'BROKEN' ? 'badge-red' : d.status === 'MOLD' ? 'badge-blue' : 'badge-yellow'}`}>
+                      {d.status === 'MOLD' ? 'Qalip almashish' : (STATUS[d.status]?.label || d.status)}
+                    </span>
                     <span className="text-xs text-gray-400">{d.ended_at ? 'Yopilgan' : 'Davom etmoqda'}</span>
                   </div>
                   <div className="text-xs text-gray-500 mt-0.5">{fmtDT(d.started_at)} → {d.ended_at ? fmtDT(d.ended_at) : '...'}</div>
@@ -244,6 +246,65 @@ function DowntimeModal({ machine, canWrite, onClose }) {
   );
 }
 
+// Pause sababi — Nosoz / Buzilgan / Qalip almashmoqda (qalipga o'rtacha vaqt)
+function PauseReasonModal({ machine, pending, onConfirm, onClose }) {
+  const [kind, setKind] = useState('NOSOZ');
+  const [reason, setReason] = useState('');
+  const [moldMin, setMoldMin] = useState('');
+
+  const opts = [
+    { v: 'NOSOZ',    label: 'Nosoz',             Icon: Wrench,        on: 'border-yellow-400 bg-yellow-50 text-yellow-700' },
+    { v: 'BUZILGAN', label: 'Buzilgan',          Icon: AlertTriangle, on: 'border-red-400 bg-red-50 text-red-700' },
+    { v: 'QOLIP',    label: 'Qalip almashmoqda', Icon: RefreshCw,     on: 'border-blue-400 bg-blue-50 text-blue-700' },
+  ];
+
+  const confirm = () => {
+    if (kind === 'QOLIP' && !(parseFloat(moldMin) >= 0)) return toast.error("Qalip almashish vaqtini kiriting (daqiqa)");
+    const composed = kind === 'QOLIP'
+      ? `Qalip almashmoqda${moldMin ? ` (~${moldMin} daqiqa)` : ''}${reason ? ' — ' + reason : ''}`
+      : (reason || (kind === 'BUZILGAN' ? 'Buzilgan' : 'Nosoz'));
+    onConfirm({ pause_kind: kind, reason: composed, mold_minutes: kind === 'QOLIP' ? moldMin : null });
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`⏸ To'xtatish — ${machine.name}`}>
+      <div className="space-y-4">
+        <p className="text-sm text-gray-500">Stanok nima sababdan to'xtatildi?</p>
+        <div className="grid grid-cols-3 gap-2">
+          {opts.map(({ v, label, Icon, on }) => (
+            <button key={v} onClick={() => setKind(v)}
+              className={`flex flex-col items-center gap-1.5 py-3 px-1 rounded-xl border text-xs font-medium transition text-center ${
+                kind === v ? on + ' ring-2 ring-offset-1 ring-blue-200' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+              }`}>
+              <Icon size={18} /> {label}
+            </button>
+          ))}
+        </div>
+
+        {kind === 'QOLIP' && (
+          <div>
+            <label className="label text-xs">O'rtacha qalip almashish vaqti (daqiqa) *</label>
+            <input type="number" min="0" step="1" value={moldMin}
+              onChange={e => setMoldMin(e.target.value)} className="input" placeholder="masalan: 15" autoFocus />
+          </div>
+        )}
+
+        <div>
+          <label className="label text-xs">Izoh (ixtiyoriy)</label>
+          <input value={reason} onChange={e => setReason(e.target.value)} className="input" placeholder="Qo'shimcha izoh..." />
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <button onClick={onClose} className="btn-secondary flex-1">Bekor</button>
+          <button onClick={confirm} disabled={pending} className="btn-primary flex-1">
+            {pending ? 'Saqlanmoqda...' : "To'xtatish"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function MachinesPage() {
   const { isOwner, isProductionHead, isCycleTime } = useAuthStore();
   const qc = useQueryClient();
@@ -252,6 +313,7 @@ export default function MachinesPage() {
   const [cycleFor, setCycleFor] = useState(null);     // cycle-time modal
   const [downtimeFor, setDowntimeFor] = useState(null); // holat/nosozlik modal
   const [choosing, setChoosing] = useState(false);    // "Stanok yoki Mashina" tanlash
+  const [pauseFor, setPauseFor] = useState(null);     // pause sababi modali (qaysi stanok)
   const [now, setNow] = useState(() => new Date());   // tushlik vaqtini jonli kuzatish
 
   // Har 30 soniyada vaqtni yangilab, tushlik holatini avtomatik yoqib/o'chiramiz
@@ -285,10 +347,13 @@ export default function MachinesPage() {
     onSuccess: () => { toast.success('Status yangilandi'); qc.invalidateQueries({ queryKey: ['machines'] }); },
   });
 
-  // Play/pause — stanok hozir ishlamoqdami yoki to'xtatilgan
+  // Play/pause — play=ishga tushadi, pause=sabab bilan to'xtaydi
   const runningMutation = useMutation({
-    mutationFn: ({ id, is_running }) => machinesAPI.setRunning(id, is_running),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['machines'] }); },
+    mutationFn: (payload) => machinesAPI.setRunning(payload.id, payload),
+    onSuccess: (_d, payload) => {
+      qc.invalidateQueries({ queryKey: ['machines'] });
+      toast.success(payload.is_running ? 'Ishga tushdi' : "To'xtatildi");
+    },
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
@@ -385,7 +450,7 @@ export default function MachinesPage() {
                 <div className="flex items-center gap-2">
                   {canWrite && (
                     <button
-                      onClick={() => runningMutation.mutate({ id: m.id, is_running: m.is_running ? 0 : 1 })}
+                      onClick={() => m.is_running ? setPauseFor(m) : runningMutation.mutate({ id: m.id, is_running: 1 })}
                       disabled={runningMutation.isPending}
                       title={m.is_running ? "To'xtatish" : 'Ishga tushirish'}
                       className={`w-8 h-8 rounded-full flex items-center justify-center transition shrink-0 ${
@@ -402,6 +467,18 @@ export default function MachinesPage() {
                   <span className={st.cls}>{st.label}</span>
                 </div>
               </div>
+
+              {/* To'xtatilgan bo'lsa — sababi */}
+              {!m.is_running && m.pause_reason && (
+                <div className={`mb-3 text-xs rounded-lg border px-2.5 py-1.5 flex items-center gap-1.5 ${
+                  m.pause_status === 'BROKEN' ? 'bg-red-50 border-red-200 text-red-700'
+                  : m.pause_status === 'MOLD' ? 'bg-blue-50 border-blue-200 text-blue-700'
+                  : 'bg-yellow-50 border-yellow-200 text-yellow-700'
+                }`}>
+                  {m.pause_status === 'MOLD' ? <RefreshCw size={12} className="shrink-0" /> : <Pause size={12} className="shrink-0" />}
+                  <span><span className="font-semibold">To'xtatildi:</span> {m.pause_reason}</span>
+                </div>
+              )}
 
               <div className="space-y-1.5 text-sm">
                 <div className="flex justify-between">
@@ -526,6 +603,14 @@ export default function MachinesPage() {
 
       {cycleFor && <CycleTimeModal machine={cycleFor} canWrite={canWrite} onClose={() => setCycleFor(null)} />}
       {downtimeFor && <DowntimeModal machine={downtimeFor} canWrite={canWrite} onClose={() => setDowntimeFor(null)} />}
+      {pauseFor && (
+        <PauseReasonModal
+          machine={pauseFor}
+          pending={runningMutation.isPending}
+          onClose={() => setPauseFor(null)}
+          onConfirm={(payload) => { runningMutation.mutate({ id: pauseFor.id, is_running: 0, ...payload }); setPauseFor(null); }}
+        />
+      )}
     </div>
   );
 }

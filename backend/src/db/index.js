@@ -832,6 +832,8 @@ if (USE_PG) {
       `CREATE TABLE IF NOT EXISTS product_bom (product_id TEXT NOT NULL, component_id TEXT NOT NULL, qty REAL NOT NULL DEFAULT 1, PRIMARY KEY (product_id, component_id))`,
       // Stanok play/pause — hozir ishlamoqdami (1) yoki to'xtatilgan (0). Holat (status) dan alohida.
       `ALTER TABLE machines ADD COLUMN is_running INTEGER DEFAULT 0`,
+      // Qalip almashish uchun o'rtacha vaqt (daqiqa) — pause sababi QOLIP bo'lganda
+      `ALTER TABLE machine_downtime ADD COLUMN mold_minutes REAL`,
     ];
     for (const m of migrations) {
       try {

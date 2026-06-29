@@ -830,6 +830,8 @@ if (USE_PG) {
       `ALTER TABLE products ADD COLUMN kind TEXT DEFAULT 'TAYYOR'`,
       // BOM: tayyor mahsulot tarkibi — qaysi komponentlardan iborat va nechta
       `CREATE TABLE IF NOT EXISTS product_bom (product_id TEXT NOT NULL, component_id TEXT NOT NULL, qty REAL NOT NULL DEFAULT 1, PRIMARY KEY (product_id, component_id))`,
+      // Stanok play/pause — hozir ishlamoqdami (1) yoki to'xtatilgan (0). Holat (status) dan alohida.
+      `ALTER TABLE machines ADD COLUMN is_running INTEGER DEFAULT 0`,
     ];
     for (const m of migrations) {
       try {

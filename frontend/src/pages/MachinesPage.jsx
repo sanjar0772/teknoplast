@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2 } from 'lucide-react';
+import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause } from 'lucide-react';
 import { machinesAPI, employeesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -267,6 +267,13 @@ export default function MachinesPage() {
     onSuccess: () => { toast.success('Status yangilandi'); qc.invalidateQueries({ queryKey: ['machines'] }); },
   });
 
+  // Play/pause — stanok hozir ishlamoqdami yoki to'xtatilgan
+  const runningMutation = useMutation({
+    mutationFn: ({ id, is_running }) => machinesAPI.setRunning(id, is_running),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['machines'] }); },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+
   const { register, handleSubmit, reset, setValue } = useForm();
 
   const openEdit = (m) => {
@@ -347,7 +354,22 @@ export default function MachinesPage() {
                     </p>
                   </div>
                 </div>
-                <span className={st.cls}>{st.label}</span>
+                <div className="flex items-center gap-2">
+                  {canWrite && (
+                    <button
+                      onClick={() => runningMutation.mutate({ id: m.id, is_running: m.is_running ? 0 : 1 })}
+                      disabled={runningMutation.isPending}
+                      title={m.is_running ? "To'xtatish" : 'Ishga tushirish'}
+                      className={`w-8 h-8 rounded-full flex items-center justify-center transition shrink-0 ${
+                        m.is_running
+                          ? 'bg-blue-600 text-white hover:bg-blue-700'
+                          : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                      }`}>
+                      {m.is_running ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
+                    </button>
+                  )}
+                  <span className={st.cls}>{st.label}</span>
+                </div>
               </div>
 
               <div className="space-y-1.5 text-sm">

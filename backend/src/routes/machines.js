@@ -81,6 +81,19 @@ router.put('/:id/status', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'),
   } catch (err) { next(err); }
 });
 
+// PUT /api/machines/:id/running — play/pause toggle (ishlamoqda ↔ to'xtatilgan)
+router.put('/:id/running', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async (req, res, next) => {
+  try {
+    const is_running = req.body.is_running ? 1 : 0;
+    const result = await query(
+      'UPDATE machines SET is_running=$1, updated_at=NOW() WHERE id=$2 RETURNING *',
+      [is_running, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Mashina topilmadi' });
+    res.json({ machine: result.rows[0] });
+  } catch (err) { next(err); }
+});
+
 // ── Cycle-time (stanok → mahsulot → sekund/dona) ──────────────────────────
 // GET /api/machines/:id/cycle-times
 router.get('/:id/cycle-times', async (req, res, next) => {

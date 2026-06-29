@@ -44,61 +44,47 @@ router.get('/dbinfo', (req, res) => {
   }
 });
 
-// GET /api/admin/backups — barcha zaxira fayllarini ochib, har birida
-// nechta mahsulot va nechta KOMPONENT borligini aytadi (yo'qolgan ma'lumotni topish uchun)
-router.get('/backups', async (req, res, next) => {
+// GET /api/admin/inspect?file=NAME — BITTA fayl(ni) ochib, undagi mahsulot/komponent/
+// sotuv/mijoz sonini aytadi. file berilmasa joriy bazani tekshiradi.
+// Bittadan tekshiriladi — 14 ta 27MB faylni birato yuklash xotirani to'ldiradi.
+router.get('/inspect', async (req, res, next) => {
   try {
     if (req.user.role !== 'OWNER') return res.status(403).json({ error: 'Ruxsat yo\'q' });
 
+    let file = DB_PATH;
+    if (req.query.file) {
+      const name = path.basename(String(req.query.file)); // path traversal himoyasi
+      file = name === 'teknoplast.sqlite' ? DB_PATH
+        : name === 'teknoplast.sqlite.backup' ? DB_PATH + '.backup'
+        : path.join(BACKUP_DIR, name);
+    }
+    if (!fs.existsSync(file)) return res.status(404).json({ error: 'Fayl topilmadi', file: path.basename(file) });
+
     const initSqlJs = require('sql.js');
     const SQL = await initSqlJs();
+    const stat = fs.statSync(file);
+    const buf = fs.readFileSync(file);
+    const db = new SQL.Database(buf);
+    const num = (sql) => { try { const r = db.exec(sql); return r[0]?.values?.[0]?.[0] ?? 0; } catch { return null; } };
+    const list = (sql) => { try { const r = db.exec(sql); return (r[0]?.values || []).map(v => v[0]); } catch { return []; } };
 
-    // Tekshiriladigan fayllar: joriy baza, .backup, va backups/ papkasidagilar
-    const candidates = [];
-    [DB_PATH, DB_PATH + '.backup'].forEach(f => { try { if (fs.existsSync(f)) candidates.push(f); } catch {} });
-    let backupFiles = [];
-    try {
-      if (fs.existsSync(BACKUP_DIR)) {
-        backupFiles = fs.readdirSync(BACKUP_DIR).filter(f => f.endsWith('.sqlite')).sort();
-        backupFiles.forEach(f => candidates.push(path.join(BACKUP_DIR, f)));
-      }
-    } catch {}
-
-    const inspect = (file) => {
-      try {
-        const stat = fs.statSync(file);
-        const buf = fs.readFileSync(file);
-        const db = new SQL.Database(buf);
-        const num = (sql) => { try { const r = db.exec(sql); return r[0]?.values?.[0]?.[0] ?? 0; } catch { return 0; } };
-        const total = num('SELECT COUNT(*) FROM products');
-        const komponent = num("SELECT COUNT(*) FROM products WHERE kind='KOMPONENT'");
-        let komponentNames = [];
-        try {
-          const r = db.exec("SELECT name FROM products WHERE kind='KOMPONENT' ORDER BY name LIMIT 15");
-          komponentNames = (r[0]?.values || []).map(v => v[0]);
-        } catch {}
-        db.close();
-        return {
-          file: path.basename(file),
-          size_kb: Math.round(stat.size / 1024),
-          modified: stat.mtime.toISOString(),
-          total_products: total,
-          komponent_count: komponent,
-          komponent_sample: komponentNames,
-        };
-      } catch (e) {
-        return { file: path.basename(file), error: e.message };
-      }
+    const out = {
+      file: path.basename(file),
+      size_kb: Math.round(stat.size / 1024),
+      modified: stat.mtime.toISOString(),
+      total_products: num('SELECT COUNT(*) FROM products'),
+      komponent_count: num("SELECT COUNT(*) FROM products WHERE kind='KOMPONENT'"),
+      komponent_sample: list("SELECT name FROM products WHERE kind='KOMPONENT' ORDER BY name LIMIT 20"),
+      sales_count: num('SELECT COUNT(*) FROM sales'),
+      customers_count: num('SELECT COUNT(*) FROM customers'),
+      employees_count: num('SELECT COUNT(*) FROM employees'),
+      production_count: num('SELECT COUNT(*) FROM employee_production'),
     };
-
-    res.json({
-      db_path: DB_PATH,
-      backup_dir: BACKUP_DIR,
-      backup_dir_exists: (() => { try { return fs.existsSync(BACKUP_DIR); } catch { return false; } })(),
-      backup_file_count: backupFiles.length,
-      checked: candidates.map(inspect),
-    });
-  } catch (err) { next(err); }
+    db.close();
+    res.json(out);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

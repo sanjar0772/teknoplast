@@ -16,6 +16,34 @@ const DB_PATH = process.env.DATABASE_PATH || path.join(process.cwd(), 'teknoplas
 const DB_DIR = path.dirname(DB_PATH);
 const BACKUP_DIR = path.join(DB_DIR, 'backups');
 
+// GET /api/admin/dbinfo — YENGIL diagnostika (sql.js YO'Q): baza qayerda saqlanyapti,
+// fayl bormi, hajmi, zaxiralar bormi. Ma'lumot nega yo'qolayotganini aniqlash uchun.
+router.get('/dbinfo', (req, res) => {
+  try {
+    if (req.user.role !== 'OWNER') return res.status(403).json({ error: 'Ruxsat yo\'q' });
+    const safe = (fn, dflt) => { try { return fn(); } catch { return dflt; } };
+    const fileInfo = (f) => {
+      if (!safe(() => fs.existsSync(f), false)) return { exists: false };
+      const st = safe(() => fs.statSync(f), null);
+      return { exists: true, size_kb: st ? Math.round(st.size / 1024) : null, modified: st ? st.mtime.toISOString() : null };
+    };
+    res.json({
+      DATABASE_PATH_env: process.env.DATABASE_PATH || null,   // null bo'lsa — DOIMIY disk sozlanmagan!
+      USE_POSTGRES: process.env.USE_POSTGRES || null,
+      resolved_db_path: DB_PATH,
+      db_dir: DB_DIR,
+      db_file: fileInfo(DB_PATH),
+      db_backup_file: fileInfo(DB_PATH + '.backup'),
+      db_dir_files: safe(() => fs.readdirSync(DB_DIR), []),
+      backup_dir: BACKUP_DIR,
+      backup_dir_exists: safe(() => fs.existsSync(BACKUP_DIR), false),
+      backup_files: safe(() => fs.existsSync(BACKUP_DIR) ? fs.readdirSync(BACKUP_DIR) : [], []),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/admin/backups — barcha zaxira fayllarini ochib, har birida
 // nechta mahsulot va nechta KOMPONENT borligini aytadi (yo'qolgan ma'lumotni topish uchun)
 router.get('/backups', async (req, res, next) => {

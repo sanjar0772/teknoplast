@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Users, Trash2, QrCode, Printer } from 'lucide-react';
+import { Plus, X, Users, Trash2, QrCode, Download } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { employeesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
@@ -86,27 +86,65 @@ export default function EmployeesPage() {
   const [qrEmployee, setQrEmployee] = useState(null);
   const [qrBulk, setQrBulk] = useState(false);
 
-  // Begiklarni ALOHIDA toza oynaga chiqarib chop etish/PDF — modal ichidagi scroll
-  // qutisi QR'larni kesib qo'ymasligi uchun. Yangi oynada hammasi to'liq chiqadi,
-  // u yerdan "Chop etish" yoki "PDF saqlash" qilib yuklab olsa bo'ladi.
-  const printBadges = () => {
+  // Begiklarni BITTA tugma bilan to'g'ridan-to'g'ri rasm (PNG) qilib yuklab olish.
+  // Yangi oyna OCHILMAYDI — QR to'liq chiqadi, keyin chop etib bejik qilib tarqatasiz.
+  const downloadBadges = async (emps) => {
     const zone = document.querySelector('.badge-print-zone');
-    if (!zone) return;
-    const w = window.open('', '_blank', 'width=1000,height=800');
-    if (!w) { toast.error('Brauzer yangi oynani blokladi — ruxsat bering va qayta urining'); return; }
-    w.document.write(
-      '<!doctype html><html><head><meta charset="utf-8"><title>QR Begiklar</title>' +
-      '<style>' +
-      '@page { margin: 8mm; }' +
-      'body { margin:0; padding:8px; font-family: Arial, sans-serif; background:#fff; }' +
-      '.grid { display:flex; flex-wrap:wrap; gap:6px; align-content:flex-start; }' +
-      '.grid > div { page-break-inside: avoid; break-inside: avoid; }' +
-      'svg { display:block; }' +
-      '</style></head><body><div class="grid">' + zone.innerHTML + '</div>' +
-      '<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},400);};<\/script>' +
-      '</body></html>'
-    );
-    w.document.close();
+    if (!zone || !emps?.length) return;
+    const svgs = zone.querySelectorAll('svg'); // har begikdagi QR (tartibi emps bilan bir xil)
+    const loadImg = (svgEl) => new Promise((res, rej) => {
+      const xml = new XMLSerializer().serializeToString(svgEl);
+      const url = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(xml)));
+      const im = new Image();
+      im.onload = () => res(im);
+      im.onerror = rej;
+      im.src = url;
+    });
+    try {
+      const qrImgs = await Promise.all(Array.from(svgs).map(loadImg));
+      const S = 3;                       // yuqori sifat (3x)
+      const bw = 260, bh = 210, gap = 10;
+      const cols = emps.length === 1 ? 1 : Math.min(3, emps.length);
+      const rows = Math.ceil(emps.length / cols);
+      const W = cols * bw + (cols + 1) * gap;
+      const H = rows * bh + (rows + 1) * gap;
+      const canvas = document.createElement('canvas');
+      canvas.width = W * S; canvas.height = H * S;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(S, S);
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+      ctx.textAlign = 'center';
+      emps.forEach((emp, i) => {
+        const col = i % cols, row = Math.floor(i / cols);
+        const x = gap + col * (bw + gap), y = gap + row * (bh + gap);
+        ctx.fillStyle = '#fff'; ctx.fillRect(x, y, bw, bh);
+        ctx.strokeStyle = '#2563eb'; ctx.lineWidth = 2; ctx.strokeRect(x, y, bw, bh);
+        ctx.fillStyle = '#1d4ed8'; ctx.font = 'bold 16px Arial';
+        ctx.fillText('TEKNOPLAST', x + bw / 2, y + 24);
+        ctx.fillStyle = '#9ca3af'; ctx.font = '9px Arial';
+        ctx.fillText('Plastik mahsulotlar zavodi', x + bw / 2, y + 38);
+        const qr = qrImgs[i];
+        if (qr) ctx.drawImage(qr, x + (bw - 110) / 2, y + 46, 110, 110);
+        ctx.fillStyle = '#111827'; ctx.font = 'bold 14px Arial';
+        ctx.fillText(String(emp.name || '').slice(0, 26), x + bw / 2, y + 176);
+        ctx.fillStyle = '#1d4ed8'; ctx.font = '11px Arial';
+        const t = (TYPES[emp.type] || emp.type) + (emp.type === 'STANOKCHI' && emp.shift ? ' · ' + (SHIFTS[emp.shift] || emp.shift) : '');
+        ctx.fillText(t, x + bw / 2, y + 195);
+      });
+      canvas.toBlob((b) => {
+        if (!b) { toast.error('Yuklab bo\'lmadi'); return; }
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(b);
+        a.download = emps.length === 1
+          ? `qr-begik-${String(emps[0].name || 'xodim').replace(/[^A-Za-z0-9]+/g, '_')}.png`
+          : 'qr-begiklar.png';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        toast.success('Yuklab olindi');
+      }, 'image/png');
+    } catch {
+      toast.error('Yuklab bo\'lmadi');
+    }
   };
 
   const { data, isLoading } = useQuery({
@@ -329,8 +367,8 @@ export default function EmployeesPage() {
             </div>
             <div className="flex gap-2 mt-4">
               <button onClick={() => setQrEmployee(null)} className="btn-secondary flex-1">Yopish</button>
-              <button onClick={printBadges} className="btn-primary flex-1 flex items-center justify-center gap-1">
-                <Printer size={14} /> Chop etish / PDF
+              <button onClick={() => downloadBadges([qrEmployee])} className="btn-primary flex-1 flex items-center justify-center gap-1">
+                <Download size={14} /> Yuklab olish
               </button>
             </div>
           </div>
@@ -360,8 +398,8 @@ export default function EmployeesPage() {
               </div>
               <div className="flex gap-2 mt-4">
                 <button onClick={() => setQrBulk(false)} className="btn-secondary flex-1">Yopish</button>
-                <button onClick={printBadges} className="btn-primary flex-1 flex items-center justify-center gap-1">
-                  <Printer size={14} /> Hammasini chop etish / PDF
+                <button onClick={() => downloadBadges(pieceWorkers)} className="btn-primary flex-1 flex items-center justify-center gap-1">
+                  <Download size={14} /> Hammasini yuklab olish
                 </button>
               </div>
             </div>

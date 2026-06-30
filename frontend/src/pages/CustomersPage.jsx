@@ -181,6 +181,31 @@ export default function CustomersPage({ embedded = false }) {
     return { rows, totals: { xarid, tolov, vozvrat, qoldiq } };
   }, [detail]);
 
+  // "To'lovlar tarixi" tabi uchun — to'lovlar operatsiya bo'yicha jamlangan (1 operatsiya = 1 qator).
+  const groupedPayments = useMemo(() => {
+    const groups = {};
+    const order = [];
+    (detail?.payments || []).forEach(p => {
+      const key = p.payment_ref
+        || (p.created_at ? `${String(p.created_at).slice(0, 16)}|${p.method || ''}` : p.id);
+      if (!groups[key]) { groups[key] = { key, date: p.payment_date, products: new Set(), methods: new Set(), amount: 0 }; order.push(key); }
+      const g = groups[key];
+      g.amount += parseFloat(p.amount) || 0;
+      if (p.product_name) g.products.add(p.product_name);
+      const m = PAY_METHOD[p.method] || p.method;
+      if (m) g.methods.add(m);
+    });
+    return order.map(k => {
+      const g = groups[k];
+      const prods = [...g.products];
+      return {
+        key: g.key, date: g.date, amount: g.amount,
+        product_label: prods.length === 0 ? '—' : prods.length === 1 ? prods[0] : `${prods.length} ta mahsulot`,
+        method_label: [...g.methods].join(', ') || '—',
+      };
+    });
+  }, [detail]);
+
   const { data: productsData } = useQuery({
     queryKey: ['products'],
     queryFn: () => productsAPI.getAll().then(r => r.data),
@@ -837,20 +862,20 @@ export default function CustomersPage({ embedded = false }) {
                     <tr><th>Sana</th><th>Mahsulot</th><th>Usul</th><th>Summa</th></tr>
                   </thead>
                   <tbody>
-                    {!detail.payments?.length ? (
+                    {!groupedPayments.length ? (
                       <tr><td colSpan={4} className="text-center py-6 text-gray-400">Hali to'lov yo'q</td></tr>
-                    ) : detail.payments.map(p => (
-                      <tr key={p.id}>
-                        <td className="whitespace-nowrap">{new Date(p.payment_date).toLocaleDateString('uz-UZ')}</td>
-                        <td className="text-gray-600">{p.product_name}</td>
-                        <td><span className="text-xs text-gray-500">{PAY_METHOD[p.method] || p.method}</span></td>
-                        <td className="font-semibold text-green-700">{fmt(p.amount)} so'm</td>
+                    ) : groupedPayments.map(g => (
+                      <tr key={g.key}>
+                        <td className="whitespace-nowrap">{new Date(g.date).toLocaleDateString('uz-UZ')}</td>
+                        <td className="text-gray-600">{g.product_label}</td>
+                        <td><span className="text-xs text-gray-500">{g.method_label}</span></td>
+                        <td className="font-semibold text-green-700">{fmt(g.amount)} so'm</td>
                       </tr>
                     ))}
-                    {detail.payments?.length > 0 && (
+                    {groupedPayments.length > 0 && (
                       <tr className="bg-gray-50 font-bold">
                         <td colSpan={3} className="text-right text-gray-600">Jami to'langan:</td>
-                        <td className="text-green-700">{fmt(detail.payments.reduce((a, p) => a + parseFloat(p.amount || 0), 0))} so'm</td>
+                        <td className="text-green-700">{fmt(groupedPayments.reduce((a, g) => a + g.amount, 0))} so'm</td>
                       </tr>
                     )}
                   </tbody>

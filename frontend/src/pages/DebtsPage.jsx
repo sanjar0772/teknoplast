@@ -438,6 +438,9 @@ export default function DebtsPage() {
   const payMutation = useMutation({
     mutationFn: async ({ items, naqd, karta, bank, skidka }) => {
       const round = (n) => Math.round(n * 100) / 100;
+      // Bitta to'lov operatsiyasi — barcha taqsimlangan to'lovlar shu ref bilan belgilanadi,
+      // shunda mijoz tarixida bitta qator sifatida jamlanadi.
+      const payRef = `PAY-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const totalDebt = items.reduce((s, it) => s + Math.max(0, it.debt), 0);
       // Skidka faqat qarzni kamaytiradi — qarzdan oshmaydi (haqdor yaratmaydi)
       let discountLeft = Math.min(Math.max(0, skidka || 0), totalDebt);
@@ -453,14 +456,14 @@ export default function DebtsPage() {
         if (saleLeft <= 0.01) continue;
         if (discountLeft > 0.01) {
           const d = Math.min(discountLeft, saleLeft);
-          await salesAPI.addPayment(item.sale_id, { amount: round(d), method: 'DISCOUNT' });
+          await salesAPI.addPayment(item.sale_id, { amount: round(d), method: 'DISCOUNT', payment_ref: payRef });
           discountLeft -= d;
           saleLeft -= d;
         }
         for (const pool of moneyPools) {
           if (pool.remaining <= 0.01 || saleLeft <= 0.01) continue;
           const pay = Math.min(pool.remaining, saleLeft);
-          await salesAPI.addPayment(item.sale_id, { amount: round(pay), method: pool.method });
+          await salesAPI.addPayment(item.sale_id, { amount: round(pay), method: pool.method, payment_ref: payRef });
           pool.remaining -= pay;
           saleLeft -= pay;
         }
@@ -471,7 +474,7 @@ export default function DebtsPage() {
       if (lastSale) {
         for (const pool of moneyPools) {
           if (pool.remaining > 0.01) {
-            await salesAPI.addPayment(lastSale, { amount: round(pool.remaining), method: pool.method, allow_overpay: true });
+            await salesAPI.addPayment(lastSale, { amount: round(pool.remaining), method: pool.method, allow_overpay: true, payment_ref: payRef });
             pool.remaining = 0;
           }
         }

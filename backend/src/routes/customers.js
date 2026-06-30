@@ -98,7 +98,7 @@ router.get('/:id', async (req, res, next) => {
     if (date_to)   { statsSql += ` AND DATE(sale_date) <= $${sti++}`; statsP.push(date_to); }
     const stats = await query(statsSql, statsP);
 
-    let paySql = `SELECT pm.id, pm.amount, pm.method, pm.payment_date, pm.notes, p.name AS product_name
+    let paySql = `SELECT pm.id, pm.amount, pm.method, pm.payment_date, pm.notes, pm.payment_ref, pm.created_at, p.name AS product_name
       FROM payments pm JOIN sales s ON pm.sale_id = s.id JOIN products p ON s.product_id = p.id
       WHERE s.customer_id = $1`;
     const payP = [req.params.id];
@@ -196,7 +196,7 @@ router.get('/:id/excel', async (req, res, next) => {
     `, [req.params.id]);
 
     const payments = await query(`
-      SELECT pm.id, pm.amount, pm.method, pm.payment_date, pm.notes, p.name AS product_name
+      SELECT pm.id, pm.amount, pm.method, pm.payment_date, pm.notes, pm.payment_ref, pm.created_at, p.name AS product_name
       FROM payments pm
       JOIN sales s ON pm.sale_id = s.id
       JOIN products p ON s.product_id = p.id

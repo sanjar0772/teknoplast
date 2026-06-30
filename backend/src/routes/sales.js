@@ -550,7 +550,7 @@ router.get('/:id/payments', async (req, res, next) => {
 // POST /api/sales/:id/payments — to'lov kiritish (bo'lib-bo'lib to'lash)
 router.post('/:id/payments', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
   try {
-    const { amount, method, payment_date, notes, allow_overpay } = req.body;
+    const { amount, method, payment_date, notes, allow_overpay, payment_ref } = req.body;
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) return res.status(400).json({ error: 'To\'lov summasi noto\'g\'ri' });
 
@@ -570,9 +570,9 @@ router.post('/:id/payments', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), a
     try {
       await client.query('BEGIN');
       await client.query(
-        `INSERT INTO payments (sale_id, amount, method, payment_date, notes, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [sale.id, amt, method || 'CASH', payment_date || todayUZB(), notes || null, req.user.id]
+        `INSERT INTO payments (sale_id, amount, method, payment_date, notes, created_by, payment_ref)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [sale.id, amt, method || 'CASH', payment_date || todayUZB(), notes || null, req.user.id, payment_ref || null]
       );
       const paid = already + amt;
       let status = 'PENDING';

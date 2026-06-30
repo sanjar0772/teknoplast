@@ -13,7 +13,7 @@ import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
-const PAY_METHOD = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', OTHER: 'Boshqa' };
+const PAY_METHOD = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', DISCOUNT: '🏷️ Skidka', OTHER: 'Boshqa' };
 
 const TYPE_MAP = {
   RETAIL:    { label: 'Chakana',  cls: 'badge-gray',  icon: ShoppingBag },
@@ -150,10 +150,24 @@ export default function CustomersPage({ embedded = false }) {
         });
       }
     });
+    // To'lovlarni OPERATSIYA bo'yicha jamlaymiz — bitta payment_ref (yangi yozuvlar) yoki
+    // bir xil daqiqa+usul (eski yozuvlar) bitta qator bo'ladi. Har operatsiya = 1 qator.
+    const payGroups = {};
+    const payOrder = [];
     (detail.payments || []).forEach(p => {
       const amt = parseFloat(p.amount) || 0;
       tolov += amt;
-      rows.push({ date: p.payment_date, type: "To'lov", label: PAY_METHOD[p.method] || p.method || '—', sign: -1, amount: amt });
+      const key = p.payment_ref
+        || (p.created_at ? `${String(p.created_at).slice(0, 16)}|${p.method || ''}` : p.id);
+      if (!payGroups[key]) { payGroups[key] = { date: p.payment_date, methods: new Set(), amount: 0 }; payOrder.push(key); }
+      const g = payGroups[key];
+      g.amount += amt;
+      const m = PAY_METHOD[p.method] || p.method;
+      if (m) g.methods.add(m);
+    });
+    payOrder.forEach(key => {
+      const g = payGroups[key];
+      rows.push({ date: g.date, type: "To'lov", label: [...g.methods].join(', ') || '—', sign: -1, amount: g.amount });
     });
     (detail.returns || []).forEach(r => {
       const amt = parseFloat(r.amount) || 0;

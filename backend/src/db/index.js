@@ -855,6 +855,9 @@ if (USE_PG) {
       `ALTER TABLE machines ADD COLUMN is_running INTEGER DEFAULT 0`,
       // Qalip almashish uchun o'rtacha vaqt (daqiqa) — pause sababi QOLIP bo'lganda
       `ALTER TABLE machine_downtime ADD COLUMN mold_minutes REAL`,
+      // Bitta to'lov operatsiyasi (FIFO bilan ko'p savdoga taqsimlangan) — bitta ref bilan
+      // belgilanadi, shunda mijoz tarixida bitta qator sifatida jamlanadi.
+      `ALTER TABLE payments ADD COLUMN payment_ref TEXT`,
     ];
     for (const m of migrations) {
       try {

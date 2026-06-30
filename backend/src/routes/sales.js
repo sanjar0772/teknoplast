@@ -6,6 +6,7 @@ const { requireRole } = require('../middleware/rbac');
 const { logAudit } = require('../services/auditService');
 const reportService = require('../services/reportService');
 const { getColorStock, addColorStock } = require('../utils/colorStock');
+const { todayUZB, monthUZB } = require('../utils/date');
 const saleReturns = require('../services/saleReturns');
 
 const router = express.Router();
@@ -79,7 +80,7 @@ router.get('/summary', async (req, res, next) => {
       where = conds.join(' AND ');
     } else {
       where = `TO_CHAR(sale_date, 'YYYY-MM') = $1`;
-      params = [month || new Date().toISOString().slice(0, 7)];
+      params = [month || monthUZB()];
     }
 
     const result = await query(`
@@ -274,7 +275,7 @@ router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), [
           sale_date, status, payment_amount, discount_id, notes, created_by, order_ref, rang)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
         [product_id, customer_id || null, quantity, unit_price, total_amount, custName, custPhone,
-         sale_date || new Date().toISOString().slice(0,10), status || 'PENDING', payment_amount || 0, discount_id || null, notes, req.user.id, order_ref, rang || null]
+         sale_date || todayUZB(), status || 'PENDING', payment_amount || 0, discount_id || null, notes, req.user.id, order_ref, rang || null]
       );
       await client.query(
         'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW() WHERE id = $2',
@@ -330,7 +331,7 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (re
       }
     }
 
-    const saleDate = sale_date || new Date().toISOString().slice(0, 10);
+    const saleDate = sale_date || todayUZB();
     // To'lov summasi: agar reqPayment kelsa — undan foydalaniladi (jami summadan
     // OSHIB ketishi mumkin — oshiqcha pul mijozning haqdorligi sifatida saqlanadi).
     const preGrand = items.reduce((s, it) => s + (parseInt(it.quantity) * parseFloat(it.unit_price)), 0);
@@ -570,7 +571,7 @@ router.post('/:id/payments', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), a
       await client.query(
         `INSERT INTO payments (sale_id, amount, method, payment_date, notes, created_by)
          VALUES ($1,$2,$3,$4,$5,$6)`,
-        [sale.id, amt, method || 'CASH', payment_date || new Date().toISOString().slice(0, 10), notes || null, req.user.id]
+        [sale.id, amt, method || 'CASH', payment_date || todayUZB(), notes || null, req.user.id]
       );
       const paid = already + amt;
       let status = 'PENDING';
@@ -773,7 +774,7 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
           `INSERT INTO expenses (category, amount, description, expense_date, created_by)
            VALUES ($1,$2,$3,$4,$5)`,
           ['OTHER', lossAmount, `Brak tovar (vozvrat): ${prodName} x${qty}${reason ? ' — ' + reason : ''}`,
-           new Date().toISOString().slice(0, 10), req.user.id]
+           todayUZB(), req.user.id]
         );
       }
 
@@ -787,7 +788,7 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
       const retR = await client.query(
         `INSERT INTO sale_returns (sale_id, product_id, customer_id, quantity, unit_price, amount, refund_amount, rang, reason, return_date, created_by, condition, loss_amount, settlement, debt_deducted)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
-        [sale.id, sale.product_id, sale.customer_id || null, qty, unitPrice, amount, refund, sale.rang || null, reason, new Date().toISOString().slice(0, 10), req.user.id, condition, lossAmount, settlement || 'BALANCE', debtDeducted]
+        [sale.id, sale.product_id, sale.customer_id || null, qty, unitPrice, amount, refund, sale.rang || null, reason, todayUZB(), req.user.id, condition, lossAmount, settlement || 'BALANCE', debtDeducted]
       );
 
       await client.query('COMMIT');

@@ -322,6 +322,76 @@ async function generateProductionRangeExcel(rows, startDate, endDate) {
   return buffer;
 }
 
+// Ishlab chiqarish (Stanokchi/Detalchi) — tanlangan davr uchun PDF hisobot
+async function generateProductionRangePDF(rows, startDate, endDate) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    registerCyrillicFonts(doc);
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const money = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n) || 0));
+    const typeMap = { STANOKCHI: 'Stanokchi', DETALCHI: 'Detalchi' };
+    const shiftMap = { '1-SMENA': '1-Smena', '2-SMENA': '2-Smena' };
+
+    doc.fontSize(18).font('Arial-Bold').text('TEKNOPLAST', { align: 'center' });
+    doc.fontSize(12).font('Arial').text('Ishchilar ishi hisoboti (Stanokchi / Detalchi)', { align: 'center' });
+    doc.fontSize(9).fillColor('#666').text(`Davr: ${startDate} — ${endDate}   ·   Yaratildi: ${new Date().toLocaleDateString('uz-UZ')}`, { align: 'center' });
+    doc.fillColor('black').moveDown(0.8);
+
+    // Ustun x-koordinatalari (A4, margin 40 → 40..555)
+    const col = { num: 40, name: 70, type: 220, shift: 290, days: 350, qty: 400, earned: 460 };
+    const right = 555;
+
+    const drawHeader = (y) => {
+      doc.font('Arial-Bold').fontSize(9).fillColor('black');
+      doc.text('№', col.num, y);
+      doc.text('Xodim', col.name, y);
+      doc.text('Turi', col.type, y);
+      doc.text('Smena', col.shift, y);
+      doc.text('Kun', col.days, y);
+      doc.text('Dona', col.qty, y);
+      doc.text("Haq (so'm)", col.earned, y, { width: right - col.earned, align: 'right' });
+      doc.moveTo(40, y + 13).lineTo(right, y + 13).strokeColor('#999').stroke();
+      return y + 18;
+    };
+
+    let y = drawHeader(doc.y);
+    doc.font('Arial').fontSize(8.5);
+    let tDays = 0, tQty = 0, tEarned = 0;
+
+    rows.forEach((r, i) => {
+      if (y > 780) { doc.addPage(); y = drawHeader(40); doc.font('Arial').fontSize(8.5); }
+      const days = parseInt(r.work_days) || 0;
+      const qty = parseFloat(r.total_produced) || 0;
+      const earned = parseFloat(r.total_earned) || 0;
+      tDays += days; tQty += qty; tEarned += earned;
+      doc.fillColor('black');
+      doc.text(String(i + 1), col.num, y, { width: 25 });
+      doc.text(r.name || '—', col.name, y, { width: 145 });
+      doc.text(typeMap[r.type] || r.type || '—', col.type, y, { width: 65 });
+      doc.text(r.type === 'STANOKCHI' ? (shiftMap[r.shift] || r.shift || '—') : '—', col.shift, y, { width: 55 });
+      doc.text(String(days), col.days, y, { width: 45 });
+      doc.text(money(qty), col.qty, y, { width: 55 });
+      doc.text(money(earned), col.earned, y, { width: right - col.earned, align: 'right' });
+      const h = Math.max(doc.heightOfString(r.name || '—', { width: 145 }), 12);
+      y += h + 4;
+    });
+
+    doc.moveTo(40, y).lineTo(right, y).strokeColor('#999').stroke();
+    y += 6;
+    doc.font('Arial-Bold').fontSize(9).fillColor('black');
+    doc.text('JAMI:', col.num, y);
+    doc.text(String(tDays), col.days, y, { width: 45 });
+    doc.text(money(tQty), col.qty, y, { width: 55 });
+    doc.text(money(tEarned) + " so'm", col.earned, y, { width: right - col.earned, align: 'right' });
+
+    doc.end();
+  });
+}
+
 // Хом ашё — танланган давр учун Бошланғич/Кирим/Сарф/Якуний қолдиқ ҳисоботи (профессионал Excel)
 async function generateRawMaterialRangeExcel(rows, startDate, endDate) {
   const workbook = new ExcelJS.Workbook();
@@ -1328,4 +1398,4 @@ async function generateTurnoverPDF({ rows, start_date, end_date, warehouse }) {
   });
 }
 
-module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF, generateWorkerWorksExcel, generateWorkerWorksPDF, generateInventoryExcel, generateInventoryPDF, generateTurnoverExcel, generateTurnoverPDF };
+module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateProductionRangePDF, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF, generateWorkerWorksExcel, generateWorkerWorksPDF, generateInventoryExcel, generateInventoryPDF, generateTurnoverExcel, generateTurnoverPDF };

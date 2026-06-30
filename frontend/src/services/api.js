@@ -119,6 +119,7 @@ export const productionAPI = {
   getSummary: (params) => api.get('/production/summary', { params }),
   getRangeSummary: (params) => api.get('/production/range-summary', { params }),
   getRangeSummaryExcel: (params) => api.get('/production/range-summary/excel', { params, responseType: 'blob' }),
+  getRangeSummaryPdf: (params) => api.get('/production/range-summary/pdf', { params, responseType: 'blob' }),
   worksDayExcel: (date) => api.get('/production/works-day/excel', { params: { date }, responseType: 'blob' }),
   worksDayPdf: (date) => api.get('/production/works-day/pdf', { params: { date }, responseType: 'blob' }),
   create: (data) => api.post('/production', data),

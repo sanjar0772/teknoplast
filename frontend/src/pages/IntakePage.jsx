@@ -340,6 +340,33 @@ function WorkerOutputTab({ canApprove, canEdit }) {
   const [date, setDate] = useState(today);
   const [entries, setEntries] = useState([newEntry()]);
   const [dlWorks, setDlWorks] = useState(null); // 'excel' | 'pdf' yuklab olish holati
+  const [rng, setRng] = useState({ start_date: '', end_date: '' }); // hisobot vaqt oralig'i
+  const [dlRange, setDlRange] = useState(null); // vaqt oralig'i hisoboti yuklash holati
+
+  // Tanlangan vaqt oralig'i uchun ishchilar ishi hisobotini (jamlangan) yuklab olish
+  const downloadRange = async (kind) => {
+    if (!rng.start_date || !rng.end_date) return toast.error("Vaqt oralig'ini tanlang (dan va gacha)");
+    if (rng.start_date > rng.end_date) return toast.error("'Dan' sanasi 'gacha'dan katta bo'lmasin");
+    try {
+      setDlRange(kind);
+      const params = { start_date: rng.start_date, end_date: rng.end_date };
+      const res = kind === 'excel'
+        ? await productionAPI.getRangeSummaryExcel(params)
+        : await productionAPI.getRangeSummaryPdf(params);
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ishchilar-ishi-${rng.start_date}_${rng.end_date}.${kind === 'excel' ? 'xlsx' : 'pdf'}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Yuklab bo\'lmadi');
+    } finally {
+      setDlRange(null);
+    }
+  };
 
   // Ishchilar ishini (shu kun) PDF yoki Excel qilib to'g'ridan-to'g'ri yuklab olish
   const downloadWorks = async (kind) => {
@@ -605,6 +632,36 @@ function WorkerOutputTab({ canApprove, canEdit }) {
 
   return (
     <div className="space-y-6">
+
+      {/* Hisobot — tanlangan vaqt oralig'i uchun ishchilar ishi (Excel / PDF) */}
+      <div className="card">
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 mr-1">
+            <FileDown size={15} className="text-emerald-600" /> Hisobot (vaqt oralig'i)
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-0.5">Dan</label>
+            <input type="date" value={rng.start_date}
+              onChange={e => setRng(r => ({ ...r, start_date: e.target.value }))}
+              className="input text-sm py-1.5 w-40" />
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-0.5">Gacha</label>
+            <input type="date" value={rng.end_date}
+              onChange={e => setRng(r => ({ ...r, end_date: e.target.value }))}
+              className="input text-sm py-1.5 w-40" />
+          </div>
+          <button onClick={() => downloadRange('excel')} disabled={!!dlRange}
+            className="btn-sm bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg px-3 flex items-center gap-1 hover:bg-emerald-100 disabled:opacity-50">
+            <FileDown size={13} /> {dlRange === 'excel' ? '...' : 'Excel'}
+          </button>
+          <button onClick={() => downloadRange('pdf')} disabled={!!dlRange}
+            className="btn-sm bg-red-50 text-red-700 border border-red-200 rounded-lg px-3 flex items-center gap-1 hover:bg-red-100 disabled:opacity-50">
+            <FileText size={13} /> {dlRange === 'pdf' ? '...' : 'PDF'}
+          </button>
+        </div>
+        <p className="text-[11px] text-gray-400 mt-2">Tanlangan davrdagi barcha stanokchi/detalchilarning ish kunlari, dona va hisoblangan haqi (jamlangan).</p>
+      </div>
 
       {/* TASDIQLASH BO'LIMI — faqat sales head/owner ko'radi */}
       {canApprove && pendingGroups.length > 0 && (

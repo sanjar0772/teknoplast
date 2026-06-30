@@ -141,6 +141,25 @@ router.get('/range-summary/excel', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/production/range-summary/pdf — PDF hisobot (Stanokchi/Detalchi, vaqt oralig'i)
+router.get('/range-summary/pdf', async (req, res, next) => {
+  try {
+    const { start_date, end_date, employee_ids } = req.query;
+    if (!start_date || !end_date) {
+      return res.status(400).json({ error: 'start_date va end_date kerak' });
+    }
+
+    const { sql, extraParams } = buildRangeSummaryQuery(employee_ids);
+    const result = await query(sql, [start_date, end_date, ...extraParams]);
+
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateProductionRangePDF(result.rows, start_date, end_date);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="ishlab-chiqarish-${start_date}_${end_date}.pdf"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) { next(err); }
+});
+
 // Ishchilar ishi (bir kun) — eksport uchun yozuvlarni olish
 async function fetchWorksOfDay(date) {
   const result = await query(`

@@ -173,6 +173,12 @@ require('./services/saleDateFix')
   .ensureSaleDatesFixed()
   .catch(e => console.error('Sale date fix init xato:', e.message));
 
+// BIR MARTALIK: UTC xatosi tufayli bir kun orqaga surilган qarz to'lovi sanalarini
+// (masalan bugun qilingan to'lov "29" bo'lib chiqqani) Toshkent kuniga to'g'rilash.
+require('./services/paymentDateFix')
+  .ensurePaymentDatesFixed()
+  .catch(e => console.error('Payment date fix init xato:', e.message));
+
 // BIR MARTALIK: rang ombori (product_color_stock) buketlarini umumiy qoldiq bilan
 // moslashtirish — v22 dan oldingi "fantom ombor" (sotib bo'lmaydigan qoldiq) ni tuzatadi.
 require('./services/colorStockReconcile')

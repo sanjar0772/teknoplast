@@ -668,6 +668,46 @@ router.put('/:id/stock', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), 
   } catch (err) { next(err); }
 });
 
+// POST /api/products/inventory-adjust — INVENTARIZATSIYA: sanalган (haqiqiy) qoldiqlarni
+// tizimga moslash. items: [{ product_id, counted }]. Har mahsulot uchun stock_quantity
+// sanalган songa o'rnatiladi va o'zgarish mahsulotning rang buketiga ham qo'llanadi.
+router.post('/inventory-adjust', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
+  try {
+    const { items } = req.body;
+    if (!Array.isArray(items) || !items.length) {
+      return res.status(400).json({ error: 'Sanalган mahsulotlar yo\'q' });
+    }
+    const client = await require('../db').getClient();
+    let changed = 0;
+    const details = [];
+    try {
+      await client.query('BEGIN');
+      for (const it of items) {
+        const counted = parseFloat(it.counted);
+        if (!it || !it.product_id || isNaN(counted)) continue;
+        const cur = await client.query("SELECT stock_quantity, COALESCE(rang,'') AS rang FROM products WHERE id=$1", [it.product_id]);
+        if (!cur.rows.length) continue;
+        const oldStock = parseFloat(cur.rows[0].stock_quantity || 0);
+        const newStock = Math.max(0, counted);
+        const delta = newStock - oldStock;
+        if (delta === 0) continue; // farq yo'q — tegmaymiz
+        await client.query('UPDATE products SET stock_quantity=$1, updated_at=NOW() WHERE id=$2', [newStock, it.product_id]);
+        await addColorStock(client.query, it.product_id, cur.rows[0].rang, delta);
+        changed++;
+        details.push({ product_id: it.product_id, old: oldStock, new: newStock, delta });
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+    logAudit(req, { action: 'INVENTORY_ADJUST', table: 'products', recordId: 'BULK', newValues: { changed, details } });
+    res.json({ changed });
+  } catch (err) { next(err); }
+});
+
 // PUT /api/products/:id/pricing — Stanok, Detalchi narhi belgilash (bugalter/OWNER)
 router.put('/:id/pricing', requireRole('OWNER', 'ACCOUNTANT', 'PRODUCTION_HEAD'), async (req, res, next) => {
   try {

@@ -159,6 +159,7 @@ export const productsAPI = {
   resetStock: () => api.post('/products/reset-stock'),
   resetComponents: () => api.post('/products/components/reset'),
   updateStock: (id, data) => api.put(`/products/${id}/stock`, data),
+  inventoryAdjust: (items) => api.post('/products/inventory-adjust', { items }),
   setPricing: (id, data) => api.put(`/products/${id}/pricing`, data),
   getRawMaterials: () => api.get('/products/raw-materials/list'),
   createRawMaterial: (data) => api.post('/products/raw-materials', data),

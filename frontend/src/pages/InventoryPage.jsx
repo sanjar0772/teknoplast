@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, AlertTriangle, Warehouse, Package, Boxes, PackagePlus, Pencil, Trash2, Factory, FileSpreadsheet, FileText } from 'lucide-react';
+import { Plus, X, AlertTriangle, Warehouse, Package, Boxes, PackagePlus, Pencil, Trash2, Factory, FileSpreadsheet, FileText, ClipboardList, Save, Search } from 'lucide-react';
 import { productsAPI, reportsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import clsx from 'clsx';
@@ -46,6 +46,10 @@ export default function InventoryPage() {
   const [tTo, setTTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [tSel, setTSel] = useState(() => new Set());
   const [tExporting, setTExporting] = useState(null);
+  // Inventarizatsiya (sanab tekshirish)
+  const [auditCounts, setAuditCounts] = useState({}); // { [productId]: 'sanalган son' }
+  const [auditSearch, setAuditSearch] = useState('');
+  const [auditCat, setAuditCat] = useState('all'); // 'all' | 'finished' | 'component'
 
   const { data: products } = useQuery({
     queryKey: ['inventory-products'],
@@ -175,6 +179,20 @@ export default function InventoryPage() {
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
+  // Inventarizatsiya — sanalган (haqiqiy) qoldiqlarni tizimga moslash
+  const auditMutation = useMutation({
+    mutationFn: (items) => productsAPI.inventoryAdjust(items).then(r => r.data),
+    onSuccess: (d) => {
+      toast.success(d.changed > 0
+        ? `Inventarizatsiya saqlandi — ${d.changed} ta mahsulot to'g'rilandi`
+        : 'Farq topilmadi — hammasi mos');
+      setAuditCounts({});
+      qc.invalidateQueries({ queryKey: ['inventory-products'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Saqlashda xato'),
+  });
+
   // Ombor ro'yxatini Excel/PDF qilib yuklab olish (joriy tab bo'yicha)
   const downloadInventory = async (format) => {
     const names = { products: 'ombor-tayyor-mahsulotlar', production: 'ombor-ishlab-chiqarish', raw: 'ombor-xom-ashyo' };
@@ -211,24 +229,39 @@ export default function InventoryPage() {
     finally { setTExporting(null); }
   };
 
+  // Inventarizatsiya — qidiruv + kategoriya bo'yicha ro'yxat va kiritilган sonlar
+  const auditList = allProducts
+    .filter(p => auditCat === 'all' ? true : auditCat === 'finished' ? p.kind !== 'KOMPONENT' : p.kind === 'KOMPONENT')
+    .filter(p => { const q = auditSearch.trim().toLowerCase(); return !q || (p.name || '').toLowerCase().includes(q); });
+  const auditShown = auditList.slice(0, 120); // ro'yxat juda uzun bo'lsa — qidiruv bilan topiladi
+  const auditItems = Object.entries(auditCounts)
+    .filter(([, v]) => v !== '' && v != null)
+    .map(([product_id, counted]) => ({ product_id, counted: parseFloat(counted) }))
+    .filter(it => !isNaN(it.counted));
+
   const TABS = [
     { key: 'products',   label: 'Tayyor mahsulotlar',     icon: Package },
     { key: 'production', label: 'Ishlab chiqarish ombori', icon: Factory },
     { key: 'raw',        label: 'Xom ashyo',              icon: Boxes },
-  ].filter(t => !(taminotchiOnly && (t.key === 'products' || t.key === 'production')));
+    ...(isOwner() ? [{ key: 'audit', label: 'Inventarizatsiya', icon: ClipboardList }] : []),
+  ].filter(t => !(taminotchiOnly && (t.key === 'products' || t.key === 'production' || t.key === 'audit')));
 
   return (
     <div className="space-y-6">
       <div className="page-header">
         <h1 className="page-title">Ombor</h1>
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={() => downloadInventory('excel')} className="btn-secondary btn-sm" title="Excel formatida yuklab olish">
-            <FileSpreadsheet size={14} /> Excel
-          </button>
-          <button onClick={() => downloadInventory('pdf')} className="btn-secondary btn-sm" title="PDF formatida yuklab olish">
-            <FileText size={14} /> PDF
-          </button>
-          {tab !== 'raw' && (
+          {tab !== 'audit' && (
+            <button onClick={() => downloadInventory('excel')} className="btn-secondary btn-sm" title="Excel formatida yuklab olish">
+              <FileSpreadsheet size={14} /> Excel
+            </button>
+          )}
+          {tab !== 'audit' && (
+            <button onClick={() => downloadInventory('pdf')} className="btn-secondary btn-sm" title="PDF formatida yuklab olish">
+              <FileText size={14} /> PDF
+            </button>
+          )}
+          {tab !== 'raw' && tab !== 'audit' && (
             <button onClick={() => setTurnoverOpen(true)} className="btn-secondary btn-sm" title="Tovar aylanmasi — davr bo'yicha qoldiq/kirim/chiqim">
               <Warehouse size={14} /> Tovar aylanmasi
             </button>
@@ -490,6 +523,108 @@ export default function InventoryPage() {
                 Xom ashyo qo'shish va ombor balansini o'zgartirish faqat Ta'minotchi vazifasi.
               </p>
             )}
+          </div>
+        </>
+      )}
+
+      {/* INVENTARIZATSIYA — sanab tekshirish */}
+      {tab === 'audit' && (
+        <>
+          <div className="card p-4 space-y-3">
+            <div className="flex items-start gap-2">
+              <ClipboardList size={18} className="text-indigo-600 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-gray-500">
+                Har bir mahsulotni <b>sanab</b>, "Sanaldi" ustuniga haqiqiy sonini yozing. "Farq" o'zi hisoblanadi.
+                <b> Saqlash</b> bosilganda tizimdagi ombor qoldig'i siz sanagan songa to'g'rilanadi. Bo'sh qoldirilган
+                qatorlarga tegilmaydi.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input value={auditSearch} onChange={e => setAuditSearch(e.target.value)}
+                  placeholder="Mahsulot qidirish..." className="input pl-8 w-full" />
+              </div>
+              <div className="flex gap-1">
+                {[{ k: 'all', t: 'Hammasi' }, { k: 'finished', t: 'Tayyor' }, { k: 'component', t: 'Komponent' }].map(c => (
+                  <button key={c.k} onClick={() => setAuditCat(c.k)}
+                    className={`btn-sm rounded-lg px-3 border ${auditCat === c.k ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                    {c.t}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-xs text-gray-500">
+                {auditList.length} ta mahsulot · {auditItems.length} ta kiritildi
+              </span>
+              <div className="flex gap-2">
+                {auditItems.length > 0 && (
+                  <button onClick={() => setAuditCounts({})} className="btn-secondary btn-sm" disabled={auditMutation.isPending}>
+                    <X size={14} /> Tozalash
+                  </button>
+                )}
+                <button onClick={() => auditMutation.mutate(auditItems)}
+                  disabled={!auditItems.length || auditMutation.isPending}
+                  className="btn-primary btn-sm">
+                  <Save size={14} /> {auditMutation.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="card overflow-hidden">
+            <div className="table-container">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Mahsulot</th><th>Rang</th>
+                    <th className="text-right">Tizimda</th>
+                    <th className="text-right">Sanaldi</th>
+                    <th className="text-right">Farq</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!auditList.length ? (
+                    <tr><td colSpan={5} className="text-center py-10 text-gray-400">
+                      <ClipboardList size={26} className="mx-auto mb-2 text-gray-300" />
+                      {auditSearch ? `"${auditSearch}" bo'yicha topilmadi` : 'Mahsulot yo\'q'}
+                    </td></tr>
+                  ) : auditShown.map(p => {
+                    const sys = parseFloat(p.stock_quantity) || 0;
+                    const raw = auditCounts[p.id];
+                    const counted = raw === '' || raw == null ? null : parseFloat(raw);
+                    const diff = counted == null || isNaN(counted) ? null : counted - sys;
+                    return (
+                      <tr key={p.id} className={diff != null && diff !== 0 ? 'bg-yellow-50/60' : ''}>
+                        <td className="font-medium text-gray-900">{p.name}</td>
+                        <td className="text-gray-500">{p.rang || '—'}</td>
+                        <td className="text-right font-semibold">{fmt(sys)} {p.unit}</td>
+                        <td className="text-right">
+                          <input type="number" min="0" inputMode="numeric"
+                            value={raw ?? ''}
+                            onChange={e => setAuditCounts(prev => ({ ...prev, [p.id]: e.target.value }))}
+                            onFocus={e => e.target.select()}
+                            placeholder="—"
+                            className="input py-1 w-24 text-right ml-auto" />
+                        </td>
+                        <td className="text-right font-bold whitespace-nowrap">
+                          {diff == null ? <span className="text-gray-300">—</span>
+                            : diff === 0 ? <span className="text-green-600">0</span>
+                            : diff > 0 ? <span className="text-blue-600">+{fmt(diff)}</span>
+                            : <span className="text-red-600">−{fmt(Math.abs(diff))}</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {auditList.length > auditShown.length && (
+                    <tr><td colSpan={5} className="text-center py-3 text-xs text-gray-400">
+                      Yana {auditList.length - auditShown.length} ta mahsulot — yuqoridagi qidiruv yoki kategoriya bilan toping
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}

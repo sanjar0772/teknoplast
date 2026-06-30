@@ -35,6 +35,10 @@ if (USE_PG) {
   let _db = null;
   let _ready = false;
   let _inTransaction = false;
+  // ulower() Unicode (kirill) qidiruv funksiyasi muvaffaqiyatli ro'yxatdan o'tdimi.
+  // Ba'zi sql.js buildlarida create_function ishlamaydi — u holda oddiy LIKE ga qaytamiz
+  // (lotin uchun katta/kichik farqlanmaydi; kirill faqat farqlanadi, lekin CRASH bo'lmaydi).
+  let _ulowerReady = false;
 
   // PostgreSQL → SQLite syntax converter
   function convertSQL(sql) {
@@ -76,7 +80,8 @@ if (USE_PG) {
       // ILIKE — kirill harflar uchun ham katta/kichikni farqlamasligi kerak.
       // SQLite LIKE faqat lotinni qo'llaydi; shu sabab ikkala tomonni Unicode
       // ulower() bilan kichik harfga keltiramiz ($N allaqachon ? ga aylangan).
-      .replace(/([\w.]+)\s+ILIKE\s+\?/gi, 'ulower($1) LIKE ulower(?)')
+      // Agar ulower ro'yxatdan o'tmagan bo'lsa — oddiy LIKE (crash o'rniga).
+      .replace(/([\w.]+)\s+ILIKE\s+\?/gi, _ulowerReady ? 'ulower($1) LIKE ulower(?)' : '$1 LIKE ?')
       .replace(/ILIKE/gi, 'LIKE')
       .replace(/is_active\s*=\s*true/gi, 'is_active=1')
       .replace(/is_active\s*=\s*false/gi, 'is_active=0')
@@ -161,6 +166,26 @@ if (USE_PG) {
     return m ? m[1] : null;
   }
 
+  // ulower() — Unicode (kirill) katta/kichikni farqlamaydigan qidiruv funksiyasini
+  // ro'yxatdan o'tkazadi va haqiqatan ishlashini tekshiradi.
+  // MUHIM: sql.js'da _db.export() chaqirilgandan keyin maxsus funksiyalar yo'qolishi
+  // mumkin — shu sabab har saqlashdan keyin buni qayta chaqiramiz.
+  function registerUlower() {
+    if (!_db) return;
+    try {
+      const uni = (s) => (s === null || s === undefined ? null : String(s).toLowerCase());
+      _db.create_function('ulower', uni);
+      // Ba'zi sql.js buildlarida create_function jim-jit ishlamaydi — haqiqatan
+      // chaqirib tekshiramiz. Ishlamasa, _ulowerReady=false bo'lib oddiy LIKE ishlaydi.
+      _db.exec("SELECT ulower('A')");
+      _ulowerReady = true;
+      try { _db.create_function('lower', uni); } catch (e) { /* o'rnatilganni almashtirib bo'lmasa — ulower yetarli */ }
+    } catch (e) {
+      _ulowerReady = false;
+      console.warn('ulower ro\'yxatdan o\'tmadi — oddiy LIKE ishlatiladi:', e.message);
+    }
+  }
+
   // Database ishga tushirish
   async function initDB() {
     if (_ready) return _db;
@@ -199,13 +224,7 @@ if (USE_PG) {
     // Kirill (va boshqa Unicode) harflar uchun katta/kichikni farqlamaydigan qidiruv.
     // SQLite'ning o'rnatilgan lower/LIKE faqat lotin (ASCII) ni qo'llaydi —
     // JS toLowerCase esa kirillni ham to'g'ri kichik harfga keltiradi.
-    try {
-      const uni = (s) => (s === null || s === undefined ? null : String(s).toLowerCase());
-      _db.create_function('ulower', uni);
-      try { _db.create_function('lower', uni); } catch (e) { /* o'rnatilganni almashtirib bo'lmasa — ulower yetarli */ }
-    } catch (e) {
-      console.warn('ulower funksiyasini ro\'yxatdan o\'tkazib bo\'lmadi:', e.message);
-    }
+    registerUlower();
 
     _db.run('PRAGMA foreign_keys = ON');
     _db.run('PRAGMA journal_mode = WAL');
@@ -234,6 +253,7 @@ if (USE_PG) {
     _dirty = false;
     try {
       const data = _db.export();                            // WASM serializatsiya (tez)
+      registerUlower();                                     // export ulower'ni o'chirishi mumkin — qayta tiklaymiz
       const tmp = DB_PATH + '.tmp';
       await fs.promises.writeFile(tmp, Buffer.from(data));  // ATOMIK: avval .tmp
       await fs.promises.rename(tmp, DB_PATH);               // keyin rename
@@ -248,6 +268,7 @@ if (USE_PG) {
     _dirty = false;
     try {
       const data = _db.export();
+      registerUlower();                                     // export ulower'ni o'chirishi mumkin — qayta tiklaymiz
       const tmp = DB_PATH + '.tmp';
       fs.writeFileSync(tmp, Buffer.from(data));
       fs.renameSync(tmp, DB_PATH);

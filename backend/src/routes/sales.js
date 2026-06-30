@@ -550,7 +550,7 @@ router.get('/:id/payments', async (req, res, next) => {
 // POST /api/sales/:id/payments — to'lov kiritish (bo'lib-bo'lib to'lash)
 router.post('/:id/payments', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
   try {
-    const { amount, method, payment_date, notes } = req.body;
+    const { amount, method, payment_date, notes, allow_overpay } = req.body;
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) return res.status(400).json({ error: 'To\'lov summasi noto\'g\'ri' });
 
@@ -561,7 +561,8 @@ router.post('/:id/payments', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), a
     const alreadyR = await query('SELECT COALESCE(SUM(amount),0) as paid FROM payments WHERE sale_id=$1', [sale.id]);
     const already = parseFloat(alreadyR.rows[0].paid);
     const remaining = parseFloat(sale.total_amount) - already;
-    if (amt > remaining + 0.01) {
+    // Ortiqcha to'lov (haqdor) — faqat allow_overpay bo'lganda ruxsat; aks holda qoldiqdan oshmaydi
+    if (!allow_overpay && amt > remaining + 0.01) {
       return res.status(400).json({ error: `To'lov qoldiqdan ko'p. Qolgan qarz: ${Math.round(remaining)} so'm` });
     }
 

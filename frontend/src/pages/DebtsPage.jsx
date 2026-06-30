@@ -433,35 +433,60 @@ export default function DebtsPage() {
   });
 
   // To'lovni eski qarzdan boshlab taqsimlash (FIFO):
-  // naqd → karta → bank tartibida har bir qarzga yoziladi
+  // naqd → karta → bank tartibida har bir qarzga yoziladi.
+  // Qarzlar yopilgandan keyin qolgan ortiqcha pul — oxirgi savdoga HAQDOR sifatida yoziladi.
   const payMutation = useMutation({
     mutationFn: async ({ items, naqd, karta, bank, skidka }) => {
-      const pools = [
-        { method: 'CASH',     remaining: naqd   },
-        { method: 'CARD',     remaining: karta  },
-        { method: 'TRANSFER', remaining: bank   },
-        { method: 'DISCOUNT', remaining: skidka }, // skidka — pul emas, qarzni kamaytiradi
+      const round = (n) => Math.round(n * 100) / 100;
+      const totalDebt = items.reduce((s, it) => s + Math.max(0, it.debt), 0);
+      // Skidka faqat qarzni kamaytiradi — qarzdan oshmaydi (haqdor yaratmaydi)
+      let discountLeft = Math.min(Math.max(0, skidka || 0), totalDebt);
+      const moneyPools = [
+        { method: 'CASH',     remaining: naqd  || 0 },
+        { method: 'CARD',     remaining: karta || 0 },
+        { method: 'TRANSFER', remaining: bank  || 0 },
       ].filter(p => p.remaining > 0.01);
 
+      // 1) Har bir qarzni yopish: avval skidka, keyin pul
       for (const item of items) {
         let saleLeft = item.debt;
         if (saleLeft <= 0.01) continue;
-        for (const pool of pools) {
+        if (discountLeft > 0.01) {
+          const d = Math.min(discountLeft, saleLeft);
+          await salesAPI.addPayment(item.sale_id, { amount: round(d), method: 'DISCOUNT' });
+          discountLeft -= d;
+          saleLeft -= d;
+        }
+        for (const pool of moneyPools) {
           if (pool.remaining <= 0.01 || saleLeft <= 0.01) continue;
           const pay = Math.min(pool.remaining, saleLeft);
-          await salesAPI.addPayment(item.sale_id, { amount: Math.round(pay * 100) / 100, method: pool.method });
+          await salesAPI.addPayment(item.sale_id, { amount: round(pay), method: pool.method });
           pool.remaining -= pay;
           saleLeft -= pay;
+        }
+      }
+
+      // 2) Qarzlar yopilgach qolgan ortiqcha pul — oxirgi savdoga haqdor (allow_overpay) sifatida
+      const lastSale = items.length ? items[items.length - 1].sale_id : null;
+      if (lastSale) {
+        for (const pool of moneyPools) {
+          if (pool.remaining > 0.01) {
+            await salesAPI.addPayment(lastSale, { amount: round(pool.remaining), method: pool.method, allow_overpay: true });
+            pool.remaining = 0;
+          }
         }
       }
     },
     onSuccess: (_, variables) => {
       const { customer, totalDebt, naqd, karta, bank, skidka } = variables;
       const total = (naqd || 0) + (karta || 0) + (bank || 0);
-      const settled = total + (skidka || 0);
+      const discountApplied = Math.min(Math.max(0, skidka || 0), totalDebt);
+      const debtAfterDiscount = Math.max(0, totalDebt - discountApplied);
+      const credit = Math.max(0, total - debtAfterDiscount);     // haqdor (oshiqcha pul)
+      const remaining = Math.max(0, debtAfterDiscount - total);  // qolgan qarz
       setPayFor(null);
-      setReceipt({ customer, naqd: naqd || 0, karta: karta || 0, bank: bank || 0, skidka: skidka || 0, total, remaining: Math.max(0, totalDebt - settled), date: new Date() });
-      toast.success('To\'lov saqlandi! Chek tayyor.');
+      setReceipt({ customer, naqd: naqd || 0, karta: karta || 0, bank: bank || 0, skidka: skidka || 0, total, remaining, credit, date: new Date() });
+      toast.success(credit > 0 ? `To'lov saqlandi! Haqdor: +${fmt(credit)} so'm` : 'To\'lov saqlandi! Chek tayyor.');
       qc.invalidateQueries({ queryKey: ['debts'] });
       qc.invalidateQueries({ queryKey: ['debt-payments'] });
       qc.invalidateQueries({ queryKey: ['sales'] });
@@ -483,11 +508,16 @@ export default function DebtsPage() {
   const skidka = parseFloat(payAmounts.skidka) || 0;
   const payTotal = naqd + karta + bank;           // haqiqiy pul
   const settled  = payTotal + skidka;             // qarz kamayishi (pul + skidka)
+  // Preview: skidka qarzdan oshmaydi; ortiqcha pul haqdor bo'ladi
+  const debtTotal       = payFor?.totalDebt || 0;
+  const discountApplied = Math.min(skidka, debtTotal);
+  const debtAfterDisc   = Math.max(0, debtTotal - discountApplied);
+  const previewCredit   = Math.max(0, payTotal - debtAfterDisc);   // haqdor bo'ladigan summa
+  const previewRemaining= Math.max(0, debtAfterDisc - payTotal);   // qoladigan qarz
 
   const submitPay = () => {
     if (settled <= 0) return toast.error('Kamida bitta usulda summa yoki skidka kiriting');
-    if (payFor && settled > payFor.totalDebt + 0.01)
-      return toast.error(`To'lov + skidka ${fmt(payFor.totalDebt)} so'mdan oshmasin`);
+    // Ortiqcha pul endi ruxsat — qarzdan oshgani haqdor bo'lib qoladi (skidka qarzdan oshmaydi)
     payMutation.mutate({ items: payFor.items, naqd, karta, bank, skidka, customer: payFor.customer, totalDebt: payFor.totalDebt });
   };
 
@@ -866,8 +896,8 @@ export default function DebtsPage() {
             </div>
 
             <div className={`rounded-xl p-3 text-sm ${
-              settled > payFor.totalDebt + 0.01 ? 'bg-red-50 border border-red-200' :
-              settled >= payFor.totalDebt - 0.01 && settled > 0 ? 'bg-green-50 border border-green-200' :
+              previewCredit > 0.01 ? 'bg-blue-50 border border-blue-200' :
+              previewRemaining < 0.01 && settled > 0 ? 'bg-green-50 border border-green-200' :
               'bg-blue-50 border border-blue-100'
             }`}>
               <div className="flex justify-between items-center">
@@ -877,18 +907,18 @@ export default function DebtsPage() {
               {skidka > 0 && (
                 <div className="flex justify-between items-center text-orange-600 mt-0.5">
                   <span className="font-medium">🏷️ Skidka:</span>
-                  <span className="font-semibold">{fmt(skidka)} so'm</span>
+                  <span className="font-semibold">{fmt(discountApplied)} so'm{skidka > discountApplied ? ' (qarzgacha)' : ''}</span>
                 </div>
               )}
               <div className="text-right mt-1">
-                {settled > 0 && settled < payFor.totalDebt - 0.01 && (
-                  <div className="text-xs text-yellow-600">Qisman · qoladi: {fmt(payFor.totalDebt - settled)} so'm</div>
+                {previewRemaining > 0.01 && (
+                  <div className="text-xs text-yellow-600">Qisman · qoladi: {fmt(previewRemaining)} so'm</div>
                 )}
-                {settled >= payFor.totalDebt - 0.01 && settled <= payFor.totalDebt + 0.01 && settled > 0 && (
+                {previewRemaining < 0.01 && previewCredit < 0.01 && settled > 0 && (
                   <div className="text-xs text-green-600">✅ To'liq — qarz yopiladi</div>
                 )}
-                {settled > payFor.totalDebt + 0.01 && (
-                  <div className="text-xs text-red-600">⚠️ To'lov + skidka qarzdan ko'p!</div>
+                {previewCredit > 0.01 && (
+                  <div className="text-xs text-blue-700 font-semibold">💰 Qarz yopiladi · Haqdor bo'ladi: +{fmt(previewCredit)} so'm</div>
                 )}
               </div>
             </div>
@@ -896,7 +926,7 @@ export default function DebtsPage() {
             <div className="flex gap-3 pt-1">
               <button onClick={() => setPayFor(null)} className="btn-secondary flex-1">Bekor</button>
               <button onClick={submitPay}
-                disabled={payMutation.isPending || settled <= 0 || settled > payFor.totalDebt + 0.01}
+                disabled={payMutation.isPending || settled <= 0}
                 className="btn-success flex-1">
                 {payMutation.isPending ? 'Saqlanmoqda...' : 'To\'lovni saqlash'}
               </button>
@@ -935,6 +965,11 @@ export default function DebtsPage() {
               <div className="flex justify-between font-bold text-[15px] pb-2 mb-1">
                 <span>TO'LANDI:</span><span>{fmt(receipt.total)} so'm</span>
               </div>
+              {receipt.credit > 0.01 && (
+                <div className="flex justify-between text-[13px] text-blue-700 font-bold border-t border-dashed border-gray-300 pt-2 mb-1">
+                  <span>💰 Haqdor (oshiqcha):</span><span>+{fmt(receipt.credit)} so'm</span>
+                </div>
+              )}
               {receipt.saleTotal != null && receipt.saleTotal > 0 ? (
                 <div className="text-[12px] space-y-0.5 border-t border-dashed border-gray-300 pt-2">
                   <div className="flex justify-between"><span>Dastlabki qarz:</span><span className="font-semibold">{fmt(receipt.saleTotal)} so'm</span></div>

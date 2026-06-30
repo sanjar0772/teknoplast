@@ -92,7 +92,7 @@ export default function VozvratlarPage() {
   const visibleCustomers = useMemo(() => {
     const q = pickerSearch.trim().toLowerCase();
     if (!q) return customerGroups;
-    return customerGroups.filter(c => c.name.toLowerCase().includes(q));
+    return customerGroups.filter(c => String(c.name || '').toLowerCase().includes(q));
   }, [customerGroups, pickerSearch]);
 
   // 2-qadam: tanlangan mijozning mahsulotlari (qidiruv bilan)

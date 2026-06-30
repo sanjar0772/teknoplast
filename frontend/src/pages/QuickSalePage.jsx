@@ -131,7 +131,7 @@ export default function QuickSalePage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return products.slice(0, 30);
-    return products.filter(p => p.name.toLowerCase().includes(q)).slice(0, 30);
+    return products.filter(p => String(p.name || '').toLowerCase().includes(q)).slice(0, 30);
   }, [search, products]);
 
   const cartIds = useMemo(() => new Set(s.cart.map(c => c.id)), [s.cart]);

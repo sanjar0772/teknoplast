@@ -84,7 +84,7 @@ function ProductIntakeTab({ canCreate, canApprove }) {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return products.slice(0, 20);
-    return products.filter(p => p.name.toLowerCase().includes(q)).slice(0, 20);
+    return products.filter(p => String(p.name || '').toLowerCase().includes(q)).slice(0, 20);
   }, [search, products]);
 
   const createMutation = useMutation({

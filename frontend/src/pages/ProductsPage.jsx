@@ -391,7 +391,7 @@ export default function ProductsPage({ embedded = false }) {
           {canAdd && (
             <button
               onClick={() => {
-                reset({ created_at: new Date().toISOString().slice(0, 10) });
+                reset({ created_at: new Date().toISOString().slice(0, 10), unit: 'dona' });
                 setEditProduct(null);
                 setShowModal(true);
               }}
@@ -674,7 +674,10 @@ export default function ProductsPage({ embedded = false }) {
             </div>
             <div>
               <label className="label">Birlik</label>
-              <input {...register('unit')} defaultValue="dona" className="input" />
+              <select {...register('unit')} defaultValue="dona" className="select">
+                <option value="dona">dona</option>
+                <option value="kg">kg</option>
+              </select>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

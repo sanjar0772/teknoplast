@@ -339,6 +339,29 @@ function WorkerOutputTab({ canApprove, canEdit }) {
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
   const [entries, setEntries] = useState([newEntry()]);
+  const [dlWorks, setDlWorks] = useState(null); // 'excel' | 'pdf' yuklab olish holati
+
+  // Ishchilar ishini (shu kun) PDF yoki Excel qilib to'g'ridan-to'g'ri yuklab olish
+  const downloadWorks = async (kind) => {
+    try {
+      setDlWorks(kind);
+      const res = kind === 'excel'
+        ? await productionAPI.worksDayExcel(date)
+        : await productionAPI.worksDayPdf(date);
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ishchilar-ishi-${date}.${kind === 'excel' ? 'xlsx' : 'pdf'}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Yuklab bo\'lmadi');
+    } finally {
+      setDlWorks(null);
+    }
+  };
 
   function newEntry() {
     return { employee_id: '', product_id: '', quantity_produced: '', production_type: 'FINISHED', tarif: '', rang: '' };
@@ -831,9 +854,21 @@ function WorkerOutputTab({ canApprove, canEdit }) {
       {/* Shu kun uchun saqlangan + kutilayotgan yozuvlar */}
       {(todayRows.length > 0 || pendingRows.length > 0) && (
         <div className="card">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">
-            {new Date(date + 'T12:00:00').toLocaleDateString('uz-UZ', { day: 'numeric', month: 'long' })} — Natijalar
-          </h2>
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h2 className="text-sm font-semibold text-gray-700">
+              {new Date(date + 'T12:00:00').toLocaleDateString('uz-UZ', { day: 'numeric', month: 'long' })} — Natijalar
+            </h2>
+            <div className="flex gap-2">
+              <button onClick={() => downloadWorks('excel')} disabled={!!dlWorks}
+                className="btn-secondary btn-sm" title="Excel (xlsx) yuklab olish">
+                <FileDown size={13} /> {dlWorks === 'excel' ? '...' : 'Excel'}
+              </button>
+              <button onClick={() => downloadWorks('pdf')} disabled={!!dlWorks}
+                className="btn-secondary btn-sm" title="PDF yuklab olish">
+                <FileText size={13} /> {dlWorks === 'pdf' ? '...' : 'PDF'}
+              </button>
+            </div>
+          </div>
           <div className="table-container">
             <table className="table text-sm">
               <thead>

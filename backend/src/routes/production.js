@@ -141,6 +141,47 @@ router.get('/range-summary/excel', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Ishchilar ishi (bir kun) — eksport uchun yozuvlarni olish
+async function fetchWorksOfDay(date) {
+  const result = await query(`
+    SELECT ep.*, e.name AS employee_name, e.type AS employee_type, p.name AS product_name
+    FROM employee_production ep
+    JOIN employees e ON ep.employee_id = e.id
+    LEFT JOIN products p ON ep.product_id = p.id
+    WHERE ep.production_date = $1 AND e.type IN ('STANOKCHI', 'DETALCHI')
+    ORDER BY e.name, p.name
+  `, [date]);
+  return result.rows;
+}
+
+// GET /api/production/works-day/excel?date=YYYY-MM-DD — Ishchilar ishi (XODIM/MAHSULOT/RANG/MIQDOR/HAQ/HOLAT)
+router.get('/works-day/excel', async (req, res, next) => {
+  try {
+    const { date } = req.query;
+    if (!date) return res.status(400).json({ error: 'date kerak' });
+    const rows = await fetchWorksOfDay(date);
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateWorkerWorksExcel(rows, date);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="ishchilar-ishi-${date}.xlsx"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) { next(err); }
+});
+
+// GET /api/production/works-day/pdf?date=YYYY-MM-DD — xuddi shu ro'yxat PDF formatda
+router.get('/works-day/pdf', async (req, res, next) => {
+  try {
+    const { date } = req.query;
+    if (!date) return res.status(400).json({ error: 'date kerak' });
+    const rows = await fetchWorksOfDay(date);
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateWorkerWorksPDF(rows, date);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="ishchilar-ishi-${date}.pdf"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) { next(err); }
+});
+
 // POST /api/production — kunlik ishlab chiqarish kiritish
 router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
   body('employee_id').notEmpty(),

@@ -994,6 +994,113 @@ async function generateIntakesPDF(rows, filters = {}) {
   });
 }
 
+// ── Ishchilar ishi (bir kun) — XODIM / MAHSULOT / RANG / MIQDOR / HAQ / HOLAT ──
+async function generateWorkerWorksExcel(rows, date) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'TEKNOPLAST';
+  const sheet = workbook.addWorksheet('Ishchilar ishi');
+
+  sheet.columns = [
+    { header: '№', key: 'num', width: 5 },
+    { header: 'XODIM', key: 'employee', width: 26 },
+    { header: 'MAHSULOT', key: 'product', width: 34 },
+    { header: 'RANG', key: 'rang', width: 14 },
+    { header: 'MIQDOR', key: 'qty', width: 12 },
+    { header: 'HAQ', key: 'pay', width: 16 },
+    { header: 'HOLAT', key: 'status', width: 16 },
+  ];
+  sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D4ED8' } };
+
+  rows.forEach((r, i) => {
+    sheet.addRow({
+      num: i + 1,
+      employee: r.employee_name || '—',
+      product: r.product_name || '—',
+      rang: r.rang || '—',
+      qty: parseFloat(r.quantity_produced || 0),
+      pay: parseFloat(r.calculated_amount || 0),
+      status: r.approval_status === 'APPROVED' ? 'Tasdiqlangan' : 'Kutilmoqda',
+    });
+  });
+
+  const totalRow = sheet.addRow({
+    product: 'JAMI:',
+    qty: rows.reduce((a, r) => a + parseFloat(r.quantity_produced || 0), 0),
+    pay: rows.reduce((a, r) => a + parseFloat(r.calculated_amount || 0), 0),
+  });
+  totalRow.font = { bold: true };
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return buffer;
+}
+
+async function generateWorkerWorksPDF(rows, date) {
+  return new Promise((resolve, reject) => {
+    const money = n => String(Math.round(parseFloat(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    registerCyrillicFonts(doc);
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    doc.fontSize(18).font('Arial-Bold').text('TEKNOPLAST', { align: 'center' });
+    doc.fontSize(12).font('Arial').text('Ishchilar ishi hisoboti', { align: 'center' });
+    const dLabel = date ? new Date(date + 'T12:00:00').toLocaleDateString('uz-UZ') : '';
+    doc.fontSize(9).fillColor('#666').text(`Sana: ${dLabel}   ·   Yaratildi: ${new Date().toLocaleDateString('uz-UZ')}`, { align: 'center' });
+    doc.fillColor('black').moveDown(0.8);
+
+    // Ustun x-koordinatalari (A4, margin 40 → 40..555)
+    const col = { num: 40, employee: 64, product: 182, rang: 326, qty: 376, pay: 420, status: 482 };
+    const right = 555;
+
+    const drawHeader = (y) => {
+      doc.font('Arial-Bold').fontSize(9).fillColor('black');
+      doc.text('№', col.num, y);
+      doc.text('XODIM', col.employee, y);
+      doc.text('MAHSULOT', col.product, y);
+      doc.text('RANG', col.rang, y);
+      doc.text('MIQDOR', col.qty, y);
+      doc.text('HAQ', col.pay, y);
+      doc.text('HOLAT', col.status, y);
+      doc.moveTo(40, y + 13).lineTo(right, y + 13).strokeColor('#999').stroke();
+      return y + 18;
+    };
+
+    let y = drawHeader(doc.y);
+    doc.font('Arial').fontSize(8).fillColor('black');
+    let totalQty = 0, totalPay = 0;
+
+    rows.forEach((r) => {
+      if (y > 780) { doc.addPage(); y = drawHeader(40); doc.font('Arial').fontSize(8); }
+      const qty = parseFloat(r.quantity_produced || 0);
+      const pay = parseFloat(r.calculated_amount || 0);
+      totalQty += qty; totalPay += pay;
+      doc.fillColor('black');
+      doc.text(r.employee_name || '—', col.employee, y, { width: 116 });
+      doc.text(r.product_name || '—', col.product, y, { width: 140 });
+      doc.text(r.rang || '—', col.rang, y, { width: 48 });
+      doc.text(`${qty}`, col.qty, y, { width: 42 });
+      doc.text(money(pay), col.pay, y, { width: 60 });
+      doc.text(r.approval_status === 'APPROVED' ? 'Tasdiqlangan' : 'Kutilmoqda', col.status, y, { width: 73 });
+      const h = Math.max(
+        doc.heightOfString(r.product_name || '—', { width: 140 }),
+        doc.heightOfString(r.employee_name || '—', { width: 116 }),
+        12
+      );
+      y += h + 4;
+    });
+
+    doc.moveTo(40, y).lineTo(right, y).strokeColor('#999').stroke();
+    y += 6;
+    doc.font('Arial-Bold').fontSize(10).fillColor('black');
+    doc.text(`JAMI: ${rows.length} ta · ${totalQty} dona · ${money(totalPay)} so'm`, 40, y, { width: right - 40, align: 'right' });
+
+    doc.end();
+  });
+}
+
 // ── Umumiy ombor (inventar) ro'yxati — Excel ──
 // columns: [{ header, key, w, money?, total?, align? }], rows: [{ key: value }]
 async function generateInventoryExcel({ title, columns, rows, headerColor = 'FF1E40AF' }) {
@@ -1221,4 +1328,4 @@ async function generateTurnoverPDF({ rows, start_date, end_date, warehouse }) {
   });
 }
 
-module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF, generateInventoryExcel, generateInventoryPDF, generateTurnoverExcel, generateTurnoverPDF };
+module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF, generateWorkerWorksExcel, generateWorkerWorksPDF, generateInventoryExcel, generateInventoryPDF, generateTurnoverExcel, generateTurnoverPDF };

@@ -121,6 +121,7 @@ export const productionAPI = {
   getRangeSummaryExcel: (params) => api.get('/production/range-summary/excel', { params, responseType: 'blob' }),
   create: (data) => api.post('/production', data),
   bulk: (data) => api.post('/production/bulk', data),
+  update: (id, data) => api.put(`/production/${id}`, data),
   remove: (id) => api.delete(`/production/${id}`),
   removeAll: () => api.delete('/production/all'),
   getPending: () => api.get('/production/pending'),

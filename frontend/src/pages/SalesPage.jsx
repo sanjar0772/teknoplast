@@ -343,7 +343,7 @@ export default function SalesPage({ embedded = false }) {
           <button onClick={downloadExcel} className="btn-secondary btn-sm">
             <Download size={14} /> Excel
           </button>
-          {isOwner() && (
+          {isOwner() && !embedded && (
             <button
               onClick={() => {
                 if (!window.confirm('DIQQAT! Barcha savdo, to\'lov va vozvratlar butunlay o\'chiriladi (0 bo\'ladi). Qarzlar ham 0 bo\'ladi. Ombor/mahsulot/mijozlarga tegmaydi. Davom etamizmi?')) return;

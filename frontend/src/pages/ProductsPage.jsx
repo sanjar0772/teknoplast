@@ -410,7 +410,7 @@ export default function ProductsPage({ embedded = false }) {
           >
             <CheckSquare size={14} /> {selectMode ? 'Belgilashni yopish' : 'Belgilash'}
           </button>
-          {isOwner() && (
+          {isOwner() && !embedded && (
             <button
               onClick={() => {
                 if (!confirm('DIQQAT: Barcha mahsulotlarning ombor soni 0 ga tushiriladi (rang bo\'yicha ombor ham). Mahsulotlar, narxlar va savdolar saqlanadi.\n\nSo\'ng qaytadan sanab kirim qilasiz. Davom etilsinmi?')) return;

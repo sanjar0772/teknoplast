@@ -446,4 +446,77 @@ router.delete('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async
   } catch (err) { next(err); }
 });
 
+// PUT /api/production/:id — yagona yozuvni tahrirlash (miqdor/tarif/rang/mahsulot/tur).
+// APPROVED yozuv uchun ombor mos ravishda to'g'rilanadi: eski effekt qaytarilib, yangisi qo'llanadi.
+router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async (req, res, next) => {
+  try {
+    const existing = await query('SELECT * FROM employee_production WHERE id=$1', [req.params.id]);
+    if (!existing.rows.length) return res.status(404).json({ error: 'Yozuv topilmadi' });
+    const old = existing.rows[0];
+
+    // Yangi qiymatlar — berilmaganlari eski yozuvdan olinadi
+    const newProductId = req.body.product_id !== undefined ? (req.body.product_id || null) : old.product_id;
+    const newQty = req.body.quantity_produced !== undefined ? parseFloat(req.body.quantity_produced) : parseFloat(old.quantity_produced);
+    if (!(newQty >= 0)) return res.status(400).json({ error: 'Miqdor noto\'g\'ri' });
+    const newRang = req.body.rang !== undefined ? (req.body.rang || null) : old.rang;
+    const newType = req.body.production_type !== undefined ? (req.body.production_type || 'FINISHED') : old.production_type;
+    const newTariff = (req.body.daily_tariff !== undefined && req.body.daily_tariff !== '' && req.body.daily_tariff !== null)
+      ? parseFloat(req.body.daily_tariff) : parseFloat(old.daily_tariff || 0);
+    const newAmount = newQty * (newTariff || 0);
+    const wasApproved = old.approval_status === 'APPROVED';
+
+    const client = await require('../db').getClient();
+    try {
+      await client.query('BEGIN');
+
+      // Faqat tasdiqlangan (APPROVED) yozuv omborga ta'sir qilgan — uni to'g'rilaymiz
+      if (wasApproved) {
+        // 1) Eski effektni qaytaramiz
+        if (old.product_id && old.quantity_produced > 0) {
+          await client.query(
+            'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at=NOW() WHERE id=$2',
+            [old.quantity_produced, old.product_id]
+          );
+          await addColorStock(client.query, old.product_id, old.rang, -old.quantity_produced);
+        }
+        // 2) Yangi effektni qo'llaymiz
+        if (newProductId && newQty > 0) {
+          if (newType === 'KOMPONENT') {
+            await client.query(
+              "UPDATE products SET kind='KOMPONENT', updated_at=NOW() WHERE id=$1 AND COALESCE(kind,'') <> 'KOMPONENT'",
+              [newProductId]
+            );
+          }
+          await client.query(
+            'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at=NOW() WHERE id=$2',
+            [newQty, newProductId]
+          );
+          await addColorStock(client.query, newProductId, newRang, newQty);
+        }
+      }
+
+      const upd = await client.query(
+        `UPDATE employee_production
+         SET product_id=$1, quantity_produced=$2, daily_tariff=$3, calculated_amount=$4,
+             production_type=$5, rang=$6, updated_at=NOW()
+         WHERE id=$7 RETURNING *`,
+        [newProductId, newQty, newTariff, newAmount, newType || 'FINISHED', newRang, req.params.id]
+      );
+
+      await client.query('COMMIT');
+      logAudit(req, {
+        action: 'PRODUCTION_UPDATE', table: 'employee_production', recordId: req.params.id,
+        oldValues: { quantity: old.quantity_produced, tariff: old.daily_tariff, product_id: old.product_id, rang: old.rang },
+        newValues: { quantity: newQty, tariff: newTariff, product_id: newProductId, rang: newRang, production_type: newType },
+      });
+      res.json({ production: upd.rows[0] });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

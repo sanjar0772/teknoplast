@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { PackagePlus, X, Search, Plus, Trash2, Check, Ban, Eye, Save, Users, ChevronDown, Clock, FileDown, FileText } from 'lucide-react';
+import { PackagePlus, X, Search, Plus, Trash2, Check, Ban, Eye, Save, Users, ChevronDown, Clock, FileDown, FileText, Pencil } from 'lucide-react';
 import { intakesAPI, productsAPI, productionAPI, employeesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import clsx from 'clsx';
@@ -334,7 +334,7 @@ function ProductIntakeTab({ canCreate, canApprove }) {
 }
 
 // ─── Ishchilar ishi tab ───────────────────────────────────────────────────────
-function WorkerOutputTab({ canApprove }) {
+function WorkerOutputTab({ canApprove, canEdit }) {
   const qc = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
@@ -481,6 +481,79 @@ function WorkerOutputTab({ canApprove }) {
         rang: e.rang || null,
       })),
     });
+  };
+
+  // ── Saqlangan yozuvni tahrirlash / o'chirish ─────────────────────────────────
+  const [editRow, setEditRow] = useState(null);
+
+  const openEdit = (row) => setEditRow({
+    id: row.id,
+    employee_id: row.employee_id,
+    employee_name: row.employee_name,
+    employee_type: row.employee_type,
+    product_id: row.product_id || '',
+    rang: row.rang || '',
+    quantity_produced: row.quantity_produced ?? '',
+    tarif: row.daily_tariff ?? '',
+    production_type: row.production_type || 'FINISHED',
+    approval_status: row.approval_status,
+  });
+
+  const updateEditField = (field, value) => {
+    setEditRow(prev => {
+      if (!prev) return prev;
+      const next = { ...prev, [field]: value };
+      if (field === 'product_id') {
+        const p = prodMap[value];
+        if (p?.kind === 'KOMPONENT') next.production_type = 'KOMPONENT';
+        else if (prev.production_type === 'KOMPONENT') next.production_type = prev.employee_type === 'DETALCHI' ? 'SEMI_FINISHED' : 'FINISHED';
+        if (p?.rang) next.rang = p.rang;
+      }
+      if (field === 'product_id' || field === 'production_type') {
+        const t = autoTarif(prev.employee_id, next.product_id, next.production_type);
+        if (t !== '') next.tarif = t;
+      }
+      return next;
+    });
+  };
+
+  const invalidateProduction = () => {
+    qc.invalidateQueries({ queryKey: ['production-daily', date] });
+    qc.invalidateQueries({ queryKey: ['production-summary'] });
+    qc.invalidateQueries({ queryKey: ['production-pending'] });
+    qc.invalidateQueries({ queryKey: ['products'] });
+    qc.invalidateQueries({ queryKey: ['inventory-products'] });
+    refetchDaily();
+  };
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }) => productionAPI.update(id, data),
+    onSuccess: () => { toast.success('Yozuv yangilandi'); invalidateProduction(); setEditRow(null); },
+    onError: (e) => toast.error(e?.response?.data?.error || 'Xato'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => productionAPI.remove(id),
+    onSuccess: () => { toast.success('Yozuv o\'chirildi'); invalidateProduction(); },
+    onError: (e) => toast.error(e?.response?.data?.error || 'Xato'),
+  });
+
+  const saveEdit = () => {
+    if (!editRow) return;
+    const qty = parseFloat(editRow.quantity_produced);
+    if (!(qty > 0)) return toast.error('Miqdor noto\'g\'ri');
+    updateMutation.mutate({ id: editRow.id, data: {
+      product_id: editRow.product_id || null,
+      quantity_produced: qty,
+      daily_tariff: editRow.tarif === '' ? undefined : parseFloat(editRow.tarif),
+      rang: editRow.rang || null,
+      production_type: editRow.production_type,
+    } });
+  };
+
+  const askDelete = (row) => {
+    if (!window.confirm(`"${row.employee_name}" — ${row.product_name || 'mahsulot'} (${fmt(row.quantity_produced)} dona) yozuvini o'chirasizmi?${row.approval_status === 'APPROVED' ? "\n\nBu yozuv tasdiqlangan — ombordan ham ayiriladi." : ''}`)) return;
+    deleteMutation.mutate(row.id);
   };
 
   const todayRows = (dailyData?.production || []).filter(r =>
@@ -771,6 +844,7 @@ function WorkerOutputTab({ canApprove }) {
                   <th>Miqdor</th>
                   <th>Haq</th>
                   <th>Holat</th>
+                  {canEdit && <th>Amal</th>}
                 </tr>
               </thead>
               <tbody>
@@ -794,11 +868,24 @@ function WorkerOutputTab({ canApprove }) {
                         : <span className="badge-yellow">Kutilmoqda</span>
                       }
                     </td>
+                    {canEdit && (
+                      <td>
+                        <div className="flex gap-1">
+                          <button onClick={() => openEdit(row)} className="btn-secondary btn-sm" title="Tahrirlash">
+                            <Pencil size={12} />
+                          </button>
+                          <button onClick={() => askDelete(row)} disabled={deleteMutation.isPending}
+                            className="btn-sm bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg px-2" title="O'chirish">
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
                 <tr className="bg-green-50">
                   <td colSpan={4} className="text-right text-sm font-semibold text-gray-700 pr-2">Jami (tasdiqlangan):</td>
-                  <td className="font-bold text-green-800 text-base" colSpan={2}>
+                  <td className="font-bold text-green-800 text-base" colSpan={canEdit ? 3 : 2}>
                     {fmt(todayRows.reduce((s, r) => s + parseFloat(r.calculated_amount || 0), 0))} so'm
                   </td>
                 </tr>
@@ -807,6 +894,86 @@ function WorkerOutputTab({ canApprove }) {
           </div>
         </div>
       )}
+
+      {/* Yozuvni tahrirlash modali */}
+      <Modal open={!!editRow} onClose={() => setEditRow(null)} title="Yozuvni tahrirlash">
+        {editRow && (
+          <div className="space-y-4">
+            <div className="text-sm text-gray-600 flex items-center flex-wrap gap-2">
+              <span>Xodim: <span className="font-semibold text-gray-900">{editRow.employee_name}</span></span>
+              <span className="text-xs text-gray-400">({editRow.employee_type === 'DETALCHI' ? 'Detalchi' : 'Stanokchi'})</span>
+              {editRow.approval_status === 'APPROVED'
+                ? <span className="badge-green">Tasdiqlangan</span>
+                : <span className="badge-yellow">Kutilmoqda</span>}
+            </div>
+            <div>
+              <label className="label">Mahsulot</label>
+              <select value={editRow.product_id} onChange={e => updateEditField('product_id', e.target.value)} className="select w-full">
+                <option value="">— Mahsulot —</option>
+                {componentOptions.length > 0 && (
+                  <optgroup label="🔧 Komponentlar">
+                    {componentOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </optgroup>
+                )}
+                {finishedOptions.length > 0 && (
+                  <optgroup label="📦 Tayyor mahsulotlar">
+                    {finishedOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Rang</label>
+                <select value={editRow.rang} onChange={e => updateEditField('rang', e.target.value)} className="select w-full">
+                  <option value="">Rangsiz</option>
+                  {RANGLAR.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Turi</label>
+                {editRow.employee_type === 'DETALCHI' ? (
+                  <select value={editRow.production_type === 'KOMPONENT' ? 'KOMPONENT' : 'SEMI_FINISHED'}
+                    onChange={e => updateEditField('production_type', e.target.value)} className="select w-full">
+                    <option value="SEMI_FINISHED">Yarim</option>
+                    <option value="KOMPONENT">🔧 Komponent</option>
+                  </select>
+                ) : (
+                  <select value={editRow.production_type} onChange={e => updateEditField('production_type', e.target.value)} className="select w-full">
+                    <option value="FINISHED">Tayyor</option>
+                    <option value="SEMI_FINISHED">Yarim</option>
+                    <option value="KOMPONENT">🔧 Komponent</option>
+                  </select>
+                )}
+              </div>
+              <div>
+                <label className="label">Miqdor (dona)</label>
+                <input type="number" min="1" value={editRow.quantity_produced}
+                  onChange={e => updateEditField('quantity_produced', e.target.value)}
+                  onFocus={e => e.target.select()} className="input w-full" />
+              </div>
+              <div>
+                <label className="label">Tarif (so'm/dona)</label>
+                <input type="number" min="0" value={editRow.tarif}
+                  onChange={e => updateEditField('tarif', e.target.value)}
+                  onFocus={e => e.target.select()} className="input w-full" />
+              </div>
+            </div>
+            <div className="flex justify-between items-center p-2 bg-green-50 rounded-lg">
+              <span className="text-sm text-gray-600">Hisoblangan haq:</span>
+              <span className="font-bold text-green-700">
+                {fmt((parseFloat(editRow.quantity_produced) || 0) * (parseFloat(editRow.tarif) || 0))} so'm
+              </span>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setEditRow(null)} className="btn-secondary flex-1">Bekor</button>
+              <button onClick={saveEdit} disabled={updateMutation.isPending} className="btn-primary flex-1">
+                <Save size={14} /> {updateMutation.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -818,6 +985,8 @@ export default function IntakePage() {
 
   const canCreate = isOwner() || isKirimchi() || isProductionHead() || isSalesHead();
   const canApprove = isOwner() || isSalesHead();
+  // Tahrirlash/o'chirish — backend ruxsati bilan bir xil (OWNER/PRODUCTION_HEAD/KIRIMCHI)
+  const canEdit = isOwner() || isProductionHead() || isKirimchi();
 
   const TABS = [
     { key: 'intake',  label: 'Mahsulot kirimi', icon: PackagePlus },
@@ -856,7 +1025,7 @@ export default function IntakePage() {
         <ProductIntakeTab canCreate={canCreate} canApprove={canApprove} />
       )}
       {tab === 'workers' && (
-        <WorkerOutputTab canApprove={canApprove} />
+        <WorkerOutputTab canApprove={canApprove} canEdit={canEdit} />
       )}
     </div>
   );

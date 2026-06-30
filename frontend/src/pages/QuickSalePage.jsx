@@ -651,87 +651,81 @@ export default function QuickSalePage() {
               )}
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="table text-xs">
-                <thead>
-                  <tr>
-                    <th className="w-6">#</th>
-                    <th>Mahsulot</th>
-                    <th className="w-28">Rang</th>
-                    <th className="w-24">Narx</th>
-                    <th className="w-20">Son</th>
-                    <th className="w-24">Jami</th>
-                    <th className="w-8"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {!s.cart.length ? (
-                    <tr>
-                      <td colSpan={7} className="text-center py-6 text-gray-400 text-xs">
-                        <Package size={22} className="mx-auto mb-1 opacity-30" />
-                        Chapdan mahsulot qo'shing
-                      </td>
-                    </tr>
-                  ) : s.cart.map((x, i) => ({ x, num: i + 1 })).reverse().map(({ x, num }) => (
-                    <tr key={x.key}>
-                      <td className="text-gray-400">{num}</td>
-                      <td>
-                        <div className="font-medium text-gray-900 truncate max-w-[160px]">{x.name}</div>
-                        <div className="text-[10px] text-gray-400">
-                          {x.rang ? `${rangLabel(x.rang)}: ${rowAvail(x)} ${x.unit}` : `${x.stock} ${x.unit}`}
-                        </div>
-                      </td>
-                      <td>
-                        {(x.color_stock || []).length === 0 ? (
-                          <span className="text-[10px] text-red-500">Yo'q</span>
-                        ) : (
-                          <div className="flex items-center gap-0.5">
-                            <select
-                              value={x.rang || ''}
-                              onChange={e => updateRow(x.key, 'rang', e.target.value)}
-                              className={`select py-0.5 px-1 text-xs w-28 ${((x.color_stock || []).length > 1 && !(x.color_stock || []).some(c => (c.rang || '') === (x.rang || ''))) ? 'border-red-300' : ''}`}
-                            >
-                              {(x.color_stock || []).length > 1 && <option value="">— Rang —</option>}
-                              {(x.color_stock || []).map(c => (
-                                <option key={c.rang || 'none'} value={c.rang}>{rangLabel(c.rang)} ({c.quantity})</option>
-                              ))}
-                            </select>
-                            {x.rang && <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', flexShrink:0, background: RANG_COLORS[x.rang] || '#999', border:'1px solid #ccc' }} />}
-                            {(x.color_stock || []).length > 1 && (
-                              <button type="button" onClick={() => addColorRow(x)}
-                                className="text-blue-500 hover:text-blue-700 text-[10px] whitespace-nowrap">+</button>
-                            )}
-                          </div>
+            {/* Ixcham kartochka ro'yxati — gorizontal scroll yo'q, o'chirish tugmasi doim ko'rinadi */}
+            <div className="divide-y divide-gray-100">
+              {!s.cart.length ? (
+                <div className="text-center py-6 text-gray-400 text-xs">
+                  <Package size={22} className="mx-auto mb-1 opacity-30" />
+                  Chapdan mahsulot qo'shing
+                </div>
+              ) : s.cart.map((x, i) => ({ x, num: i + 1 })).reverse().map(({ x, num }) => (
+                <div key={x.key} className="px-3 py-2">
+                  {/* Yuqori qator: nom + o'chirish */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-gray-400 flex-shrink-0">{num}</span>
+                        <span className="font-medium text-gray-900 text-xs truncate">{x.name}</span>
+                      </div>
+                      <div className="text-[10px] text-gray-400 pl-4">
+                        {x.rang ? `${rangLabel(x.rang)}: ${rowAvail(x)} ${x.unit}` : `${x.stock} ${x.unit}`}
+                      </div>
+                    </div>
+                    <button onClick={() => removeRow(x.key)}
+                      className="text-gray-300 hover:text-red-500 flex-shrink-0 p-1 -mr-1" title="O'chirish">
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                  {/* Pastki qator: rang, narx, son, jami — sig'masa o'raladi (flex-wrap) */}
+                  <div className="flex items-end gap-2 mt-1.5 flex-wrap">
+                    {(x.color_stock || []).length === 0 ? (
+                      <span className="text-[10px] text-red-500 pb-1">Rang yo'q</span>
+                    ) : (
+                      <div className="flex items-center gap-0.5">
+                        <select
+                          value={x.rang || ''}
+                          onChange={e => updateRow(x.key, 'rang', e.target.value)}
+                          className={`select py-0.5 px-1 text-xs w-24 ${((x.color_stock || []).length > 1 && !(x.color_stock || []).some(c => (c.rang || '') === (x.rang || ''))) ? 'border-red-300' : ''}`}
+                        >
+                          {(x.color_stock || []).length > 1 && <option value="">— Rang —</option>}
+                          {(x.color_stock || []).map(c => (
+                            <option key={c.rang || 'none'} value={c.rang}>{rangLabel(c.rang)} ({c.quantity})</option>
+                          ))}
+                        </select>
+                        {x.rang && <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', flexShrink:0, background: RANG_COLORS[x.rang] || '#999', border:'1px solid #ccc' }} />}
+                        {(x.color_stock || []).length > 1 && (
+                          <button type="button" onClick={() => addColorRow(x)}
+                            className="text-blue-500 hover:text-blue-700 text-[10px] whitespace-nowrap">+</button>
                         )}
-                      </td>
-                      <td>
-                        <input
-                          type="number" min="0" value={x.price}
-                          onChange={e => updateRow(x.key, 'price', e.target.value)}
-                          onFocus={e => e.target.select()}
-                          className="input py-0.5 px-1 text-xs w-20"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number" min="1" max={rowAvail(x)} value={x.qty}
-                          onChange={e => updateRow(x.key, 'qty', e.target.value)}
-                          onFocus={e => e.target.select()}
-                          className={`input py-0.5 px-1 text-xs w-16 ${x.rang && parseFloat(x.qty) > rowAvail(x) ? 'border-red-400 text-red-600' : ''}`}
-                        />
-                      </td>
-                      <td className="font-semibold text-blue-700 whitespace-nowrap">
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-[9px] text-gray-400 leading-none mb-0.5">Narx</label>
+                      <input
+                        type="number" min="0" value={x.price}
+                        onChange={e => updateRow(x.key, 'price', e.target.value)}
+                        onFocus={e => e.target.select()}
+                        className="input py-0.5 px-1 text-xs w-20"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] text-gray-400 leading-none mb-0.5">Son</label>
+                      <input
+                        type="number" min="1" max={rowAvail(x)} value={x.qty}
+                        onChange={e => updateRow(x.key, 'qty', e.target.value)}
+                        onFocus={e => e.target.select()}
+                        className={`input py-0.5 px-1 text-xs w-16 ${x.rang && parseFloat(x.qty) > rowAvail(x) ? 'border-red-400 text-red-600' : ''}`}
+                      />
+                    </div>
+                    <div className="ml-auto text-right">
+                      <label className="block text-[9px] text-gray-400 leading-none mb-0.5">Jami</label>
+                      <span className="font-semibold text-blue-700 text-xs whitespace-nowrap">
                         {fmt((parseFloat(x.qty) || 0) * (parseFloat(x.price) || 0))}
-                      </td>
-                      <td>
-                        <button onClick={() => removeRow(x.key)} className="text-gray-300 hover:text-red-500">
-                          <Trash2 size={13} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
 
             {/* Jami, chegirma va yakunlash */}

@@ -201,16 +201,6 @@ export default function EmployeesPage() {
     onError: (err) => toast.error(err?.response?.data?.error || 'O\'chirishda xato'),
   });
 
-  // Hamma xodimni o'chirish
-  const deleteAllMutation = useMutation({
-    mutationFn: () => employeesAPI.removeAll(),
-    onSuccess: (res) => {
-      toast.success(res?.data?.message || 'Hamma xodim o\'chirildi');
-      qc.invalidateQueries({ queryKey: ['employees'] });
-    },
-    onError: (err) => toast.error(err?.response?.data?.error || 'O\'chirishda xato'),
-  });
-
   const canWrite = isOwner() || isProductionHead();
   // KIRIMCHI faqat yangi xodim (stanokchi/detalchi) qo'shishi mumkin
   const canAdd = canWrite || isKirimchi();
@@ -225,18 +215,6 @@ export default function EmployeesPage() {
       <div className="page-header">
         <h1 className="page-title">Xodimlar</h1>
         <div className="flex gap-2">
-          {isOwner() && (data?.employees || []).length > 0 && (
-            <button
-              onClick={() => {
-                const total = (data?.employees || []).length;
-                if (window.confirm(`HAMMA xodimni (${total} ta) BUTUNLAY o'chirasizmi?\nBarcha xodimlar va ularning maosh/ishlab chiqarish yozuvlari o'chadi. Qaytarib bo'lmaydi!`))
-                  deleteAllMutation.mutate();
-              }}
-              disabled={deleteAllMutation.isPending}
-              className="btn-sm bg-red-600 text-white hover:bg-red-700 rounded-lg px-3 flex items-center gap-1">
-              <Trash2 size={14} /> Hammasini o'chirish
-            </button>
-          )}
           <button onClick={() => setQrBulk(true)}
             className="btn-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 flex items-center gap-1">
             <QrCode size={14} /> Hamma QR

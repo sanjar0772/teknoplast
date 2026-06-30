@@ -128,18 +128,6 @@ export default function ProductionPage() {
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
-  const deleteAllMutation = useMutation({
-    mutationFn: () => productionAPI.removeAll(),
-    onSuccess: (res) => {
-      toast.success(`${res.data.count} ta yozuv o'chirildi`);
-      qc.invalidateQueries({ queryKey: ['production-daily'] });
-      qc.invalidateQueries({ queryKey: ['production-summary'] });
-      qc.invalidateQueries({ queryKey: ['production-history'] });
-      qc.invalidateQueries({ queryKey: ['production-range'] });
-    },
-    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
-  });
-
   const [entries, setEntries] = useState([]);
 
   const empMap = {};
@@ -327,19 +315,6 @@ export default function ProductionPage() {
       <div className="page-header">
         <h1 className="page-title">Ishlab Chiqarish</h1>
         <div className="flex gap-2">
-          {isOwner() && (
-            <button
-              onClick={() => {
-                if (confirm('Barcha kunlik ishlab chiqarish yozuvlari (hamma kun, hamma xodim) o\'chirilsinmi? Bu amalni qaytarib bo\'lmaydi!')) {
-                  deleteAllMutation.mutate();
-                }
-              }}
-              disabled={deleteAllMutation.isPending}
-              className="btn-secondary btn-sm text-red-600 border-red-200 hover:bg-red-50"
-            >
-              <Trash2 size={14} /> {deleteAllMutation.isPending ? 'O\'chirilmoqda...' : 'Hammasini o\'chirish'}
-            </button>
-          )}
           {canWrite && (
             <button onClick={() => { setScanManual(''); setScanOpen(true); }}
               className="btn-secondary btn-sm">

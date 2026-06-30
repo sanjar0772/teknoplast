@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Boxes, Search, Trash2, Edit3, Warehouse } from 'lucide-react';
+import { Plus, X, Boxes, Search, Edit3, Warehouse } from 'lucide-react';
 import clsx from 'clsx';
 import { productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
@@ -83,16 +83,6 @@ export default function ComponentsPage() {
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
-  // Barcha komponentlarni o'chirish (faqat OWNER)
-  const resetMutation = useMutation({
-    mutationFn: () => productsAPI.resetComponents().then(r => r.data),
-    onSuccess: (res) => {
-      toast.success(`${res.total} ta komponent o'chirildi` + (res.deactivated ? ` (${res.deactivated} tasi tarixi borligi uchun yashirildi)` : ''));
-      qc.invalidateQueries({ queryKey: ['products'] });
-    },
-    onError: (e) => toast.error(e.response?.data?.error || 'O\'chirishda xato'),
-  });
-
   const openNew = () => {
     reset();
     setEditItem(null);
@@ -120,17 +110,6 @@ export default function ComponentsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          {isOwner() && components.length > 0 && (
-            <button
-              onClick={() => {
-                if (window.confirm(`HAMMA komponentni (${components.length} ta) o'chirasizmi?\n\nFaqat komponentlar ro'yxati tozalanadi. Ishlab chiqarish/maosh tarixiga tegmaydi.\nKeyin hammasini qaytadan kiritasiz.`))
-                  resetMutation.mutate();
-              }}
-              disabled={resetMutation.isPending}
-              className="btn-sm bg-red-600 text-white hover:bg-red-700 rounded-lg px-3 flex items-center gap-1">
-              <Trash2 size={14} /> {resetMutation.isPending ? 'O\'chirilmoqda...' : 'Hammasini o\'chirish'}
-            </button>
-          )}
           {canAdd && (
             <button onClick={openNew}
               className="btn-sm bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg px-3 flex items-center gap-1">

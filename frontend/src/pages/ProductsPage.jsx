@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Package, DollarSign, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory, Calendar, CheckSquare, Square, FileText, FileSpreadsheet, RotateCcw } from 'lucide-react';
+import { Plus, X, Package, DollarSign, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory, Calendar, CheckSquare, Square, FileText, FileSpreadsheet } from 'lucide-react';
 import clsx from 'clsx';
 import { productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
@@ -266,15 +266,6 @@ export default function ProductsPage({ embedded = false }) {
     onError: (e) => toast.error(e.response?.data?.error || 'Narx saqlashda xato'),
   });
 
-  // Barcha mahsulot ombor sonini 0 ga tushirish — qaytadan sanab kirim qilish uchun (faqat OWNER)
-  const resetStockMutation = useMutation({
-    mutationFn: () => productsAPI.resetStock(),
-    onSuccess: () => {
-      toast.success('Barcha mahsulot ombori 0 ga tushirildi. Endi kirim qiling.');
-      qc.invalidateQueries({ queryKey: ['products'] });
-    },
-    onError: (e) => toast.error(e.response?.data?.error || 'Ombor 0 ga tushirishda xato'),
-  });
 
   // BOM (komponentlar tarkibi)
   const { data: bomData } = useQuery({
@@ -410,20 +401,6 @@ export default function ProductsPage({ embedded = false }) {
           >
             <CheckSquare size={14} /> {selectMode ? 'Belgilashni yopish' : 'Belgilash'}
           </button>
-          {isOwner() && !embedded && (
-            <button
-              onClick={() => {
-                if (!confirm('DIQQAT: Barcha mahsulotlarning ombor soni 0 ga tushiriladi (rang bo\'yicha ombor ham). Mahsulotlar, narxlar va savdolar saqlanadi.\n\nSo\'ng qaytadan sanab kirim qilasiz. Davom etilsinmi?')) return;
-                if (!confirm('Tasdiqlang: hamma ombor qoldig\'i 0 bo\'ladi. Bu amalni qaytarib bo\'lmaydi!')) return;
-                resetStockMutation.mutate();
-              }}
-              disabled={resetStockMutation.isPending}
-              className="btn-sm flex items-center gap-1 rounded-lg px-3 border bg-white text-red-600 border-red-200 hover:bg-red-50"
-              title="Barcha ombor sonini 0 ga tushirish (qaytadan kirim uchun)"
-            >
-              <RotateCcw size={14} /> {resetStockMutation.isPending ? '0 ga tushirilmoqda...' : 'Omborni 0 ga tushirish'}
-            </button>
-          )}
         </div>
       </div>
 

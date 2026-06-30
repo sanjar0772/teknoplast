@@ -584,6 +584,26 @@ export default function DebtsPage() {
   }, [paidPayments, q]);
   const paidTotal = paidFiltered.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
 
+  // To'langan qarzlar — bitta to'lov operatsiyasi bo'yicha jamlash.
+  // Bir "To'lov" bir nechta savdoga/usulga yozilishi mumkin; mijoz + vaqt (daqiqagacha)
+  // bo'yicha birlashtiramiz — bosilsa, tarkibidagi to'lovlar ochiladi.
+  const paidGroups = useMemo(() => {
+    const map = new Map();
+    paidFiltered.forEach(p => {
+      const cust = p.customer_id || p.customer_name || '—';
+      const t = String(p.created_at || p.payment_date || '').slice(0, 16); // YYYY-MM-DD HH:MM
+      const key = `paid:${cust}__${t}`;
+      if (!map.has(key)) map.set(key, { key, payments: [], first: p });
+      map.get(key).payments.push(p);
+    });
+    return Array.from(map.values()).map(g => {
+      const amount   = g.payments.reduce((s, x) => s + parseFloat(x.amount || 0), 0);
+      const methods  = [...new Set(g.payments.map(x => x.method))];
+      const products = [...new Set(g.payments.map(x => x.product_name).filter(Boolean))];
+      return { key: g.key, payments: g.payments, first: g.first, amount, methods, products, multi: g.payments.length > 1 };
+    }).sort((a, b) => new Date(b.first.created_at || b.first.payment_date) - new Date(a.first.created_at || a.first.payment_date));
+  }, [paidFiltered]);
+
   return (
     <div className="space-y-6">
       <div id="debts-print" className="space-y-6">
@@ -816,33 +836,87 @@ export default function DebtsPage() {
                 <Coins size={26} className="mx-auto mb-2 text-gray-300" />
                 {q ? `"${search}" bo'yicha topilmadi` : "Bu davrda to'langan qarz yo'q"}
               </td></tr>
-            ) : paidFiltered.map(p => {
-              const rem = parseFloat(p.sale_remaining) || 0;
+            ) : paidGroups.map(g => {
+              const isOpen = expanded.has(g.key);
+              // Bitta to'lov — oddiy qator
+              if (!g.multi) {
+                const p = g.payments[0];
+                const rem = parseFloat(p.sale_remaining) || 0;
+                return (
+                  <tr key={g.key}>
+                    <td className="whitespace-nowrap">{new Date(p.payment_date).toLocaleDateString('uz-UZ')}</td>
+                    <td className="font-medium text-gray-900">{p.customer_name || '—'}</td>
+                    <td className="text-gray-600">{p.product_name || '—'}</td>
+                    <td><span className="text-sm">{METHOD_LABEL[p.method] || p.method}</span></td>
+                    <td className="font-bold text-green-700 whitespace-nowrap">{fmt(p.amount)} so'm</td>
+                    <td className="whitespace-nowrap">{fmt(p.sale_total)} so'm</td>
+                    <td className="whitespace-nowrap">
+                      {rem > 0.01
+                        ? <span className="font-bold text-red-600">{fmt(rem)} so'm</span>
+                        : <span className="badge badge-green">✅ yopilgan</span>}
+                    </td>
+                    <td className="no-print">
+                      <div className="flex gap-1">
+                        <button onClick={() => navigate(`/invoice/${p.order_ref || p.sale_id}`)}
+                          className="btn-secondary btn-sm" title="Schyot-faktura">
+                          <FileText size={12} /> Faktura
+                        </button>
+                        <button onClick={() => openPaidChek(p)} className="btn-secondary btn-sm" title="Chek">
+                          <Printer size={12} /> Chek
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              }
+              // Bir nechta to'lov (bitta operatsiya) — jamlangan qator + ochiladigan tafsilot
+              const p0 = g.first;
               return (
-                <tr key={p.id}>
-                  <td className="whitespace-nowrap">{new Date(p.payment_date).toLocaleDateString('uz-UZ')}</td>
-                  <td className="font-medium text-gray-900">{p.customer_name || '—'}</td>
-                  <td className="text-gray-600">{p.product_name || '—'}</td>
-                  <td><span className="text-sm">{METHOD_LABEL[p.method] || p.method}</span></td>
-                  <td className="font-bold text-green-700 whitespace-nowrap">{fmt(p.amount)} so'm</td>
-                  <td className="whitespace-nowrap">{fmt(p.sale_total)} so'm</td>
-                  <td className="whitespace-nowrap">
-                    {rem > 0.01
-                      ? <span className="font-bold text-red-600">{fmt(rem)} so'm</span>
-                      : <span className="badge badge-green">✅ yopilgan</span>}
-                  </td>
-                  <td className="no-print">
-                    <div className="flex gap-1">
-                      <button onClick={() => navigate(`/invoice/${p.order_ref || p.sale_id}`)}
+                <Fragment key={g.key}>
+                  <tr className="bg-blue-50/30 cursor-pointer hover:bg-blue-50" onClick={() => toggleExpand(g.key)}>
+                    <td className="whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        <span className="text-gray-400 flex-shrink-0">{isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</span>
+                        {new Date(p0.payment_date).toLocaleDateString('uz-UZ')}
+                      </div>
+                    </td>
+                    <td className="font-medium text-gray-900">{p0.customer_name || '—'}</td>
+                    <td><span className="badge badge-blue">{g.payments.length} ta to'lov</span></td>
+                    <td className="text-sm text-gray-600">{g.methods.map(m => METHOD_LABEL[m] || m).join(', ')}</td>
+                    <td className="font-bold text-green-700 whitespace-nowrap">{fmt(g.amount)} so'm</td>
+                    <td className="text-gray-400">—</td>
+                    <td className="text-gray-400">—</td>
+                    <td className="no-print" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => navigate(`/invoice/${p0.order_ref || p0.sale_id}`)}
                         className="btn-secondary btn-sm" title="Schyot-faktura">
                         <FileText size={12} /> Faktura
                       </button>
-                      <button onClick={() => openPaidChek(p)} className="btn-secondary btn-sm" title="Chek">
-                        <Printer size={12} /> Chek
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                    </td>
+                  </tr>
+                  {isOpen && g.payments.map(p => {
+                    const rem = parseFloat(p.sale_remaining) || 0;
+                    return (
+                      <tr key={p.id} className="bg-gray-50/60 text-sm border-l-2 border-blue-200">
+                        <td></td>
+                        <td></td>
+                        <td className="pl-4 text-gray-700">{p.product_name || '—'}</td>
+                        <td><span className="text-sm">{METHOD_LABEL[p.method] || p.method}</span></td>
+                        <td className="font-bold text-green-700 whitespace-nowrap">{fmt(p.amount)} so'm</td>
+                        <td className="whitespace-nowrap">{fmt(p.sale_total)} so'm</td>
+                        <td className="whitespace-nowrap">
+                          {rem > 0.01
+                            ? <span className="font-bold text-red-600">{fmt(rem)} so'm</span>
+                            : <span className="badge badge-green">✅ yopilgan</span>}
+                        </td>
+                        <td className="no-print">
+                          <button onClick={() => openPaidChek(p)} className="btn-secondary btn-sm" title="Chek">
+                            <Printer size={12} /> Chek
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
               );
             })}
             {paidFiltered.length > 0 && (

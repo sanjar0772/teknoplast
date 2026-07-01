@@ -9,6 +9,7 @@ import {
 import VozvratFakturaModal from '../components/VozvratFakturaModal';
 import CustomerFakturaModal from '../components/CustomerFakturaModal';
 import { customersAPI, salesAPI, productsAPI } from '../services/api';
+import { buildCustomerLedger } from '../utils/customerLedger';
 import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -117,69 +118,8 @@ export default function CustomersPage({ embedded = false }) {
     enabled: !!detailId,
   });
 
-  // Mijozning barcha harakatlari (xarid + to'lov + vozvrat) — birlashtirilgan ro'yxat.
-  // Xarid asl summasida (joriy total + shu savdoning vozvratlari) olinadi, shunda
-  // xarid − to'lov − vozvrat = qoldiq qarz (stats bilan mos).
-  const ledger = useMemo(() => {
-    if (!detail) return { rows: [], totals: { xarid: 0, tolov: 0, vozvrat: 0, qoldiq: 0 } };
-    const retBySale = {};
-    (detail.returns || []).forEach(r => {
-      if (r.sale_id) retBySale[r.sale_id] = (retBySale[r.sale_id] || 0) + (parseFloat(r.amount) || 0);
-    });
-    const rows = [];
-    let xarid = 0, tolov = 0, vozvrat = 0;
-    const salesByRef = {};
-    (detail.sales || []).forEach(s => {
-      const ref = s.order_ref || s.id;
-      if (!salesByRef[ref]) salesByRef[ref] = [];
-      salesByRef[ref].push(s);
-    });
-    Object.entries(salesByRef).forEach(([ref, items]) => {
-      const totalAmt = items.reduce((sum, s) => sum + (parseFloat(s.total_amount) || 0) + (retBySale[s.id] || 0), 0);
-      xarid += totalAmt;
-      if (items.length === 1) {
-        rows.push({ date: items[0].sale_date, type: 'Xarid', label: items[0].product_name, sign: 1, amount: totalAmt });
-      } else {
-        rows.push({
-          date: items[0].sale_date, type: 'Xarid', sign: 1, amount: totalAmt, ref,
-          label: `${items.length} ta mahsulot`,
-          items: items.map(s => ({
-            name: s.product_name, quantity: s.quantity, unit: s.unit,
-            amount: (parseFloat(s.total_amount) || 0) + (retBySale[s.id] || 0),
-          })),
-        });
-      }
-    });
-    // To'lovlarni OPERATSIYA bo'yicha jamlaymiz — bitta payment_ref (yangi yozuvlar) yoki
-    // bir xil daqiqa+usul (eski yozuvlar) bitta qator bo'ladi. Har operatsiya = 1 qator.
-    const payGroups = {};
-    const payOrder = [];
-    (detail.payments || []).forEach(p => {
-      const amt = parseFloat(p.amount) || 0;
-      tolov += amt;
-      const key = p.payment_ref
-        || (p.created_at ? `${String(p.created_at).slice(0, 16)}|${p.method || ''}` : p.id);
-      if (!payGroups[key]) { payGroups[key] = { date: p.payment_date, methods: new Set(), amount: 0 }; payOrder.push(key); }
-      const g = payGroups[key];
-      g.amount += amt;
-      const m = PAY_METHOD[p.method] || p.method;
-      if (m) g.methods.add(m);
-    });
-    payOrder.forEach(key => {
-      const g = payGroups[key];
-      rows.push({ date: g.date, type: "To'lov", label: [...g.methods].join(', ') || '—', sign: -1, amount: g.amount });
-    });
-    (detail.returns || []).forEach(r => {
-      const amt = parseFloat(r.amount) || 0;
-      vozvrat += amt;
-      rows.push({ date: r.return_date, type: 'Vozvrat', label: `${r.product_name || 'Mahsulot'}${r.rang ? ' · ' + r.rang : ''}`, sign: -1, amount: amt });
-    });
-    rows.sort((a, b) => new Date(a.date) - new Date(b.date));
-    // Qoldiq qarz — tanlangan davr bo'yicha (backend stats.total_debt = SUM(total_amount − payment_amount)).
-    // Bu davrga mos qarzni beradi; pastdagi "Joriy umumiy qarz" esa overall_debt'dan alohida ko'rsatiladi.
-    const qoldiq = detail.stats?.total_debt != null ? parseFloat(detail.stats.total_debt) : (xarid - tolov - vozvrat);
-    return { rows, totals: { xarid, tolov, vozvrat, qoldiq } };
-  }, [detail]);
+  // Mijozning barcha harakatlari (xarid + to'lov + vozvrat) — umumiy util orqali.
+  const ledger = useMemo(() => buildCustomerLedger(detail), [detail]);
 
   // "To'lovlar tarixi" tabi uchun — to'lovlar operatsiya bo'yicha jamlangan (1 operatsiya = 1 qator).
   const groupedPayments = useMemo(() => {

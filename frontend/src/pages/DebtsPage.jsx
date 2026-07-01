@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { X, Phone, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot, Printer, Search, ChevronDown, ChevronRight, History, Plus, FileText, Wallet } from 'lucide-react';
 import { reportsAPI, salesAPI, ahmadAPI, customersAPI } from '../services/api';
+import { buildCustomerLedger } from '../utils/customerLedger';
+import CustomerFakturaModal from '../components/CustomerFakturaModal';
 import { COMPANY } from '../constants/company';
 
 const METHOD_LABEL = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', PAYME: '📱 Pay Me', CLICK: '⚡ Click', DISCOUNT: '🏷️ Skidka', OTHER: 'Boshqa' };
@@ -127,6 +129,36 @@ function PaymentHistoryModal({ group, onClose }) {
 }
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
+
+// Haqdor mijoz uchun schyot-faktura — mijoz to'liq tarixini (xarid+to'lov+vozvrat) olib,
+// CustomerFakturaModal orqali ko'rsatadi. To'lovlar fakturada alohida qatorlarda chiqadi.
+function CreditorFakturaModal({ customerId, onClose }) {
+  const { data: detail, isLoading } = useQuery({
+    queryKey: ['customer-faktura', customerId],
+    queryFn: () => customersAPI.getById(customerId, {}).then(r => r.data),
+    enabled: !!customerId,
+  });
+
+  if (isLoading || !detail) {
+    return (
+      <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+        <div className="relative bg-white rounded-2xl shadow-2xl px-8 py-10 text-gray-400">Yuklanmoqda...</div>
+      </div>
+    );
+  }
+
+  const { rows, totals } = buildCustomerLedger(detail);
+  return (
+    <CustomerFakturaModal
+      customer={detail.customer}
+      rows={rows}
+      totals={totals}
+      overallDebt={detail.overall_debt}
+      onClose={onClose}
+    />
+  );
+}
 
 const BUCKET_INFO = {
   '0-30':  { label: '0–30 kun',  cls: 'text-green-600',  bg: 'bg-green-50' },
@@ -343,6 +375,8 @@ export default function DebtsPage() {
   const [addDebt, setAddDebt] = useState(null); // null = yopiq
   // Qo'lda haqdor (oldindan to'lov) qo'shish formasi
   const [addCredit, setAddCredit] = useState(null); // null = yopiq
+  // Haqdor mijoz uchun schyot-faktura (mijoz id)
+  const [creditorFaktura, setCreditorFaktura] = useState(null);
 
   const { data: customersData } = useQuery({
     queryKey: ['customers-list'],
@@ -913,9 +947,9 @@ export default function DebtsPage() {
                     <td className="whitespace-nowrap">{it.last_date ? new Date(it.last_date).toLocaleDateString('uz-UZ') : '—'}</td>
                     <td className="text-right font-bold text-blue-600 whitespace-nowrap">+{fmt(it.credit)} so'm</td>
                     <td className="no-print">
-                      <button onClick={() => navigate(`/customers`)} title="Mijoz kartasi"
+                      <button onClick={() => setCreditorFaktura(it.customer_id)} title="Schyot-faktura (to'lovlar bilan)"
                         className="btn-secondary btn-sm">
-                        <FileText size={12} /> Mijoz
+                        <FileText size={12} /> Faktura
                       </button>
                     </td>
                   </tr>
@@ -1198,6 +1232,9 @@ export default function DebtsPage() {
 
       {/* Qarzdorning umumiy qarzi bo'yicha schyot-faktura (oldi-berdi + umumiy tarix) */}
       {faktura && <DebtFakturaModal group={faktura} onClose={() => setFaktura(null)} />}
+
+      {/* Haqdor mijoz schyot-fakturasi (to'lovlar bilan) */}
+      {creditorFaktura && <CreditorFakturaModal customerId={creditorFaktura} onClose={() => setCreditorFaktura(null)} />}
 
       {/* To'lov tarixi modal */}
       <PaymentHistoryModal group={historyFor} onClose={() => setHistoryFor(null)} />

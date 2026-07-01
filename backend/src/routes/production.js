@@ -473,6 +473,36 @@ router.put('/approve-day', requireRole('OWNER', 'SALES_HEAD'), async (req, res, 
   } catch (err) { next(err); }
 });
 
+// PUT /api/production/reject-day — bir xodimning bir kunini KIRIMCHIGA QAYTARISH (to'g'irlash uchun).
+// Ombor o'zgarmaydi (yozuv hali tasdiqlanmagan edi). Kirimchi tahrirlab qayta yuboradi.
+router.put('/reject-day', requireRole('OWNER', 'SALES_HEAD'), async (req, res, next) => {
+  try {
+    const { employee_id, production_date, reason } = req.body;
+    if (!employee_id || !production_date) {
+      return res.status(400).json({ error: 'employee_id va production_date kerak' });
+    }
+    const pending = await query(
+      `SELECT id FROM employee_production WHERE employee_id=$1 AND production_date=$2 AND approval_status='PENDING'`,
+      [employee_id, production_date]
+    );
+    if (!pending.rows.length) {
+      return res.status(400).json({ error: 'Qaytarish uchun yozuv topilmadi' });
+    }
+    const note = reason ? String(reason).slice(0, 300) : "Qaytarildi — to'g'irlab qayta yuboring";
+    await query(
+      `UPDATE employee_production SET approval_status='REJECTED', notes=$1, updated_at=NOW()
+       WHERE employee_id=$2 AND production_date=$3 AND approval_status='PENDING'`,
+      [note, employee_id, production_date]
+    );
+    logAudit(req, {
+      action: 'PRODUCTION_REJECT', table: 'employee_production',
+      recordId: pending.rows.map(r => r.id).join(','),
+      newValues: { employee_id, production_date, reason: note, count: pending.rows.length },
+    });
+    res.json({ count: pending.rows.length, message: `${pending.rows.length} ta yozuv kirimchiga qaytarildi` });
+  } catch (err) { next(err); }
+});
+
 // DELETE /api/production/all — BARCHA kunlik ishlab chiqarish yozuvlarini o'chirish (faqat OWNER)
 router.delete('/all', requireRole('OWNER'), async (req, res, next) => {
   try {
@@ -555,6 +585,10 @@ router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async (r
       ? parseFloat(req.body.daily_tariff) : parseFloat(old.daily_tariff || 0);
     const newAmount = newQty * (newTariff || 0);
     const wasApproved = old.approval_status === 'APPROVED';
+    // Qaytarilgan (REJECTED) yozuv tahrirlansa — qayta yuborilgan hisoblanadi (PENDING).
+    const wasRejected = old.approval_status === 'REJECTED';
+    const newStatus = wasRejected ? 'PENDING' : old.approval_status;
+    const newNotes = wasRejected ? null : (old.notes ?? null);
 
     const client = await require('../db').getClient();
     try {
@@ -589,9 +623,9 @@ router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async (r
       const upd = await client.query(
         `UPDATE employee_production
          SET product_id=$1, quantity_produced=$2, daily_tariff=$3, calculated_amount=$4,
-             production_type=$5, rang=$6, updated_at=NOW()
-         WHERE id=$7 RETURNING *`,
-        [newProductId, newQty, newTariff, newAmount, newType || 'FINISHED', newRang, req.params.id]
+             production_type=$5, rang=$6, approval_status=$7, notes=$8, updated_at=NOW()
+         WHERE id=$9 RETURNING *`,
+        [newProductId, newQty, newTariff, newAmount, newType || 'FINISHED', newRang, newStatus, newNotes, req.params.id]
       );
 
       await client.query('COMMIT');

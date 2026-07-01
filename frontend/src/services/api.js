@@ -129,6 +129,7 @@ export const productionAPI = {
   removeAll: () => api.delete('/production/all'),
   getPending: () => api.get('/production/pending'),
   approveDay: (employee_id, production_date) => api.put('/production/approve-day', { employee_id, production_date }),
+  rejectDay: (employee_id, production_date, reason) => api.put('/production/reject-day', { employee_id, production_date, reason }),
 };
 
 // Salaries

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { PackagePlus, X, Search, Plus, Trash2, Check, Ban, Eye, Save, Users, ChevronDown, Clock, FileDown, FileText, Pencil } from 'lucide-react';
+import { PackagePlus, X, Search, Plus, Trash2, Check, Ban, Eye, Save, Users, ChevronDown, Clock, FileDown, FileText, Pencil, RotateCcw } from 'lucide-react';
 import { intakesAPI, productsAPI, productionAPI, employeesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import clsx from 'clsx';
@@ -429,6 +429,25 @@ function WorkerOutputTab({ canApprove, canEdit }) {
     onError: (e) => toast.error(e?.response?.data?.error || 'Xato'),
   });
 
+  // "Qayta" — noto'g'ri yozuvni kirimchiga qaytarish (u to'g'irlab qayta yuboradi)
+  const rejectMutation = useMutation({
+    mutationFn: ({ employee_id, production_date, reason }) => productionAPI.rejectDay(employee_id, production_date, reason),
+    onSuccess: (res) => {
+      toast.success(res.data.message);
+      qc.invalidateQueries({ queryKey: ['production-pending'] });
+      qc.invalidateQueries({ queryKey: ['production-daily', date] });
+      refetchPending();
+      refetchDaily();
+    },
+    onError: (e) => toast.error(e?.response?.data?.error || 'Xato'),
+  });
+
+  const askReject = (g) => {
+    const reason = window.prompt(`"${g.employee_name}" ning yozuvini kirimchiga qaytarish.\nSabab (ixtiyoriy — nima noto'g'ri?):`, '');
+    if (reason === null) return; // Bekor qilindi
+    rejectMutation.mutate({ employee_id: g.employee_id, production_date: g.production_date, reason: reason.trim() });
+  };
+
   const workers = (empData?.employees || []).filter(e => e.type === 'STANOKCHI' || e.type === 'DETALCHI');
   const products = prodData?.products || [];
   // Mahsulotlarni tur bo'yicha ajratamiz — komponent tanlash aniq ko'rinishi uchun
@@ -678,13 +697,23 @@ function WorkerOutputTab({ canApprove, canEdit }) {
                     <span className="font-semibold text-gray-900">{g.employee_name}</span>
                     <span className="text-sm text-gray-500 ml-2">{new Date(g.production_date + 'T12:00:00').toLocaleDateString('uz-UZ')}</span>
                   </div>
-                  <button
-                    onClick={() => approveMutation.mutate({ employee_id: g.employee_id, production_date: g.production_date })}
-                    disabled={approveMutation.isPending}
-                    className="btn-success btn-sm"
-                  >
-                    <Check size={13} /> Tasdiqlash
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => askReject(g)}
+                      disabled={rejectMutation.isPending}
+                      className="btn-sm bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg px-3 flex items-center gap-1 disabled:opacity-50"
+                      title="Noto'g'ri — kirimchiga qaytarish"
+                    >
+                      <RotateCcw size={13} /> Qayta
+                    </button>
+                    <button
+                      onClick={() => approveMutation.mutate({ employee_id: g.employee_id, production_date: g.production_date })}
+                      disabled={approveMutation.isPending}
+                      className="btn-success btn-sm"
+                    >
+                      <Check size={13} /> Tasdiqlash
+                    </button>
+                  </div>
                 </div>
                 <div className="space-y-1">
                   {g.rows.map(r => (
@@ -941,9 +970,14 @@ function WorkerOutputTab({ canApprove, canEdit }) {
               </thead>
               <tbody>
                 {[...pendingRows, ...todayRows].map(row => (
-                  <tr key={row.id} className={row.approval_status !== 'APPROVED' ? 'bg-yellow-50' : ''}>
+                  <tr key={row.id} className={row.approval_status === 'REJECTED' ? 'bg-red-50' : row.approval_status !== 'APPROVED' ? 'bg-yellow-50' : ''}>
                     <td className="font-medium">{row.employee_name}</td>
-                    <td>{row.product_name || '—'}</td>
+                    <td>
+                      {row.product_name || '—'}
+                      {row.approval_status === 'REJECTED' && row.notes && (
+                        <div className="text-[10px] text-red-500 mt-0.5">↩ {row.notes}</div>
+                      )}
+                    </td>
                     <td>
                       {row.rang ? (
                         <span className="flex items-center gap-1">
@@ -957,7 +991,9 @@ function WorkerOutputTab({ canApprove, canEdit }) {
                     <td>
                       {row.approval_status === 'APPROVED'
                         ? <span className="badge-green">Tasdiqlangan</span>
-                        : <span className="badge-yellow">Kutilmoqda</span>
+                        : row.approval_status === 'REJECTED'
+                          ? <span className="badge bg-red-50 text-red-600">Qayta to'g'irlansin</span>
+                          : <span className="badge-yellow">Kutilmoqda</span>
                       }
                     </td>
                     {canEdit && (
@@ -996,7 +1032,9 @@ function WorkerOutputTab({ canApprove, canEdit }) {
               <span className="text-xs text-gray-400">({editRow.employee_type === 'DETALCHI' ? 'Detalchi' : 'Stanokchi'})</span>
               {editRow.approval_status === 'APPROVED'
                 ? <span className="badge-green">Tasdiqlangan</span>
-                : <span className="badge-yellow">Kutilmoqda</span>}
+                : editRow.approval_status === 'REJECTED'
+                  ? <span className="badge bg-red-50 text-red-600">Qaytarilgan — saqlansa qayta yuboriladi</span>
+                  : <span className="badge-yellow">Kutilmoqda</span>}
             </div>
             <div>
               <label className="label">Mahsulot</label>

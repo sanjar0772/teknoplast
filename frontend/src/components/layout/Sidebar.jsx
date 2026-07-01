@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   LayoutDashboard, ShoppingCart, Receipt, Users, Factory,
   Banknote, Package, Warehouse, Cog, FileBarChart, Bot,
-  LogOut, ChevronRight, UserSquare2, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X, Sparkles, ShoppingBag, Boxes, History, RotateCcw
+  LogOut, ChevronRight, UserSquare2, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X, Sparkles, ShoppingBag, Boxes, History, RotateCcw, Scale
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { authAPI } from '../../services/api';
@@ -38,6 +38,7 @@ const NAV_ITEMS = [
   { to: '/quick-sale', icon: ShoppingBag,     label: 'Savdo qilish',     roles: ['OWNER','ACCOUNTANT','SALES_HEAD'] },
   { to: '/inventory',  icon: Warehouse,       label: 'Ombor',            roles: ['OWNER','ACCOUNTANT','PRODUCTION_HEAD','KIRIMCHI','OMBORCHI','TAMINOTCHI','SALES_HEAD'] },
   { to: '/machines',   icon: Cog,             label: 'Mashinalar',       roles: ['OWNER','PRODUCTION_HEAD','CYCLE_TIME'] },
+  { to: '/tarozi',     icon: Scale,           label: 'Tarozi',           roles: ['OWNER','KIRIMCHI','OMBORCHI','SALES_HEAD','PRODUCTION_HEAD'] },
   { to: '/reports',    icon: FileBarChart,    label: 'Hisobotlar',       roles: ['OWNER','ACCOUNTANT'] },
   { to: '/users',      icon: ShieldCheck,     label: 'Foydalanuvchilar', roles: ['OWNER'] },
   { to: '/ai',         icon: Bot,             label: 'Lola',             roles: null },

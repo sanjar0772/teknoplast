@@ -23,6 +23,7 @@ import ComponentsPage from './pages/ComponentsPage';
 import SmartProductsPage from './pages/SmartProductsPage';
 import InventoryPage from './pages/InventoryPage';
 import MachinesPage from './pages/MachinesPage';
+import TaroziPage from './pages/TaroziPage';
 import ReportsPage from './pages/ReportsPage';
 import AIPage from './pages/AIPage';
 import WorkerPage from './pages/WorkerPage';
@@ -68,6 +69,7 @@ export default function App() {
           <Route path="products-grid" element={<SmartProductsPage />} />
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="machines" element={<MachinesPage />} />
+          <Route path="tarozi" element={<TaroziPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="ai" element={<AIPage />} />
           <Route path="worker" element={<WorkerPage />} />

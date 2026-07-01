@@ -335,6 +335,22 @@ export default function SalesPage({ embedded = false }) {
     }).sort((a, b) => String(b.created).localeCompare(String(a.created))); // yangi savdo tepada
   }, [data]);
 
+  // Kunlik tartib raqamlari: har kun 001 dan boshlanadi, eng eski sotuv = 001
+  const dailySeqMap = useMemo(() => {
+    const byDate = {};
+    groups.forEach(g => {
+      const day = String(g.first.sale_date).slice(0, 10);
+      if (!byDate[day]) byDate[day] = [];
+      byDate[day].push(g);
+    });
+    const seqMap = {};
+    Object.values(byDate).forEach(dayGroups => {
+      const sorted = [...dayGroups].sort((a, b) => String(a.created).localeCompare(String(b.created)));
+      sorted.forEach((g, i) => { seqMap[g.key] = String(i + 1).padStart(3, '0'); });
+    });
+    return seqMap;
+  }, [groups]);
+
   return (
     <div className="space-y-6">
       <div className="page-header">
@@ -460,21 +476,23 @@ export default function SalesPage({ embedded = false }) {
         <table className="table">
           <thead>
             <tr>
+              <th className="w-12">#</th>
               <th>Sana</th><th>Mahsulot</th><th>Miqdor</th>
               <th>Narx</th><th>Jami</th><th>Mijoz</th><th>Status</th><th>Amal</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={8} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
+              <tr><td colSpan={9} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
             ) : !groups.length ? (
-              <tr><td colSpan={8} className="text-center py-8 text-gray-400">Sotuv topilmadi</td></tr>
+              <tr><td colSpan={9} className="text-center py-8 text-gray-400">Sotuv topilmadi</td></tr>
             ) : groups.map(g => {
               const { first, multi, sales } = g;
               const isOpen = expanded.has(g.key);
               return (
                 <Fragment key={g.key}>
                   <tr className={multi ? 'bg-white' : ''}>
+                    <td className="text-center font-mono text-xs text-gray-400 select-none">{dailySeqMap[g.key]}</td>
                     <td className="whitespace-nowrap">
                       <div>{new Date(first.sale_date).toLocaleDateString('uz-UZ')}</div>
                       {fmtTime(g.created) && <div className="text-[11px] text-gray-400">{fmtTime(g.created)}</div>}
@@ -538,6 +556,7 @@ export default function SalesPage({ embedded = false }) {
                       ko'k chap chiziq bilan ajratiladi, mahsulot nomi to'q ko'k */}
                   {multi && isOpen && sales.map(s => (
                     <tr key={s.id} className="bg-blue-50/30 text-sm border-l-4 border-blue-400">
+                      <td></td>
                       <td></td>
                       <td className="pl-8 font-medium text-blue-800">{s.product_name}</td>
                       <td>{s.quantity} {s.unit}</td>

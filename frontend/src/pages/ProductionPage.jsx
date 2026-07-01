@@ -627,13 +627,13 @@ export default function ProductionPage() {
         <div className="table-container">
           <table className="table">
             <thead>
-              <tr><th>Xodim</th><th>Mahsulot</th><th>Rang</th><th>Tur</th><th>Miqdor</th><th>Tarif</th><th>Hisoblangan</th>{canWrite && <th></th>}</tr>
+              <tr><th>Xodim</th><th>Mahsulot</th><th>Rang</th><th>Tur</th><th>Miqdor</th><th>Tarif</th><th>Hisoblangan</th><th>Holat</th>{canWrite && <th></th>}</tr>
             </thead>
             <tbody>
               {!daily?.production?.length ? (
-                <tr><td colSpan={canWrite ? 8 : 7} className="text-center py-6 text-gray-400">Bu kun uchun ma'lumot yo'q</td></tr>
+                <tr><td colSpan={canWrite ? 9 : 8} className="text-center py-6 text-gray-400">Bu kun uchun ma'lumot yo'q</td></tr>
               ) : daily.production.map(row => (
-                <tr key={row.id}>
+                <tr key={row.id} className={row.approval_status === 'REJECTED' ? 'bg-red-50' : ''}>
                   <td className="font-medium">{row.employee_name}</td>
                   <td>{row.product_name || '—'}</td>
                   <td>
@@ -648,6 +648,16 @@ export default function ProductionPage() {
                   <td>{fmt(row.quantity_produced)} dona</td>
                   <td>{fmt(row.daily_tariff)} so'm/dona</td>
                   <td className="font-semibold text-green-700">{fmt(row.calculated_amount)} so'm</td>
+                  <td>
+                    {row.approval_status === 'APPROVED'
+                      ? <span className="badge-green">Tasdiqlangan</span>
+                      : row.approval_status === 'REJECTED'
+                        ? <span className="badge bg-red-50 text-red-600" title={row.notes || ''}>Qayta to'g'irlansin</span>
+                        : <span className="badge-yellow">Kutilmoqda</span>}
+                    {row.approval_status === 'REJECTED' && row.notes && (
+                      <div className="text-[10px] text-red-500 mt-0.5">↩ {row.notes}</div>
+                    )}
+                  </td>
                   {canWrite && (
                     <td>
                       <button

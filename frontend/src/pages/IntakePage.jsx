@@ -450,23 +450,28 @@ function WorkerOutputTab({ canApprove, canEdit }) {
     onError: (e) => toast.error(e?.response?.data?.error || 'Xato'),
   });
 
-  // "Qayta" — noto'g'ri yozuvni kirimchiga qaytarish (u to'g'irlab qayta yuboradi)
+  // "Qayta" — noto'g'ri yozuvni kirimchiga qaytarish (u to'g'irlab qayta yuboradi).
+  // window.prompt Electron desktop ilovada ishlamaydi — shuning uchun modal ishlatamiz.
+  const [rejectFor, setRejectFor] = useState(null); // qaytariladigan guruh
+  const [rejectReason, setRejectReason] = useState('');
+
   const rejectMutation = useMutation({
     mutationFn: ({ employee_id, production_date, reason }) => productionAPI.rejectDay(employee_id, production_date, reason),
     onSuccess: (res) => {
       toast.success(res.data.message);
       qc.invalidateQueries({ queryKey: ['production-pending'] });
       qc.invalidateQueries({ queryKey: ['production-daily', date] });
+      setRejectFor(null); setRejectReason('');
       refetchPending();
       refetchDaily();
     },
     onError: (e) => toast.error(e?.response?.data?.error || 'Xato'),
   });
 
-  const askReject = (g) => {
-    const reason = window.prompt(`"${g.employee_name}" ning yozuvini kirimchiga qaytarish.\nSabab (ixtiyoriy — nima noto'g'ri?):`, '');
-    if (reason === null) return; // Bekor qilindi
-    rejectMutation.mutate({ employee_id: g.employee_id, production_date: g.production_date, reason: reason.trim() });
+  const askReject = (g) => { setRejectReason(''); setRejectFor(g); };
+  const confirmReject = () => {
+    if (!rejectFor) return;
+    rejectMutation.mutate({ employee_id: rejectFor.employee_id, production_date: rejectFor.production_date, reason: rejectReason.trim() });
   };
 
   const workers = (empData?.employees || []).filter(e => e.type === 'STANOKCHI' || e.type === 'DETALCHI');
@@ -1132,6 +1137,31 @@ function WorkerOutputTab({ canApprove, canEdit }) {
               <button onClick={() => setEditRow(null)} className="btn-secondary flex-1">Bekor</button>
               <button onClick={saveEdit} disabled={updateMutation.isPending} className="btn-primary flex-1">
                 <Save size={14} /> {updateMutation.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Qaytarish (Qayta) modali — sabab so'raladi */}
+      <Modal open={!!rejectFor} onClose={() => setRejectFor(null)} title="Kirimchiga qaytarish">
+        {rejectFor && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              <span className="font-semibold text-gray-900">{rejectFor.employee_name}</span> ning{' '}
+              {new Date(rejectFor.production_date + 'T12:00:00').toLocaleDateString('uz-UZ')} kungi yozuvi kirimchiga
+              qaytariladi — u to'g'irlab qayta yuboradi. Ombor o'zgarmaydi.
+            </p>
+            <div>
+              <label className="label">Sabab (ixtiyoriy — nima noto'g'ri?)</label>
+              <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)}
+                rows={3} className="input w-full" placeholder="Masalan: mahsulot noto'g'ri, miqdor xato..." />
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setRejectFor(null)} className="btn-secondary flex-1">Bekor</button>
+              <button onClick={confirmReject} disabled={rejectMutation.isPending}
+                className="btn-primary flex-1 bg-red-600 hover:bg-red-700 border-red-600">
+                <RotateCcw size={14} /> {rejectMutation.isPending ? 'Qaytarilmoqda...' : 'Qaytarish'}
               </button>
             </div>
           </div>

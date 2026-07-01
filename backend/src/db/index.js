@@ -221,6 +221,7 @@ if (USE_PG) {
       fixEmployeesConstraint(); // DETALCHI constraint ni tuzatadi
       relaxEmployeesTypeConstraint(); // type CHECK ni olib tashlaydi (yangi turlar uchun)
       relaxProductionUniqueConstraint(); // bir kunda ko'p mahsulot kiritish uchun UNIQUE cheklovni olib tashlaydi
+      relaxPaymentsMethodConstraint(); // to'lov usuli CHECK ni olib tashlaydi (PAYME/CLICK/DISCOUNT uchun)
       backfillProductMeta();   // nomdan rang/razmer/base_name to'ldiradi (kirill mahsulotlar uchun)
       saveDBSync();
     } else {
@@ -505,6 +506,54 @@ if (USE_PG) {
       try { _db.run('ROLLBACK'); } catch {}
       try { _db.run('PRAGMA foreign_keys = ON'); } catch {}
       console.error('❌ relaxProductionUniqueConstraint xato:', e.message);
+    }
+  }
+
+  // payments.method ustunida CHECK (method IN ('CASH','CARD','TRANSFER','OTHER')) cheklovi bor edi —
+  // yangi to'lov usullari (PAYME, CLICK, DISCOUNT, ...) qo'shilganda INSERT bu cheklovni buzib
+  // "xato" berardi. CHECK'ни BUTUNLAY olib tashlaymiz (kelajakdagi yangi usullar ham buzilmasin).
+  // Ma'lumotni yo'qotmaymiz: jadvalni qayta qurib, mavjud ustunlarni ko'chiramiz.
+  function relaxPaymentsMethodConstraint() {
+    try {
+      const result = _db.exec("SELECT sql FROM sqlite_master WHERE type='table' AND name='payments'");
+      if (!result || !result[0]) return;
+      const tableSql = result[0].values[0][0];
+      if (!/CHECK\s*\(\s*method\s+IN/i.test(tableSql)) return; // cheklov yo'q — shart emas
+
+      console.log('🔧 payments.method CHECK cheklovi olib tashlanmoqda (PAYME/CLICK/DISCOUNT uchun)...');
+
+      const info = _db.exec('PRAGMA table_info(payments)');
+      const existingCols = (info && info[0]) ? info[0].values.map(r => r[1]) : [];
+
+      _db.run('PRAGMA foreign_keys = OFF');
+      _db.run('BEGIN');
+
+      _db.run(`CREATE TABLE payments_new (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        sale_id TEXT NOT NULL REFERENCES sales(id),
+        amount REAL NOT NULL,
+        payment_date TEXT DEFAULT (date('now')),
+        method TEXT DEFAULT 'CASH',
+        notes TEXT,
+        created_by TEXT REFERENCES users(id),
+        created_at TEXT DEFAULT (datetime('now')),
+        payment_ref TEXT
+      )`);
+
+      const targetCols = ['id','sale_id','amount','payment_date','method','notes','created_by','created_at','payment_ref'];
+      const common = targetCols.filter(c => existingCols.includes(c));
+      const colList = common.join(',');
+      _db.run(`INSERT INTO payments_new (${colList}) SELECT ${colList} FROM payments`);
+      _db.run('DROP TABLE payments');
+      _db.run('ALTER TABLE payments_new RENAME TO payments');
+
+      _db.run('COMMIT');
+      _db.run('PRAGMA foreign_keys = ON');
+      console.log('✅ payments.method cheklovi olib tashlandi — PAYME/CLICK/DISCOUNT endi ishlaydi');
+    } catch (e) {
+      try { _db.run('ROLLBACK'); } catch {}
+      try { _db.run('PRAGMA foreign_keys = ON'); } catch {}
+      console.error('❌ relaxPaymentsMethodConstraint xato:', e.message);
     }
   }
 

@@ -750,13 +750,15 @@ router.post('/inventory-adjust', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUN
         const newStock = hasDelta ? Math.max(0, oldStock + parseFloat(it.delta)) : Math.max(0, counted);
         const delta = newStock - oldStock;
         if (delta === 0) continue; // farq yo'q — tegmaymiz
+        // Rang: qatorda berilган bo'lsa o'shani, bo'lmasa mahsulotning o'z rangini ishlatamiz
+        const useRang = (it.rang !== undefined && it.rang !== null && String(it.rang).trim() !== '') ? it.rang : (cur.rows[0].rang || '');
         await client.query('UPDATE products SET stock_quantity=$1, updated_at=NOW() WHERE id=$2', [newStock, it.product_id]);
-        await addColorStock(client.query, it.product_id, cur.rows[0].rang, delta);
+        await addColorStock(client.query, it.product_id, useRang, delta);
         // Tarixga yozamiz: dastlabki, yangi, farq (+/−), sabab, kim
         await client.query(
           `INSERT INTO inventory_audits (product_id, product_name, rang, old_qty, new_qty, delta, reason, created_by)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-          [it.product_id, cur.rows[0].name || '', cur.rows[0].rang || '', oldStock, newStock, delta, cleanReason, req.user.id]
+          [it.product_id, cur.rows[0].name || '', useRang, oldStock, newStock, delta, cleanReason, req.user.id]
         );
         changed++;
       }

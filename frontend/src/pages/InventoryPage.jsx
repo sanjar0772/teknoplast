@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { Plus, Minus, X, AlertTriangle, Warehouse, Package, Boxes, PackagePlus, Pencil, Trash2, Factory, FileSpreadsheet, FileText, ClipboardList, Save, Search } from 'lucide-react';
 import { productsAPI, reportsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
+import { RANGLAR } from '../constants/colors';
 import clsx from 'clsx';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -48,7 +49,8 @@ export default function InventoryPage() {
   const [tExporting, setTExporting] = useState(null);
   // Inventarizatsiya (sanab tekshirish)
   const [auditCounts, setAuditCounts] = useState({}); // { [productId]: 'sanalган son' }
-  const [adjAmounts, setAdjAmounts] = useState({});   // { [productId]: 'tez +/- miqdori' }
+  const [adjModal, setAdjModal] = useState(null);     // { product } — ombor +/- oynasi
+  const [adjForm, setAdjForm] = useState({ qty: '', rang: '', unit: 'dona' });
   const [auditSearch, setAuditSearch] = useState('');
   const [auditCat, setAuditCat] = useState('all'); // 'all' | 'finished' | 'component'
   const [auditReason, setAuditReason] = useState(''); // sabab (nima uchun)
@@ -211,24 +213,39 @@ export default function InventoryPage() {
     onError: (e) => toast.error(e.response?.data?.error || 'Saqlashda xato'),
   });
 
-  // Tez qo'shish/ayirish (＋ / −) — bitta mahsulot omboriga to'g'ridan-to'g'ri
+  // Ombor qo'shish/ayirish (＋ / −) — oyna orqali: son + birlik + rang
   const quickAdjustMutation = useMutation({
-    mutationFn: ({ product_id, delta, reason }) => productsAPI.inventoryAdjust([{ product_id, delta }], reason).then(r => r.data),
+    mutationFn: ({ product_id, delta, rang, reason }) => productsAPI.inventoryAdjust([{ product_id, delta, rang }], reason).then(r => r.data),
     onSuccess: (d, vars) => {
       toast.success(vars.delta > 0
         ? `Omborga +${Math.abs(vars.delta)} qo'shildi`
         : `Ombordan ${Math.abs(vars.delta)} ayirildi`);
-      setAdjAmounts(prev => { const n = { ...prev }; delete n[vars.product_id]; return n; });
+      setAdjModal(null);
       qc.invalidateQueries({ queryKey: ['inventory-products'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['inventory-audits'] });
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
-  const applyQuick = (p, sign) => {
-    const amt = parseFloat(adjAmounts[p.id]);
-    if (!amt || amt <= 0) return toast.error('Miqdorni kiriting');
-    quickAdjustMutation.mutate({ product_id: p.id, delta: sign * amt, reason: auditReason });
+  // Oynani ochish — mahsulotning o'z rangi va birligi bilan to'ldiramiz
+  const openAdj = (product) => {
+    setAdjForm({
+      qty: '',
+      rang: product.rang || (product.color_stock && product.color_stock[0]?.rang) || '',
+      unit: product.unit || 'dona',
+    });
+    setAdjModal({ product });
+  };
+  // Tasdiqlash: sign = +1 (qo'shish) yoki -1 (ayirish)
+  const confirmAdj = (sign) => {
+    const qty = parseFloat(adjForm.qty);
+    if (!qty || qty <= 0) return toast.error('Sonni kiriting');
+    quickAdjustMutation.mutate({
+      product_id: adjModal.product.id,
+      delta: sign * qty,
+      rang: adjForm.rang,
+      reason: auditReason,
+    });
   };
 
   // Inventarizatsiya tarixini Excel/PDF qilib yuklab olish (sana oralig'i bo'yicha)
@@ -701,21 +718,15 @@ export default function InventoryPage() {
                         </td>
                         <td className="text-right">
                           <div className="flex items-center gap-1 justify-end">
-                            <input type="number" min="1" inputMode="numeric"
-                              value={adjAmounts[p.id] ?? ''}
-                              onChange={e => setAdjAmounts(prev => ({ ...prev, [p.id]: e.target.value }))}
-                              onFocus={e => e.target.select()}
-                              placeholder="son"
-                              className="input py-1 w-16 text-right" />
-                            <button onClick={() => applyQuick(p, 1)} disabled={quickAdjustMutation.isPending}
-                              className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 disabled:opacity-50"
+                            <button onClick={() => openAdj(p)}
+                              className="px-2 py-1 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 text-xs font-medium flex items-center gap-1"
                               title="Omborga qo'shish">
-                              <Plus size={14} />
+                              <Plus size={13} /> Qo'shish
                             </button>
-                            <button onClick={() => applyQuick(p, -1)} disabled={quickAdjustMutation.isPending}
-                              className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50"
+                            <button onClick={() => openAdj(p)}
+                              className="px-2 py-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 text-xs font-medium flex items-center gap-1"
                               title="Ombordan ayirish">
-                              <Minus size={14} />
+                              <Minus size={13} /> Ayirish
                             </button>
                           </div>
                         </td>
@@ -801,6 +812,56 @@ export default function InventoryPage() {
           )}
         </>
       )}
+
+      {/* Ombor qo'shish/ayirish oynasi (＋ / −) */}
+      <Modal open={!!adjModal} onClose={() => setAdjModal(null)} title={adjModal ? `${adjModal.product.name}` : ''}>
+        {adjModal && (
+          <div className="space-y-4">
+            <div className="text-sm text-gray-500">
+              Hozir omborda: <b className="text-gray-800">{fmt(adjModal.product.stock_quantity)} {adjModal.product.unit}</b>
+            </div>
+            <div>
+              <label className="label">Miqdor (son) *</label>
+              <input type="number" min="0" step="any" autoFocus
+                value={adjForm.qty}
+                onChange={e => setAdjForm(f => ({ ...f, qty: e.target.value }))}
+                onFocus={e => e.target.select()}
+                placeholder="Sonni kiriting..."
+                className="input w-full" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Birlik</label>
+                <select value={adjForm.unit} onChange={e => setAdjForm(f => ({ ...f, unit: e.target.value }))} className="select">
+                  {['dona', 'kg', 'litr', 'ton', 'metr', 'paket', 'quti'].map(u => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Rang</label>
+                <select value={adjForm.rang} onChange={e => setAdjForm(f => ({ ...f, rang: e.target.value }))} className="select">
+                  <option value="">— Rangsiz —</option>
+                  {RANGLAR.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="label">Sabab (ixtiyoriy)</label>
+              <input value={auditReason} onChange={e => setAuditReason(e.target.value)}
+                placeholder="Masalan: yangi kirim, yo'qolган, sanoq..." className="input w-full" />
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => confirmAdj(-1)} disabled={quickAdjustMutation.isPending}
+                className="flex-1 bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 rounded-lg py-2.5 font-medium flex items-center justify-center gap-1 disabled:opacity-50">
+                <Minus size={16} /> Ayirish
+              </button>
+              <button onClick={() => confirmAdj(1)} disabled={quickAdjustMutation.isPending}
+                className="flex-1 bg-green-600 text-white hover:bg-green-700 rounded-lg py-2.5 font-medium flex items-center justify-center gap-1 disabled:opacity-50">
+                <Plus size={16} /> Qo'shish
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Add raw material */}
       <Modal open={showRmModal} onClose={() => setShowRmModal(false)} title="Yangi Xom Ashyo">

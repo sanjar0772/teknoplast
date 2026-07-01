@@ -2,7 +2,7 @@ import { useState, useMemo, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { X, Phone, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot, Printer, Search, ChevronDown, ChevronRight, History, Plus, FileText } from 'lucide-react';
+import { X, Phone, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot, Printer, Search, ChevronDown, ChevronRight, History, Plus, FileText, Wallet } from 'lucide-react';
 import { reportsAPI, salesAPI, ahmadAPI, customersAPI } from '../services/api';
 import { COMPANY } from '../constants/company';
 
@@ -341,6 +341,8 @@ export default function DebtsPage() {
   const [datePreset, setDatePreset] = useState('all');
   // Qo'lda qarz qo'shish formasi
   const [addDebt, setAddDebt] = useState(null); // null = yopiq
+  // Qo'lda haqdor (oldindan to'lov) qo'shish formasi
+  const [addCredit, setAddCredit] = useState(null); // null = yopiq
 
   const { data: customersData } = useQuery({
     queryKey: ['customers-list'],
@@ -370,6 +372,34 @@ export default function DebtsPage() {
       amount: parseFloat(addDebt.amount),
       sale_date: addDebt.sale_date,
       notes: addDebt.notes || undefined,
+    });
+  };
+
+  // Mijoz pul tashlab ketdi → haqdor qilish (oldindan to'lov)
+  const addCreditMutation = useMutation({
+    mutationFn: (d) => reportsAPI.addCredit(d),
+    onSuccess: (res) => {
+      toast.success(`Haqdor qo'shildi — mijoz +${fmt(res.data?.credit || 0)} so'm haqdor bo'ldi`);
+      setAddCredit(null);
+      qc.invalidateQueries({ queryKey: ['debts'] });
+      qc.invalidateQueries({ queryKey: ['customers'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Haqdor qo\'shishda xato'),
+  });
+
+  const openAddCredit = () => setAddCredit({
+    customer_id: '', amount: '', method: 'CASH', sale_date: new Date().toISOString().slice(0, 10), notes: '',
+  });
+  const submitAddCredit = () => {
+    if (!addCredit.customer_id) return toast.error('Mijozni tanlang');
+    if (!addCredit.amount || parseFloat(addCredit.amount) <= 0) return toast.error('Summani kiriting');
+    addCreditMutation.mutate({
+      customer_id: addCredit.customer_id,
+      amount: parseFloat(addCredit.amount),
+      method: addCredit.method,
+      sale_date: addCredit.sale_date,
+      notes: addCredit.notes || undefined,
     });
   };
 
@@ -637,6 +667,9 @@ export default function DebtsPage() {
               </>
             )}
           </div>
+          <button onClick={openAddCredit} className="btn-success btn-sm no-print">
+            <Wallet size={14} /> Haqdor qo'shish
+          </button>
           <button onClick={openAddDebt} className="btn-primary btn-sm no-print">
             <Plus size={14} /> Qarz qo'shish
           </button>
@@ -1181,6 +1214,75 @@ export default function DebtsPage() {
                 disabled={addDebtMutation.isPending}
                 className="btn-primary flex-1">
                 {addDebtMutation.isPending ? 'Saqlanmoqda...' : 'Qarz qo\'shish'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Haqdor qo'shish modal — mijoz oldindan pul tashlab ketdi */}
+      <Modal open={!!addCredit} onClose={() => setAddCredit(null)} title="Haqdor qo'shish (oldindan to'lov)">
+        {addCredit && (
+          <div className="space-y-4">
+            <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-700">
+              Mijoz pul tashlab ketdi. Bu summaga mijoz <b>haqdor</b> bo'ladi — keyingi savdoda avtomatik ishlatiladi.
+            </div>
+            <div>
+              <label className="label text-sm">Mijoz *</label>
+              <select
+                value={addCredit.customer_id}
+                onChange={e => setAddCredit(d => ({ ...d, customer_id: e.target.value }))}
+                className={`select ${!addCredit.customer_id ? 'border-red-300' : ''}`}
+              >
+                <option value="" disabled>— Mijozni tanlang —</option>
+                {customersData?.customers?.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ''}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label text-sm">Summa *</label>
+              <div className="relative">
+                <input type="number" min="0" step="1000"
+                  value={addCredit.amount}
+                  onChange={e => setAddCredit(d => ({ ...d, amount: e.target.value }))}
+                  onFocus={e => e.target.select()}
+                  placeholder="0"
+                  className="input pr-12" />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">so'm</span>
+              </div>
+            </div>
+            <div>
+              <label className="label text-sm">To'lov usuli</label>
+              <select value={addCredit.method}
+                onChange={e => setAddCredit(d => ({ ...d, method: e.target.value }))}
+                className="select">
+                <option value="CASH">💵 Naqd</option>
+                <option value="CARD">💳 Karta</option>
+                <option value="TRANSFER">🏦 Bank</option>
+                <option value="PAYME">📱 Pay Me</option>
+                <option value="CLICK">⚡ Click</option>
+              </select>
+            </div>
+            <div>
+              <label className="label text-sm">Sana</label>
+              <input type="date" value={addCredit.sale_date}
+                onChange={e => setAddCredit(d => ({ ...d, sale_date: e.target.value }))}
+                className="input" />
+            </div>
+            <div>
+              <label className="label text-sm">Izoh (ixtiyoriy)</label>
+              <input type="text" value={addCredit.notes}
+                onChange={e => setAddCredit(d => ({ ...d, notes: e.target.value }))}
+                placeholder="Masalan: oldindan to'lov"
+                className="input" />
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setAddCredit(null)} className="btn-secondary flex-1">Bekor</button>
+              <button onClick={submitAddCredit}
+                disabled={addCreditMutation.isPending}
+                className="btn-success flex-1">
+                {addCreditMutation.isPending ? 'Saqlanmoqda...' : 'Haqdor qo\'shish'}
               </button>
             </div>
           </div>

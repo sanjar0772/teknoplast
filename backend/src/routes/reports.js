@@ -147,6 +147,49 @@ router.post('/debts', requireRole('OWNER', 'ACCOUNTANT', 'SALES_HEAD'), async (r
   } catch (err) { next(err); }
 });
 
+// POST /api/reports/credit — mijozni qo'lda HAQDOR qilish (oldindan to'lov tashlab ketgan).
+// total_amount=0, payment_amount=summa → total_debt manfiy bo'ladi = haqdor.
+// Keyingi savdoda bu haqdor avtomatik ishlatiladi.
+router.post('/credit', requireRole('OWNER', 'ACCOUNTANT', 'SALES_HEAD'), async (req, res, next) => {
+  try {
+    const { customer_id, amount, sale_date, method, notes } = req.body;
+    const credit = Math.round(parseFloat(amount) || 0);
+    if (!customer_id) return res.status(400).json({ error: 'Mijozni tanlang' });
+    if (credit <= 0) return res.status(400).json({ error: 'Summa 0 dan katta bo\'lsin' });
+
+    const c = await query('SELECT name, phone FROM customers WHERE id = $1', [customer_id]);
+    if (!c.rows.length) return res.status(404).json({ error: 'Mijoz topilmadi' });
+
+    // Qo'lda operatsiya uchun placeholder mahsulot (omborga ta'sir qilmaydi)
+    let p = await query('SELECT id FROM products WHERE name = $1 LIMIT 1', [MANUAL_DEBT_PRODUCT]);
+    let productId;
+    if (p.rows.length) {
+      productId = p.rows[0].id;
+    } else {
+      const ins = await query(
+        `INSERT INTO products (name, type, description, price, daily_production, stock_quantity, unit, rang, kind)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+        [MANUAL_DEBT_PRODUCT, 'Хизмат', 'MANUAL_DEBT', 0, 0, 0, 'dona', null, 'KOMPONENT']
+      );
+      productId = ins.rows[0].id;
+    }
+
+    const methodLabel = { CASH: 'Naqd', CARD: 'Karta', TRANSFER: 'Bank', PAYME: 'Pay Me', CLICK: 'Click' }[method] || 'Naqd';
+    const note = notes || `Oldindan to'lov (haqdor) · ${methodLabel}`;
+
+    // total_amount=0, payment_amount=credit → qarz = -credit (haqdor)
+    await query(
+      `INSERT INTO sales (product_id, customer_id, quantity, unit_price, total_amount,
+        customer_name, customer_phone, sale_date, status, payment_amount, notes, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [productId, customer_id, 1, 0, 0, c.rows[0].name, c.rows[0].phone || null,
+       sale_date || new Date().toISOString().slice(0, 10), 'PAID', credit, note, req.user.id]
+    );
+
+    res.status(201).json({ success: true, credit });
+  } catch (err) { next(err); }
+});
+
 // GET /api/reports/debt-payments — to'langan qarzlar tarixi (qarz to'lovlari ro'yxati)
 // payments jadvali faqat qarz to'lovlari oqimi orqali to'ladi, shu bois bu = qarz to'lovlari tarixi.
 router.get('/debt-payments', async (req, res, next) => {

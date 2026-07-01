@@ -101,4 +101,55 @@ router.get('/:ref/nakladnoy', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Berilgan buyurtmalarni davr bo'yicha olish (Excel/PDF eksport uchun umumiy)
+async function fetchDeliveredRange(start_date, end_date) {
+  const params = [];
+  let where = "s.order_ref IS NOT NULL AND s.fulfillment_status='DELIVERED'";
+  let idx = 1;
+  if (start_date) { where += ` AND DATE(COALESCE(s.fulfilled_at, s.sale_date)) >= $${idx++}`; params.push(start_date); }
+  if (end_date)   { where += ` AND DATE(COALESCE(s.fulfilled_at, s.sale_date)) <= $${idx++}`; params.push(end_date); }
+
+  const result = await query(`
+    SELECT s.order_ref,
+           MAX(s.sale_date) as sale_date,
+           MAX(s.customer_name) as customer_name,
+           MAX(s.customer_phone) as customer_phone,
+           MAX(s.fulfilled_at) as fulfilled_at,
+           COUNT(*) as item_count,
+           SUM(s.quantity) as total_qty,
+           SUM(s.total_amount) as total
+    FROM sales s
+    WHERE ${where}
+    GROUP BY s.order_ref
+    ORDER BY fulfilled_at DESC, sale_date DESC
+  `, params);
+  return result.rows;
+}
+
+// GET /api/fulfillment/export/excel?start_date=&end_date= — berilgan buyurtmalar Excel
+router.get('/export/excel', async (req, res, next) => {
+  try {
+    const { start_date, end_date } = req.query;
+    const rows = await fetchDeliveredRange(start_date, end_date);
+    const buf = await reportService.generateFulfillmentExcel({ rows, start_date, end_date });
+    const label = start_date && end_date ? `${start_date}_${end_date}` : (start_date || end_date || 'barcha');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="ombor-berish-${label}.xlsx"`);
+    res.send(Buffer.from(buf));
+  } catch (err) { next(err); }
+});
+
+// GET /api/fulfillment/export/pdf?start_date=&end_date= — berilgan buyurtmalar PDF
+router.get('/export/pdf', async (req, res, next) => {
+  try {
+    const { start_date, end_date } = req.query;
+    const rows = await fetchDeliveredRange(start_date, end_date);
+    const pdf = await reportService.generateFulfillmentPDF({ rows, start_date, end_date });
+    const label = start_date && end_date ? `${start_date}_${end_date}` : (start_date || end_date || 'barcha');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="ombor-berish-${label}.pdf"`);
+    res.send(pdf);
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

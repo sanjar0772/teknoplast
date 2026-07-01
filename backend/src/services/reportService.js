@@ -1626,4 +1626,128 @@ async function generateTurnoverPDF({ rows, start_date, end_date, warehouse }) {
   });
 }
 
-module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateProductionRangePDF, generateProductionPendingExcel, generateProductionPendingPDF, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF, generateWorkerWorksExcel, generateWorkerWorksPDF, generateInventoryAuditExcel, generateInventoryAuditPDF, generateInventoryExcel, generateInventoryPDF, generateTurnoverExcel, generateTurnoverPDF };
+// Ombor berish (Fulfillment) — berilgan buyurtmalar davr bo'yicha Excel
+async function generateFulfillmentExcel({ rows, start_date, end_date }) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Teknoplast';
+  const sheet = wb.addWorksheet('Ombor berish');
+
+  sheet.mergeCells('A1:H1');
+  sheet.getCell('A1').value = 'OMBOR BERISH — BERILGAN BUYURTMALAR';
+  sheet.getCell('A1').alignment = { horizontal: 'center' };
+  sheet.getCell('A1').font = { bold: true, size: 13 };
+  sheet.mergeCells('A2:H2');
+  sheet.getCell('A2').value = `Davr: ${start_date || '...'} — ${end_date || '...'}`;
+  sheet.getCell('A2').alignment = { horizontal: 'center' };
+
+  const headers = ['№', 'Sana', 'Buyurtma (QR)', 'Mijoz', 'Telefon', 'Xil', 'Jami miqdor', 'Jami summa (so\'m)'];
+  const widths = [5, 14, 24, 28, 16, 8, 14, 20];
+  headers.forEach((h, i) => {
+    const cell = sheet.getCell(4, i + 1);
+    cell.value = h;
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
+    sheet.getColumn(i + 1).width = widths[i];
+  });
+
+  let r = 5;
+  rows.forEach((o, i) => {
+    sheet.getCell(r, 1).value = i + 1;
+    sheet.getCell(r, 2).value = o.sale_date ? new Date(o.sale_date).toLocaleDateString('uz-UZ') : '';
+    sheet.getCell(r, 3).value = o.order_ref;
+    sheet.getCell(r, 4).value = o.customer_name || '—';
+    sheet.getCell(r, 5).value = o.customer_phone || '';
+    sheet.getCell(r, 6).value = parseInt(o.item_count) || 0;
+    sheet.getCell(r, 7).value = parseFloat(o.total_qty) || 0;
+    sheet.getCell(r, 8).value = Math.round(parseFloat(o.total) || 0);
+    r++;
+  });
+
+  // Jami
+  const totalQty = rows.reduce((a, x) => a + (parseFloat(x.total_qty) || 0), 0);
+  const totalSum = rows.reduce((a, x) => a + (parseFloat(x.total) || 0), 0);
+  const totalItems = rows.reduce((a, x) => a + (parseInt(x.item_count) || 0), 0);
+  sheet.getCell(r, 4).value = 'JAMI';
+  sheet.getCell(r, 6).value = totalItems;
+  sheet.getCell(r, 7).value = totalQty;
+  sheet.getCell(r, 8).value = Math.round(totalSum);
+  sheet.getRow(r).font = { bold: true };
+
+  [6, 7, 8].forEach(c => { sheet.getColumn(c).numFmt = '#,##0'; });
+  return wb.xlsx.writeBuffer();
+}
+
+// Ombor berish (Fulfillment) — berilgan buyurtmalar davr bo'yicha PDF
+async function generateFulfillmentPDF({ rows, start_date, end_date }) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 30, size: 'A4' });
+    registerCyrillicFonts(doc);
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const M = 30, W = 595 - M * 2;
+    const money = n => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
+
+    doc.fontSize(14).font('Arial-Bold').fillColor('#111').text('OMBOR BERISH — BERILGAN BUYURTMALAR', M, M, { width: W, align: 'center' });
+    doc.fontSize(9).font('Arial').fillColor('#555').text(`Davr: ${start_date || '...'} — ${end_date || '...'}`, M, doc.y + 2, { width: W, align: 'center' });
+    let y = doc.y + 10;
+
+    const cols = [
+      { key: 'n', t: '№', w: 25, a: 'center' },
+      { key: 'sale_date', t: 'Sana', w: 60, a: 'center' },
+      { key: 'order_ref', t: 'Buyurtma (QR)', w: 105, a: 'left' },
+      { key: 'customer_name', t: 'Mijoz', w: 130, a: 'left' },
+      { key: 'item_count', t: 'Xil', w: 35, a: 'right' },
+      { key: 'total_qty', t: 'Miqdor', w: 55, a: 'right' },
+      { key: 'total', t: 'Summa (so\'m)', w: 125, a: 'right' },
+    ];
+    let x0 = M;
+    cols.forEach(c => { c.x = x0; x0 += c.w; });
+
+    const drawHeader = (yy) => {
+      doc.font('Arial-Bold').fontSize(8).fillColor('#111');
+      cols.forEach(c => doc.text(c.t, c.x + 2, yy, { width: c.w - 4, align: c.a }));
+      const ly = yy + 12;
+      doc.moveTo(M, ly).lineTo(M + W, ly).lineWidth(0.5).strokeColor('#333').stroke();
+      return ly + 4;
+    };
+
+    y = drawHeader(y);
+    doc.font('Arial').fontSize(8);
+    rows.forEach((o, i) => {
+      if (y > 780) { doc.addPage(); y = 30; y = drawHeader(y); doc.font('Arial').fontSize(8); }
+      const vals = {
+        n: i + 1,
+        sale_date: o.sale_date ? new Date(o.sale_date).toLocaleDateString('uz-UZ') : '',
+        order_ref: o.order_ref,
+        customer_name: o.customer_name || '—',
+        item_count: o.item_count,
+        total_qty: money(o.total_qty),
+        total: money(o.total),
+      };
+      doc.fillColor('#111');
+      cols.forEach(c => doc.text(String(vals[c.key]), c.x + 2, y, { width: c.w - 4, align: c.a }));
+      const h = Math.max(doc.heightOfString(String(vals.customer_name), { width: cols[3].w - 4 }), 10);
+      doc.moveTo(M, y + h + 2).lineTo(M + W, y + h + 2).lineWidth(0.2).strokeColor('#ddd').stroke();
+      y += h + 5;
+    });
+
+    // Jami
+    const totalQty = rows.reduce((a, x) => a + (parseFloat(x.total_qty) || 0), 0);
+    const totalSum = rows.reduce((a, x) => a + (parseFloat(x.total) || 0), 0);
+    const totalItems = rows.reduce((a, x) => a + (parseInt(x.item_count) || 0), 0);
+    doc.moveTo(M, y).lineTo(M + W, y).lineWidth(0.6).strokeColor('#333').stroke(); y += 4;
+    doc.font('Arial-Bold').fontSize(9).fillColor('#111');
+    doc.text('JAMI', cols[3].x + 2, y, { width: cols[3].w - 4 });
+    doc.text(String(totalItems), cols[4].x + 2, y, { width: cols[4].w - 4, align: 'right' });
+    doc.text(money(totalQty), cols[5].x + 2, y, { width: cols[5].w - 4, align: 'right' });
+    doc.text(money(totalSum), cols[6].x + 2, y, { width: cols[6].w - 4, align: 'right' });
+
+    doc.end();
+  });
+}
+
+module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateProductionRangePDF, generateProductionPendingExcel, generateProductionPendingPDF, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF, generateWorkerWorksExcel, generateWorkerWorksPDF, generateInventoryAuditExcel, generateInventoryAuditPDF, generateInventoryExcel, generateInventoryPDF, generateTurnoverExcel, generateTurnoverPDF, generateFulfillmentExcel, generateFulfillmentPDF };

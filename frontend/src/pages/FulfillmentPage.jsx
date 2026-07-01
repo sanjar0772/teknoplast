@@ -2,9 +2,35 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Html5Qrcode } from 'html5-qrcode';
-import { ScanLine, X, Truck, FileDown, Eye, Camera, Search, CheckCircle, Clock } from 'lucide-react';
+import { ScanLine, X, Truck, FileDown, Eye, Camera, Search, CheckCircle, Clock, Download, FileText, CalendarDays } from 'lucide-react';
 import { fulfillmentAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
+
+// Mahalliy (Toshkent) sana — UTC toISOString() bergani uchun emas, mahalliy kun bo'yicha
+const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+function presetRange(preset) {
+  const today = new Date();
+  if (preset === 'bugun') return { from: iso(today), to: iso(today) };
+  if (preset === 'kecha') { const y = new Date(today); y.setDate(today.getDate() - 1); return { from: iso(y), to: iso(y) }; }
+  if (preset === 'hafta') {
+    const mon = new Date(today); mon.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    return { from: iso(mon), to: iso(today) };
+  }
+  if (preset === 'oy') {
+    return { from: iso(new Date(today.getFullYear(), today.getMonth(), 1)), to: iso(today) };
+  }
+  if (preset === 'otgan_oy') {
+    return { from: iso(new Date(today.getFullYear(), today.getMonth() - 1, 1)), to: iso(new Date(today.getFullYear(), today.getMonth(), 0)) };
+  }
+  return { from: '', to: '' };
+}
+const DATE_PRESETS = [
+  { key: 'bugun',     label: 'Bugun' },
+  { key: 'kecha',     label: 'Kecha' },
+  { key: 'hafta',     label: 'Bu hafta' },
+  { key: 'oy',        label: 'Bu oy' },
+  { key: 'otgan_oy',  label: "O'tgan oy" },
+];
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
@@ -32,6 +58,11 @@ export default function FulfillmentPage() {
   const [scanOpen, setScanOpen] = useState(false);
   const [manualCode, setManualCode] = useState('');
   const scannerRef = useRef(null);
+  // Berilgan buyurtmalar uchun davr filtri (fulfilled_at bo'yicha)
+  const [datePreset, setDatePreset] = useState('oy');
+  const [dateRange, setDateRange] = useState(() => presetRange('oy'));
+  const [downloading, setDownloading] = useState(false);
+  const applyPreset = (p) => { setDatePreset(p); setDateRange(presetRange(p)); };
 
   const canDeliver = isOmborchi();
 
@@ -96,6 +127,31 @@ export default function FulfillmentPage() {
     } catch { toast.error('Nakladnoy yuklab bo\'lmadi'); }
   };
 
+  const exportRange = async (kind) => {
+    const params = {};
+    if (dateRange.from) params.start_date = dateRange.from;
+    if (dateRange.to)   params.end_date   = dateRange.to;
+    const label = (params.start_date && params.end_date)
+      ? `${params.start_date}_${params.end_date}`
+      : (params.start_date || params.end_date || 'barcha');
+    setDownloading(true);
+    try {
+      const res = kind === 'excel'
+        ? await fulfillmentAPI.exportExcel(params)
+        : await fulfillmentAPI.exportPDF(params);
+      const ext = kind === 'excel' ? 'xlsx' : 'pdf';
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url; a.download = `ombor-berish-${label}.${ext}`; a.click();
+      URL.revokeObjectURL(url);
+      toast.success(kind === 'excel' ? 'Excel yuklab olindi' : 'PDF yuklab olindi');
+    } catch {
+      toast.error('Yuklab bo\'lmadi');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const openManual = () => {
     const code = manualCode.trim();
     if (!code) return toast.error('Kodni kiriting');
@@ -131,6 +187,51 @@ export default function FulfillmentPage() {
           <button onClick={openManual} className="btn-secondary btn-sm">Ochish</button>
         </div>
       </div>
+
+      {/* Berilgan tab — davr tanlash + eksport (Excel/PDF) */}
+      {tab === 'DELIVERED' && (
+        <div className="card p-4 space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <CalendarDays size={15} className="text-blue-600" />
+            <span className="text-sm font-medium text-gray-700">Kun oralig'i:</span>
+            {DATE_PRESETS.map(p => (
+              <button key={p.key} onClick={() => applyPreset(p.key)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  datePreset === p.key
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-600'
+                }`}>
+                {p.label}
+              </button>
+            ))}
+            <span className="text-gray-300 text-xs">|</span>
+            <input type="date" value={dateRange.from}
+              onChange={e => { setDatePreset('custom'); setDateRange(r => ({ ...r, from: e.target.value })); }}
+              className="input text-xs py-1.5 w-36" title="Dan" />
+            <span className="text-gray-400 text-xs">—</span>
+            <input type="date" value={dateRange.to}
+              onChange={e => { setDatePreset('custom'); setDateRange(r => ({ ...r, to: e.target.value })); }}
+              className="input text-xs py-1.5 w-36" title="Gacha" />
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={() => exportRange('excel')} disabled={downloading}
+              className="btn-sm bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-lg px-3 flex items-center gap-1">
+              <Download size={14} /> {downloading ? 'Yuklanmoqda...' : 'Excel'}
+            </button>
+            <button onClick={() => exportRange('pdf')} disabled={downloading}
+              className="btn-sm bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg px-3 flex items-center gap-1">
+              <FileText size={14} /> {downloading ? 'Yuklanmoqda...' : 'PDF'}
+            </button>
+            {(dateRange.from || dateRange.to) && (
+              <span className="text-xs text-gray-400 self-center">
+                Tanlangan davr: <span className="font-medium text-gray-600">
+                  {dateRange.from ? new Date(dateRange.from).toLocaleDateString('uz-UZ') : '...'} — {dateRange.to ? new Date(dateRange.to).toLocaleDateString('uz-UZ') : '...'}
+                </span>
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Orders table */}
       <div className="table-container">

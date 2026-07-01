@@ -93,6 +93,8 @@ export const fulfillmentAPI = {
   getByRef: (ref) => api.get(`/fulfillment/${ref}`),
   deliver: (ref) => api.put(`/fulfillment/${ref}/deliver`),
   nakladnoy: (ref) => api.get(`/fulfillment/${ref}/nakladnoy`, { responseType: 'blob' }),
+  exportExcel: (params) => api.get('/fulfillment/export/excel', { params, responseType: 'blob' }),
+  exportPDF:   (params) => api.get('/fulfillment/export/pdf',   { params, responseType: 'blob' }),
 };
 
 // Expenses

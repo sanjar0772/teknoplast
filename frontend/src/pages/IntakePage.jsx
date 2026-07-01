@@ -342,6 +342,27 @@ function WorkerOutputTab({ canApprove, canEdit }) {
   const [dlWorks, setDlWorks] = useState(null); // 'excel' | 'pdf' yuklab olish holati
   const [rng, setRng] = useState({ start_date: '', end_date: '' }); // hisobot vaqt oralig'i
   const [dlRange, setDlRange] = useState(null); // vaqt oralig'i hisoboti yuklash holati
+  const [dlPending, setDlPending] = useState(null); // tasdiqlash kutayotganlar yuklash holati
+
+  // Tasdiqlash kutayotgan mahsulot/komponentlarni Excel yoki PDF qilib yuklab olish
+  const downloadPending = async (kind) => {
+    try {
+      setDlPending(kind);
+      const res = kind === 'excel' ? await productionAPI.pendingExcel() : await productionAPI.pendingPdf();
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tasdiqlash-kutilmoqda-${today}.${kind === 'excel' ? 'xlsx' : 'pdf'}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Yuklab bo\'lmadi');
+    } finally {
+      setDlPending(null);
+    }
+  };
 
   // Tanlangan vaqt oralig'i uchun ishchilar ishi hisobotini (jamlangan) yuklab olish
   const downloadRange = async (kind) => {
@@ -685,9 +706,21 @@ function WorkerOutputTab({ canApprove, canEdit }) {
       {/* TASDIQLASH BO'LIMI — faqat sales head/owner ko'radi */}
       {canApprove && pendingGroups.length > 0 && (
         <div className="card border-l-4 border-yellow-400">
-          <div className="flex items-center gap-2 mb-3">
-            <Clock size={16} className="text-yellow-500" />
-            <h2 className="font-semibold text-gray-800">Tasdiqlash kutilmoqda — {pendingGroups.length} ta guruh</h2>
+          <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Clock size={16} className="text-yellow-500" />
+              <h2 className="font-semibold text-gray-800">Tasdiqlash kutilmoqda — {pendingGroups.length} ta guruh</h2>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button onClick={() => downloadPending('excel')} disabled={!!dlPending}
+                className="btn-sm bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg px-3 flex items-center gap-1 hover:bg-emerald-100 disabled:opacity-50">
+                <FileDown size={13} /> {dlPending === 'excel' ? '...' : 'Excel'}
+              </button>
+              <button onClick={() => downloadPending('pdf')} disabled={!!dlPending}
+                className="btn-sm bg-red-50 text-red-700 border border-red-200 rounded-lg px-3 flex items-center gap-1 hover:bg-red-100 disabled:opacity-50">
+                <FileText size={13} /> {dlPending === 'pdf' ? '...' : 'PDF'}
+              </button>
+            </div>
           </div>
           <div className="space-y-3">
             {pendingGroups.map(g => (

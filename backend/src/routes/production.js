@@ -418,6 +418,44 @@ router.get('/pending', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (
   } catch (err) { next(err); }
 });
 
+// Tasdiqlash kutayotgan yozuvlarni olish (eksport uchun)
+async function fetchPendingProduction() {
+  const result = await query(`
+    SELECT ep.*, e.name as employee_name, e.type as employee_type,
+           p.name as product_name, p.kind as product_kind
+    FROM employee_production ep
+    JOIN employees e ON ep.employee_id = e.id
+    LEFT JOIN products p ON ep.product_id = p.id
+    WHERE ep.approval_status = 'PENDING'
+    ORDER BY ep.production_date DESC, e.name, p.name
+  `, []);
+  return result.rows;
+}
+
+// GET /api/production/pending/excel — tasdiqlash kutayotganlar Excel
+router.get('/pending/excel', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
+  try {
+    const rows = await fetchPendingProduction();
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateProductionPendingExcel(rows);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="tasdiqlash-kutilmoqda-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) { next(err); }
+});
+
+// GET /api/production/pending/pdf — tasdiqlash kutayotganlar PDF
+router.get('/pending/pdf', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
+  try {
+    const rows = await fetchPendingProduction();
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateProductionPendingPDF(rows);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="tasdiqlash-kutilmoqda-${new Date().toISOString().slice(0, 10)}.pdf"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) { next(err); }
+});
+
 // PUT /api/production/approve-day — bir xodimning bir kunini tasdiqlash → ombor yangilanadi
 router.put('/approve-day', requireRole('OWNER', 'SALES_HEAD'), async (req, res, next) => {
   try {

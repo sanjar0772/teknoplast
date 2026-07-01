@@ -394,6 +394,121 @@ async function generateProductionRangePDF(rows, startDate, endDate) {
   });
 }
 
+// Tasdiqlash kutayotgan (PENDING) ishlab chiqarish — Excel
+async function generateProductionPendingExcel(rows) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Tasdiqlash kutilmoqda');
+
+  sheet.columns = [
+    { header: '№', key: 'num', width: 5 },
+    { header: 'Sana', key: 'date', width: 12 },
+    { header: 'Xodim', key: 'name', width: 22 },
+    { header: 'Mahsulot', key: 'product', width: 28 },
+    { header: 'Tur', key: 'type', width: 12 },
+    { header: 'Rang', key: 'rang', width: 12 },
+    { header: 'Dona', key: 'qty', width: 10 },
+    { header: "Haq (so'm)", key: 'earned', width: 16 },
+  ];
+  sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB45309' } };
+
+  const typeMap = { KOMPONENT: 'Komponent', SEMI_FINISHED: 'Yarim', FINISHED: 'Tayyor' };
+  rows.forEach((r, i) => {
+    sheet.addRow({
+      num: i + 1,
+      date: r.production_date,
+      name: r.employee_name,
+      product: r.product_name || '—',
+      type: typeMap[r.production_type] || (r.product_kind === 'KOMPONENT' ? 'Komponent' : 'Tayyor'),
+      rang: r.rang || 'Rangsiz',
+      qty: parseFloat(r.quantity_produced || 0),
+      earned: parseFloat(r.calculated_amount || 0),
+    });
+  });
+
+  const totalRow = sheet.addRow({
+    num: '', date: '', name: 'JAMI:',
+    qty: rows.reduce((a, r) => a + parseFloat(r.quantity_produced || 0), 0),
+    earned: rows.reduce((a, r) => a + parseFloat(r.calculated_amount || 0), 0),
+  });
+  totalRow.font = { bold: true };
+
+  return await workbook.xlsx.writeBuffer();
+}
+
+// Tasdiqlash kutayotgan (PENDING) ishlab chiqarish — PDF
+async function generateProductionPendingPDF(rows) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    registerCyrillicFonts(doc);
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const money = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n) || 0));
+    const typeMap = { KOMPONENT: 'Komponent', SEMI_FINISHED: 'Yarim', FINISHED: 'Tayyor' };
+
+    doc.fontSize(18).font('Arial-Bold').text('TEKNOPLAST', { align: 'center' });
+    doc.fontSize(12).font('Arial').text('Tasdiqlash kutayotgan ishlab chiqarish', { align: 'center' });
+    doc.fontSize(9).fillColor('#666').text(`Yaratildi: ${new Date().toLocaleDateString('uz-UZ')}`, { align: 'center' });
+    doc.fillColor('black').moveDown(0.8);
+
+    // Ustun x-koordinatalari (A4, margin 40 → 40..555)
+    const col = { num: 40, date: 60, name: 120, product: 208, type: 330, rang: 380, qty: 428, earned: 470 };
+    const right = 555;
+
+    const drawHeader = (y) => {
+      doc.font('Arial-Bold').fontSize(8.5).fillColor('black');
+      doc.text('№', col.num, y);
+      doc.text('Sana', col.date, y);
+      doc.text('Xodim', col.name, y);
+      doc.text('Mahsulot', col.product, y);
+      doc.text('Tur', col.type, y);
+      doc.text('Rang', col.rang, y);
+      doc.text('Dona', col.qty, y);
+      doc.text("Haq (so'm)", col.earned, y, { width: right - col.earned, align: 'right' });
+      doc.moveTo(40, y + 12).lineTo(right, y + 12).strokeColor('#999').stroke();
+      return y + 17;
+    };
+
+    let y = drawHeader(doc.y);
+    doc.font('Arial').fontSize(8);
+    let tQty = 0, tEarned = 0;
+
+    rows.forEach((r, i) => {
+      if (y > 785) { doc.addPage(); y = drawHeader(40); doc.font('Arial').fontSize(8); }
+      const qty = parseFloat(r.quantity_produced) || 0;
+      const earned = parseFloat(r.calculated_amount) || 0;
+      tQty += qty; tEarned += earned;
+      doc.fillColor('black');
+      doc.text(String(i + 1), col.num, y, { width: 18 });
+      doc.text(r.production_date || '', col.date, y, { width: 58 });
+      doc.text(r.employee_name || '—', col.name, y, { width: 85 });
+      doc.text(r.product_name || '—', col.product, y, { width: 118 });
+      doc.text(typeMap[r.production_type] || (r.product_kind === 'KOMPONENT' ? 'Komponent' : 'Tayyor'), col.type, y, { width: 48 });
+      doc.text(r.rang || '—', col.rang, y, { width: 45 });
+      doc.text(money(qty), col.qty, y, { width: 40 });
+      doc.text(money(earned), col.earned, y, { width: right - col.earned, align: 'right' });
+      const h = Math.max(
+        doc.heightOfString(r.employee_name || '—', { width: 85 }),
+        doc.heightOfString(r.product_name || '—', { width: 118 }),
+        11
+      );
+      y += h + 4;
+    });
+
+    doc.moveTo(40, y).lineTo(right, y).strokeColor('#999').stroke();
+    y += 6;
+    doc.font('Arial-Bold').fontSize(9).fillColor('black');
+    doc.text('JAMI:', col.num, y);
+    doc.text(money(tQty), col.qty, y, { width: 40 });
+    doc.text(money(tEarned) + " so'm", col.earned, y, { width: right - col.earned, align: 'right' });
+
+    doc.end();
+  });
+}
+
 // Хом ашё — танланган давр учун Бошланғич/Кирим/Сарф/Якуний қолдиқ ҳисоботи (профессионал Excel)
 async function generateRawMaterialRangeExcel(rows, startDate, endDate) {
   const workbook = new ExcelJS.Workbook();
@@ -1509,4 +1624,4 @@ async function generateTurnoverPDF({ rows, start_date, end_date, warehouse }) {
   });
 }
 
-module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateProductionRangePDF, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF, generateWorkerWorksExcel, generateWorkerWorksPDF, generateInventoryAuditExcel, generateInventoryAuditPDF, generateInventoryExcel, generateInventoryPDF, generateTurnoverExcel, generateTurnoverPDF };
+module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateProductionRangePDF, generateProductionPendingExcel, generateProductionPendingPDF, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF, generateWorkerWorksExcel, generateWorkerWorksPDF, generateInventoryAuditExcel, generateInventoryAuditPDF, generateInventoryExcel, generateInventoryPDF, generateTurnoverExcel, generateTurnoverPDF };

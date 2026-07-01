@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, Minus, X, AlertTriangle, Warehouse, Package, Boxes, PackagePlus, Pencil, Trash2, Factory, FileSpreadsheet, FileText, ClipboardList, Save, Search } from 'lucide-react';
+import { Plus, Minus, X, AlertTriangle, Warehouse, Package, Boxes, PackagePlus, Pencil, Trash2, Factory, FileSpreadsheet, FileText, ClipboardList, Save, Search, RefreshCw } from 'lucide-react';
 import { productsAPI, reportsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import { RANGLAR } from '../constants/colors';
@@ -70,14 +70,22 @@ export default function InventoryPage() {
   });
 
   // Inventarizatsiya tarixi (sana oralig'i bo'yicha)
-  const { data: auditHistory } = useQuery({
+  const {
+    data: auditHistory,
+    isLoading: auditHistLoading,
+    isFetching: auditHistFetching,
+    isError: auditHistError,
+    refetch: refetchAuditHist,
+  } = useQuery({
     queryKey: ['inventory-audits', auditFrom, auditTo],
     queryFn: () => productsAPI.inventoryHistory({
       start_date: auditFrom || undefined,
       end_date: auditTo || undefined,
     }).then(r => r.data),
     enabled: tab === 'audit' && auditView === 'history',
+    retry: 1,
   });
+  const auditRows = auditHistory?.audits || [];
 
   const createRmMutation = useMutation({
     mutationFn: (d) => productsAPI.createRawMaterial(d),
@@ -747,7 +755,7 @@ export default function InventoryPage() {
 
           {auditView === 'history' && (
           <>
-            <div className="card p-4">
+            <div className="card p-4 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-medium text-gray-600">Davr:</span>
                 <input type="date" value={auditFrom} onChange={e => setAuditFrom(e.target.value)} className="input text-xs py-1.5 w-40" title="Dan" />
@@ -757,13 +765,21 @@ export default function InventoryPage() {
                   <button onClick={() => { setAuditFrom(''); setAuditTo(''); }} className="text-gray-400 hover:text-red-500" title="Tozalash"><X size={16} /></button>
                 )}
                 <div className="flex gap-2 ml-auto">
-                  <button onClick={() => downloadAudit('excel')} disabled={!!auditExporting} className="btn-secondary btn-sm">
+                  <button onClick={() => refetchAuditHist()} className="btn-secondary btn-sm" title="Yangilash">
+                    <RefreshCw size={14} className={auditHistFetching ? 'animate-spin' : ''} /> Yangilash
+                  </button>
+                  <button onClick={() => downloadAudit('excel')} disabled={!!auditExporting || !auditRows.length} className="btn-secondary btn-sm">
                     <FileSpreadsheet size={14} /> {auditExporting === 'excel' ? '...' : 'Excel'}
                   </button>
-                  <button onClick={() => downloadAudit('pdf')} disabled={!!auditExporting} className="btn-secondary btn-sm">
+                  <button onClick={() => downloadAudit('pdf')} disabled={!!auditExporting || !auditRows.length} className="btn-secondary btn-sm">
                     <FileText size={14} /> {auditExporting === 'pdf' ? '...' : 'PDF'}
                   </button>
                 </div>
+              </div>
+              <div className="text-xs text-gray-500">
+                {(auditHistLoading || auditHistFetching) ? 'Yuklanmoqda...'
+                  : auditHistError ? <span className="text-red-500">Tarixni yuklab bo'lmadi — "Yangilash" tugmasini bosing</span>
+                  : `Jami ${auditRows.length} ta yozuv${(auditFrom || auditTo) ? ' (tanlangan davrda)' : ''}`}
               </div>
             </div>
 
@@ -780,12 +796,20 @@ export default function InventoryPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {!(auditHistory?.audits || []).length ? (
+                    {(auditHistLoading || auditHistFetching) ? (
+                      <tr><td colSpan={8} className="text-center py-10 text-gray-400">Yuklanmoqda...</td></tr>
+                    ) : auditHistError ? (
+                      <tr><td colSpan={8} className="text-center py-10 text-red-500">
+                        Tarixni yuklab bo'lmadi. Yuqoridagi "Yangilash" tugmasini bosing.
+                      </td></tr>
+                    ) : !auditRows.length ? (
                       <tr><td colSpan={8} className="text-center py-10 text-gray-400">
                         <ClipboardList size={26} className="mx-auto mb-2 text-gray-300" />
-                        Bu davrda inventarizatsiya yozuvi yo'q
+                        {(auditFrom || auditTo)
+                          ? 'Bu davrda inventarizatsiya yozuvi yo\'q'
+                          : 'Hali inventarizatsiya qilinmagan — "Sanash" bo\'limida ombor qo\'shing yoki ayiring'}
                       </td></tr>
-                    ) : auditHistory.audits.map(a => {
+                    ) : auditRows.map(a => {
                       const d = parseFloat(a.delta) || 0;
                       return (
                         <tr key={a.id}>

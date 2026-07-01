@@ -50,6 +50,11 @@ export default function InventoryPage() {
   const [auditCounts, setAuditCounts] = useState({}); // { [productId]: 'sanalган son' }
   const [auditSearch, setAuditSearch] = useState('');
   const [auditCat, setAuditCat] = useState('all'); // 'all' | 'finished' | 'component'
+  const [auditReason, setAuditReason] = useState(''); // sabab (nima uchun)
+  const [auditView, setAuditView] = useState('count'); // 'count' = sanash | 'history' = tarix
+  const [auditFrom, setAuditFrom] = useState('');
+  const [auditTo, setAuditTo] = useState('');
+  const [auditExporting, setAuditExporting] = useState(null);
 
   const { data: products } = useQuery({
     queryKey: ['inventory-products'],
@@ -59,6 +64,16 @@ export default function InventoryPage() {
   const { data: rawMats } = useQuery({
     queryKey: ['raw-materials'],
     queryFn: () => productsAPI.getRawMaterials().then(r => r.data),
+  });
+
+  // Inventarizatsiya tarixi (sana oralig'i bo'yicha)
+  const { data: auditHistory } = useQuery({
+    queryKey: ['inventory-audits', auditFrom, auditTo],
+    queryFn: () => productsAPI.inventoryHistory({
+      start_date: auditFrom || undefined,
+      end_date: auditTo || undefined,
+    }).then(r => r.data),
+    enabled: tab === 'audit' && auditView === 'history',
   });
 
   const createRmMutation = useMutation({
@@ -181,17 +196,38 @@ export default function InventoryPage() {
 
   // Inventarizatsiya — sanalган (haqiqiy) qoldiqlarni tizimga moslash
   const auditMutation = useMutation({
-    mutationFn: (items) => productsAPI.inventoryAdjust(items).then(r => r.data),
+    mutationFn: ({ items, reason }) => productsAPI.inventoryAdjust(items, reason).then(r => r.data),
     onSuccess: (d) => {
       toast.success(d.changed > 0
         ? `Inventarizatsiya saqlandi — ${d.changed} ta mahsulot to'g'rilandi`
         : 'Farq topilmadi — hammasi mos');
       setAuditCounts({});
+      setAuditReason('');
       qc.invalidateQueries({ queryKey: ['inventory-products'] });
       qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['inventory-audits'] });
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Saqlashda xato'),
   });
+
+  // Inventarizatsiya tarixini Excel/PDF qilib yuklab olish (sana oralig'i bo'yicha)
+  const downloadAudit = async (kind) => {
+    setAuditExporting(kind);
+    try {
+      const params = { start_date: auditFrom || undefined, end_date: auditTo || undefined };
+      const res = kind === 'excel' ? await productsAPI.inventoryAuditExcel(params) : await productsAPI.inventoryAuditPdf(params);
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `inventarizatsiya-${auditFrom || 'hammasi'}${auditTo ? '_' + auditTo : ''}.${kind === 'excel' ? 'xlsx' : 'pdf'}`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Yuklab bo\'lmadi');
+    } finally {
+      setAuditExporting(null);
+    }
+  };
 
   // Ombor ro'yxatini Excel/PDF qilib yuklab olish (joriy tab bo'yicha)
   const downloadInventory = async (format) => {
@@ -530,6 +566,15 @@ export default function InventoryPage() {
       {/* INVENTARIZATSIYA — sanab tekshirish */}
       {tab === 'audit' && (
         <>
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
+            <button onClick={() => setAuditView('count')}
+              className={`btn-sm rounded-md px-4 ${auditView === 'count' ? 'bg-white shadow-sm text-indigo-700 font-semibold' : 'text-gray-500'}`}>Sanash</button>
+            <button onClick={() => setAuditView('history')}
+              className={`btn-sm rounded-md px-4 ${auditView === 'history' ? 'bg-white shadow-sm text-indigo-700 font-semibold' : 'text-gray-500'}`}>Tarix</button>
+          </div>
+
+          {auditView === 'count' && (
+          <>
           <div className="card p-4 space-y-3">
             <div className="flex items-start gap-2">
               <ClipboardList size={18} className="text-indigo-600 mt-0.5 flex-shrink-0" />
@@ -539,6 +584,22 @@ export default function InventoryPage() {
                 qatorlarga tegilmaydi.
               </p>
             </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-600">Sabab (nima uchun to'g'rilanmoqda)</label>
+              <input value={auditReason} onChange={e => setAuditReason(e.target.value)}
+                placeholder="Masalan: sanoq xatosi, yo'qolган, buzilған, topildi..."
+                className="input w-full mt-1" />
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {['Sanoq xatosi', 'Yo\'qolган / kamaygan', 'Buzilган (brak)', 'Topildi / ortdi', 'Yillik inventarizatsiya'].map(s => (
+                  <button key={s} type="button" onClick={() => setAuditReason(s)}
+                    className={`text-[11px] px-2 py-0.5 rounded-full border ${auditReason === s ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative flex-1 min-w-[200px]">
                 <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -564,7 +625,7 @@ export default function InventoryPage() {
                     <X size={14} /> Tozalash
                   </button>
                 )}
-                <button onClick={() => auditMutation.mutate(auditItems)}
+                <button onClick={() => auditMutation.mutate({ items: auditItems, reason: auditReason })}
                   disabled={!auditItems.length || auditMutation.isPending}
                   className="btn-primary btn-sm">
                   <Save size={14} /> {auditMutation.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
@@ -626,6 +687,74 @@ export default function InventoryPage() {
               </table>
             </div>
           </div>
+          </>
+          )}
+
+          {auditView === 'history' && (
+          <>
+            <div className="card p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-gray-600">Davr:</span>
+                <input type="date" value={auditFrom} onChange={e => setAuditFrom(e.target.value)} className="input text-xs py-1.5 w-40" title="Dan" />
+                <span className="text-gray-400 text-xs">—</span>
+                <input type="date" value={auditTo} onChange={e => setAuditTo(e.target.value)} className="input text-xs py-1.5 w-40" title="Gacha" />
+                {(auditFrom || auditTo) && (
+                  <button onClick={() => { setAuditFrom(''); setAuditTo(''); }} className="text-gray-400 hover:text-red-500" title="Tozalash"><X size={16} /></button>
+                )}
+                <div className="flex gap-2 ml-auto">
+                  <button onClick={() => downloadAudit('excel')} disabled={!!auditExporting} className="btn-secondary btn-sm">
+                    <FileSpreadsheet size={14} /> {auditExporting === 'excel' ? '...' : 'Excel'}
+                  </button>
+                  <button onClick={() => downloadAudit('pdf')} disabled={!!auditExporting} className="btn-secondary btn-sm">
+                    <FileText size={14} /> {auditExporting === 'pdf' ? '...' : 'PDF'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="card overflow-hidden">
+              <div className="table-container">
+                <table className="table text-sm">
+                  <thead>
+                    <tr>
+                      <th>Sana</th><th>Mahsulot</th><th>Rang</th>
+                      <th className="text-right">Dastlabki</th>
+                      <th className="text-right">Sanaldi</th>
+                      <th className="text-right">Farq</th>
+                      <th>Sabab</th><th>Kim</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {!(auditHistory?.audits || []).length ? (
+                      <tr><td colSpan={8} className="text-center py-10 text-gray-400">
+                        <ClipboardList size={26} className="mx-auto mb-2 text-gray-300" />
+                        Bu davrda inventarizatsiya yozuvi yo'q
+                      </td></tr>
+                    ) : auditHistory.audits.map(a => {
+                      const d = parseFloat(a.delta) || 0;
+                      return (
+                        <tr key={a.id}>
+                          <td className="whitespace-nowrap text-gray-600">{String(a.created_at || '').slice(0, 10)}</td>
+                          <td className="font-medium text-gray-900">{a.product_name || '—'}</td>
+                          <td className="text-gray-500">{a.rang || '—'}</td>
+                          <td className="text-right">{fmt(a.old_qty)}</td>
+                          <td className="text-right font-semibold">{fmt(a.new_qty)}</td>
+                          <td className="text-right font-bold whitespace-nowrap">
+                            {d > 0 ? <span className="text-blue-600">+{fmt(d)}</span>
+                              : d < 0 ? <span className="text-red-600">−{fmt(Math.abs(d))}</span>
+                              : <span className="text-green-600">0</span>}
+                          </td>
+                          <td className="text-gray-600">{a.reason || '—'}</td>
+                          <td className="text-gray-500">{a.created_by_name || '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+          )}
         </>
       )}
 

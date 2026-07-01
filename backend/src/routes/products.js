@@ -6,6 +6,7 @@ const { requireRole } = require('../middleware/rbac');
 const { logAudit } = require('../services/auditService');
 const ledger = require('../services/rawMaterialLedger');
 const { addColorStock, getColorStock } = require('../utils/colorStock');
+const { ensureInventoryAuditSchema } = require('../services/inventoryAudit');
 
 const router = express.Router();
 router.use(authenticate);
@@ -61,6 +62,60 @@ router.get('/', async (req, res, next) => {
       ...(start_date || end_date ? { period: periodStats[p.id] || { sold_qty: 0, sold_amount: 0, sold_count: 0 } } : {}),
     }));
     res.json({ products });
+  } catch (err) { next(err); }
+});
+
+// ── INVENTARIZATSIYA TARIXI ── (MUHIM: /:id routelaridan OLDIN turishi shart,
+// aks holda "/inventory-adjust/history" ni "/:id/history" ushlab qoladi)
+// Sana oralig'i bo'yicha inventarizatsiya yozuvlarini oladi
+async function fetchInventoryAudits({ start_date, end_date }) {
+  let where = '1=1';
+  const params = [];
+  let idx = 1;
+  if (start_date) { where += ` AND DATE(a.created_at) >= $${idx++}`; params.push(start_date); }
+  if (end_date)   { where += ` AND DATE(a.created_at) <= $${idx++}`; params.push(end_date); }
+  const rows = (await query(`
+    SELECT a.*, u.full_name AS created_by_name
+    FROM inventory_audits a
+    LEFT JOIN users u ON a.created_by = u.id
+    WHERE ${where}
+    ORDER BY a.created_at DESC
+  `, params)).rows;
+  return rows;
+}
+
+// GET /api/products/inventory-adjust/history?start_date&end_date
+router.get('/inventory-adjust/history', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
+  try {
+    await ensureInventoryAuditSchema();
+    const audits = await fetchInventoryAudits(req.query);
+    res.json({ audits });
+  } catch (err) { next(err); }
+});
+
+// GET /api/products/inventory-adjust/excel — inventarizatsiya tarixi Excel
+router.get('/inventory-adjust/excel', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
+  try {
+    await ensureInventoryAuditSchema();
+    const audits = await fetchInventoryAudits(req.query);
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateInventoryAuditExcel(audits, req.query);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="inventarizatsiya-${req.query.start_date || 'hammasi'}_${req.query.end_date || ''}.xlsx"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) { next(err); }
+});
+
+// GET /api/products/inventory-adjust/pdf — inventarizatsiya tarixi PDF
+router.get('/inventory-adjust/pdf', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
+  try {
+    await ensureInventoryAuditSchema();
+    const audits = await fetchInventoryAudits(req.query);
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateInventoryAuditPDF(audits, req.query);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="inventarizatsiya-${req.query.start_date || 'hammasi'}_${req.query.end_date || ''}.pdf"`);
+    res.send(Buffer.from(buffer));
   } catch (err) { next(err); }
 });
 
@@ -673,19 +728,20 @@ router.put('/:id/stock', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), 
 // sanalган songa o'rnatiladi va o'zgarish mahsulotning rang buketiga ham qo'llanadi.
 router.post('/inventory-adjust', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
   try {
-    const { items } = req.body;
+    const { items, reason } = req.body;
     if (!Array.isArray(items) || !items.length) {
       return res.status(400).json({ error: 'Sanalган mahsulotlar yo\'q' });
     }
+    await ensureInventoryAuditSchema();
+    const cleanReason = (reason || '').toString().trim() || null;
     const client = await require('../db').getClient();
     let changed = 0;
-    const details = [];
     try {
       await client.query('BEGIN');
       for (const it of items) {
         const counted = parseFloat(it.counted);
         if (!it || !it.product_id || isNaN(counted)) continue;
-        const cur = await client.query("SELECT stock_quantity, COALESCE(rang,'') AS rang FROM products WHERE id=$1", [it.product_id]);
+        const cur = await client.query("SELECT name, stock_quantity, COALESCE(rang,'') AS rang FROM products WHERE id=$1", [it.product_id]);
         if (!cur.rows.length) continue;
         const oldStock = parseFloat(cur.rows[0].stock_quantity || 0);
         const newStock = Math.max(0, counted);
@@ -693,8 +749,13 @@ router.post('/inventory-adjust', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUN
         if (delta === 0) continue; // farq yo'q — tegmaymiz
         await client.query('UPDATE products SET stock_quantity=$1, updated_at=NOW() WHERE id=$2', [newStock, it.product_id]);
         await addColorStock(client.query, it.product_id, cur.rows[0].rang, delta);
+        // Tarixga yozamiz: dastlabki, yangi, farq (+/−), sabab, kim
+        await client.query(
+          `INSERT INTO inventory_audits (product_id, product_name, rang, old_qty, new_qty, delta, reason, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [it.product_id, cur.rows[0].name || '', cur.rows[0].rang || '', oldStock, newStock, delta, cleanReason, req.user.id]
+        );
         changed++;
-        details.push({ product_id: it.product_id, old: oldStock, new: newStock, delta });
       }
       await client.query('COMMIT');
     } catch (e) {
@@ -703,7 +764,7 @@ router.post('/inventory-adjust', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUN
     } finally {
       client.release();
     }
-    logAudit(req, { action: 'INVENTORY_ADJUST', table: 'products', recordId: 'BULK', newValues: { changed, details } });
+    logAudit(req, { action: 'INVENTORY_ADJUST', table: 'products', recordId: 'BULK', newValues: { changed, reason: cleanReason } });
     res.json({ changed });
   } catch (err) { next(err); }
 });

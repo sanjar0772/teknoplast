@@ -148,6 +148,11 @@ require('./services/saleReturns')
   .ensureReturnsSchema()
   .catch(e => console.error('Sale returns init xato:', e.message));
 
+// Inventarizatsiya tarixi jadvalini tayyorlash
+require('./services/inventoryAudit')
+  .ensureInventoryAuditSchema()
+  .catch(e => console.error('Inventory audit init xato:', e.message));
+
 // Texno Innovator 2026 prayslistini avtomatik yuklash (faqat bir marta, sentinel bilan himoyalangan)
 require('./services/pricelistSeed')
   .ensurePricelist2026()

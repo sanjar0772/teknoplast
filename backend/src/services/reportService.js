@@ -1173,6 +1173,115 @@ async function generateWorkerWorksPDF(rows, date) {
   });
 }
 
+// ── Inventarizatsiya tarixi — Sana/Mahsulot/Rang/Dastlabki/Sanaldi/Farq/Turi/Sabab/Kim ──
+async function generateInventoryAuditExcel(rows, filters = {}) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'TEKNOPLAST';
+  const sheet = workbook.addWorksheet('Inventarizatsiya');
+  sheet.columns = [
+    { header: '№', key: 'num', width: 5 },
+    { header: 'Sana', key: 'date', width: 13 },
+    { header: 'Mahsulot', key: 'product', width: 32 },
+    { header: 'Rang', key: 'rang', width: 12 },
+    { header: 'Dastlabki', key: 'old', width: 12 },
+    { header: 'Sanaldi', key: 'newq', width: 12 },
+    { header: 'Farq', key: 'delta', width: 10 },
+    { header: 'Turi', key: 'dir', width: 12 },
+    { header: 'Sabab', key: 'reason', width: 26 },
+    { header: 'Kim', key: 'by', width: 18 },
+  ];
+  sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D4ED8' } };
+  rows.forEach((r, i) => {
+    const delta = parseFloat(r.delta || 0);
+    sheet.addRow({
+      num: i + 1,
+      date: String(r.created_at || '').slice(0, 10),
+      product: r.product_name || '—',
+      rang: r.rang || '—',
+      old: parseFloat(r.old_qty || 0),
+      newq: parseFloat(r.new_qty || 0),
+      delta,
+      dir: delta > 0 ? 'Qo\'shildi' : delta < 0 ? 'Ayirildi' : '—',
+      reason: r.reason || '—',
+      by: r.created_by_name || '—',
+    });
+  });
+  const buffer = await workbook.xlsx.writeBuffer();
+  return buffer;
+}
+
+async function generateInventoryAuditPDF(rows, filters = {}) {
+  return new Promise((resolve, reject) => {
+    const num = n => String(Math.round(parseFloat(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    const doc = new PDFDocument({ margin: 30, size: 'A4', layout: 'landscape' });
+    registerCyrillicFonts(doc);
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    doc.fontSize(16).font('Arial-Bold').text('TEKNOPLAST', { align: 'center' });
+    doc.fontSize(11).font('Arial').text('Inventarizatsiya hisoboti', { align: 'center' });
+    const period = (filters.start_date || filters.end_date)
+      ? `${filters.start_date || '...'} — ${filters.end_date || '...'}`
+      : 'Hamma vaqt';
+    doc.fontSize(9).fillColor('#666').text(`Davr: ${period}   ·   Yaratildi: ${new Date().toLocaleDateString('uz-UZ')}`, { align: 'center' });
+    doc.fillColor('black').moveDown(0.6);
+
+    // Landscape A4: margin 30 → 30..812
+    const col = { num: 30, date: 55, product: 120, rang: 300, old: 370, newq: 430, delta: 490, dir: 550, reason: 620, by: 740 };
+    const right = 812;
+    const drawHeader = (y) => {
+      doc.font('Arial-Bold').fontSize(9).fillColor('black');
+      doc.text('№', col.num, y);
+      doc.text('Sana', col.date, y);
+      doc.text('Mahsulot', col.product, y);
+      doc.text('Rang', col.rang, y);
+      doc.text('Dastlabki', col.old, y);
+      doc.text('Sanaldi', col.newq, y);
+      doc.text('Farq', col.delta, y);
+      doc.text('Turi', col.dir, y);
+      doc.text('Sabab', col.reason, y);
+      doc.text('Kim', col.by, y);
+      doc.moveTo(30, y + 13).lineTo(right, y + 13).strokeColor('#999').stroke();
+      return y + 18;
+    };
+    let y = drawHeader(doc.y);
+    doc.font('Arial').fontSize(8).fillColor('black');
+    let addTot = 0, subTot = 0;
+    rows.forEach((r, i) => {
+      if (y > 560) { doc.addPage(); y = drawHeader(30); doc.font('Arial').fontSize(8); }
+      const delta = parseFloat(r.delta || 0);
+      if (delta > 0) addTot += delta; else subTot += Math.abs(delta);
+      doc.fillColor('black');
+      doc.text(String(i + 1), col.num, y, { width: 20 });
+      doc.text(String(r.created_at || '').slice(0, 10), col.date, y, { width: 60 });
+      doc.text(r.product_name || '—', col.product, y, { width: 175 });
+      doc.text(r.rang || '—', col.rang, y, { width: 65 });
+      doc.text(num(r.old_qty), col.old, y, { width: 55 });
+      doc.text(num(r.new_qty), col.newq, y, { width: 55 });
+      doc.fillColor(delta > 0 ? '#2563eb' : delta < 0 ? '#dc2626' : '#000000');
+      doc.text((delta > 0 ? '+' : delta < 0 ? '−' : '') + num(Math.abs(delta)), col.delta, y, { width: 55 });
+      doc.fillColor('black');
+      doc.text(delta > 0 ? 'Qo\'shildi' : delta < 0 ? 'Ayirildi' : '—', col.dir, y, { width: 65 });
+      doc.text(r.reason || '—', col.reason, y, { width: 115 });
+      doc.text(r.created_by_name || '—', col.by, y, { width: 70 });
+      const h = Math.max(
+        doc.heightOfString(r.product_name || '—', { width: 175 }),
+        doc.heightOfString(r.reason || '—', { width: 115 }),
+        12
+      );
+      y += h + 4;
+    });
+    doc.moveTo(30, y).lineTo(right, y).strokeColor('#999').stroke();
+    y += 6;
+    doc.font('Arial-Bold').fontSize(9).fillColor('black');
+    doc.text(`JAMI: ${rows.length} ta yozuv  ·  Qo'shildi: +${num(addTot)}  ·  Ayirildi: −${num(subTot)}`, 30, y, { width: right - 30, align: 'right' });
+    doc.end();
+  });
+}
+
 // ── Umumiy ombor (inventar) ro'yxati — Excel ──
 // columns: [{ header, key, w, money?, total?, align? }], rows: [{ key: value }]
 async function generateInventoryExcel({ title, columns, rows, headerColor = 'FF1E40AF' }) {
@@ -1400,4 +1509,4 @@ async function generateTurnoverPDF({ rows, start_date, end_date, warehouse }) {
   });
 }
 
-module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateProductionRangePDF, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF, generateWorkerWorksExcel, generateWorkerWorksPDF, generateInventoryExcel, generateInventoryPDF, generateTurnoverExcel, generateTurnoverPDF };
+module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateProductionRangePDF, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF, generateWorkerWorksExcel, generateWorkerWorksPDF, generateInventoryAuditExcel, generateInventoryAuditPDF, generateInventoryExcel, generateInventoryPDF, generateTurnoverExcel, generateTurnoverPDF };

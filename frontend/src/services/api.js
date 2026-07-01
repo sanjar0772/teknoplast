@@ -201,6 +201,7 @@ export const reportsAPI = {
   getDashboard: () => api.get('/reports/dashboard'),
   getMonthly: (params) => api.get('/reports/monthly', { params }),
   getDebts: (params) => api.get('/reports/debts', { params }),
+  getCreditors: () => api.get('/reports/creditors'),
   addDebt: (data) => api.post('/reports/debts', data),
   addCredit: (data) => api.post('/reports/credit', data),
   getDebtPayments: (params) => api.get('/reports/debt-payments', { params }),

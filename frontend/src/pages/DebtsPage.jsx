@@ -462,6 +462,13 @@ export default function DebtsPage() {
     enabled: view === 'paid',
   });
 
+  // Haqdorlar (zavod qarzdor bo'lgan mijozlar) — net balans manfiy
+  const { data: creditData, isLoading: creditLoading } = useQuery({
+    queryKey: ['creditors'],
+    queryFn: () => reportsAPI.getCreditors().then(r => r.data),
+    enabled: view === 'credit',
+  });
+
   // To'lovni eski qarzdan boshlab taqsimlash (FIFO):
   // naqd → karta → bank tartibida har bir qarzga yoziladi.
   // Qarzlar yopilgandan keyin qolgan ortiqcha pul — oxirgi savdoga HAQDOR sifatida yoziladi.
@@ -660,6 +667,11 @@ export default function DebtsPage() {
                 <p className="text-xs text-gray-500">Umumiy qarz</p>
                 <p className="text-2xl font-bold text-red-600">{fmt(data?.total_debt)} so'm</p>
               </>
+            ) : view === 'credit' ? (
+              <>
+                <p className="text-xs text-gray-500">Umumiy haqdorlik</p>
+                <p className="text-2xl font-bold text-blue-600">{fmt(creditData?.total_credit)} so'm</p>
+              </>
             ) : (
               <>
                 <p className="text-xs text-gray-500">To'langan (tanlangan davr)</p>
@@ -683,6 +695,7 @@ export default function DebtsPage() {
       <div className="flex gap-2 no-print">
         {[
           { key: 'active', label: 'Qarzdorlar' },
+          { key: 'credit', label: 'Haqdorlar' },
           { key: 'paid',   label: "To'langan qarzlar" },
         ].map(t => (
           <button key={t.key} onClick={() => setView(t.key)}
@@ -859,6 +872,66 @@ export default function DebtsPage() {
         </table>
       </div>
       )}
+
+      {/* Haqdorlar — zavod qarzdor bo'lgan mijozlar (oldindan to'lov/ortiqcha to'lov) */}
+      {view === 'credit' && (() => {
+        const creditItems = creditData?.items || [];
+        const filtered = q
+          ? creditItems.filter(it =>
+              String(it.customer || '').toLowerCase().includes(q) ||
+              String(it.phone || '').toLowerCase().includes(q))
+          : creditItems;
+        const filteredTotal = filtered.reduce((s, it) => s + (it.credit || 0), 0);
+        return (
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Mijoz</th><th>Operatsiyalar</th><th>Oxirgi sana</th><th className="text-right">Haqdorlik</th><th className="no-print">Amal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {creditLoading ? (
+                  <tr><td colSpan={5} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
+                ) : !creditItems.length ? (
+                  <tr><td colSpan={5} className="text-center py-10 text-gray-400">
+                    <Wallet size={26} className="mx-auto mb-2 text-gray-300" />
+                    Haqdor mijozlar yo'q
+                  </td></tr>
+                ) : !filtered.length ? (
+                  <tr><td colSpan={5} className="text-center py-10 text-gray-400">
+                    <Search size={24} className="mx-auto mb-2 text-gray-300" />
+                    "{search}" bo'yicha haqdor topilmadi
+                  </td></tr>
+                ) : filtered.map(it => (
+                  <tr key={it.customer_id}>
+                    <td>
+                      <div className="font-medium text-gray-900">{it.customer}</div>
+                      {it.phone && <div className="text-xs text-gray-400 flex items-center gap-1"><Phone size={10} /> {it.phone}</div>}
+                    </td>
+                    <td>{it.sales_count} ta</td>
+                    <td className="whitespace-nowrap">{it.last_date ? new Date(it.last_date).toLocaleDateString('uz-UZ') : '—'}</td>
+                    <td className="text-right font-bold text-blue-600 whitespace-nowrap">+{fmt(it.credit)} so'm</td>
+                    <td className="no-print">
+                      <button onClick={() => navigate(`/customers`)} title="Mijoz kartasi"
+                        className="btn-secondary btn-sm">
+                        <FileText size={12} /> Mijoz
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length > 0 && (
+                  <tr className="bg-gray-50 font-bold">
+                    <td colSpan={3} className="text-right text-gray-600">Umumiy haqdorlik:</td>
+                    <td className="text-right text-blue-700 whitespace-nowrap">+{fmt(filteredTotal)} so'm</td>
+                    <td className="no-print"></td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
 
       {/* To'langan qarzlar tarixi (qarz to'lovlari) */}
       {view === 'paid' && (

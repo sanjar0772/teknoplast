@@ -109,6 +109,40 @@ router.get('/debts', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/reports/creditors — HAQDORLAR (zavod qarzdor bo'lgan mijozlar).
+// Mijoz darajasida net balans manfiy bo'lsa = haqdor. credit = -balans.
+router.get('/creditors', async (req, res, next) => {
+  try {
+    const rows = (await query(`
+      SELECT c.id as customer_id, c.name as customer_name, c.phone,
+             SUM(s.total_amount - s.payment_amount) as balance,
+             COUNT(*) as sales_count,
+             MAX(s.sale_date) as last_date
+      FROM sales s
+      JOIN customers c ON s.customer_id = c.id
+      GROUP BY c.id, c.name, c.phone
+      HAVING SUM(s.total_amount - s.payment_amount) < -0.01
+      ORDER BY balance ASC
+    `)).rows;
+
+    let total = 0;
+    const items = rows.map(r => {
+      const credit = -parseFloat(r.balance);
+      total += credit;
+      return {
+        customer_id: r.customer_id,
+        customer: r.customer_name || 'Noma\'lum',
+        phone: r.phone || null,
+        credit,
+        sales_count: parseInt(r.sales_count) || 0,
+        last_date: r.last_date,
+      };
+    });
+
+    res.json({ total_credit: total, count: items.length, items });
+  } catch (err) { next(err); }
+});
+
 // POST /api/reports/debts — qo'lda yangi qarz qo'shish (mahsulotsiz, ombor kamaymaydi)
 const MANUAL_DEBT_PRODUCT = 'Qo\'lda qarz';
 router.post('/debts', requireRole('OWNER', 'ACCOUNTANT', 'SALES_HEAD'), async (req, res, next) => {

@@ -186,10 +186,21 @@ if (USE_PG) {
     }
   }
 
-  // Database ishga tushirish
+  // Database ishga tushirish — bir vaqtda kirishдан himoyalangan (startup RACE tuzatildi).
+  // Startupда bir nechta ensureX() BIR VAQTDA db.query() chaqirса, ilgari har biri initDB()
+  // ni qaytadan boshlab, bir nechta _db instansi yaratardi va bir-birini almashtirardi.
+  // Natijada ba'zi jadvallar (inventory_audits, sale_returns, raw_material_movements) DDL'i
+  // "orphan" instansda bajarилиб, asosiy _db da qolmasdi → "no such table" xatosi.
+  // Endi BITTA init promise'ni hamma kutadi.
+  let _initPromise = null;
   async function initDB() {
     if (_ready) return _db;
+    if (_initPromise) return _initPromise;
+    _initPromise = _doInitDB().catch((e) => { _initPromise = null; throw e; });
+    return _initPromise;
+  }
 
+  async function _doInitDB() {
     const SQL = await initSqlJs();
 
     if (fs.existsSync(DB_PATH)) {

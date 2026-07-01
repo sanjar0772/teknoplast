@@ -40,7 +40,15 @@ async function ensureInventoryAuditSchema() {
   if (_ready) return;
   try {
     await db.query(DDL);
-    _ready = true;
+    // Tasdiqlaymiz: jadval haqiqatan yaratildimi. Faqat mavjud bo'lsagina _ready=true
+    // qilamiz — aks holda keyingi so'rovda qayta uriniladi ("no such table" ga qarshi).
+    const chk = await db.query(
+      USE_PG
+        ? "SELECT 1 AS ok FROM information_schema.tables WHERE table_name='inventory_audits'"
+        : "SELECT name FROM sqlite_master WHERE type='table' AND name='inventory_audits'"
+    );
+    if (chk.rows && chk.rows.length) _ready = true;
+    else console.error('Inventory audit: DDL bajarildi, lekin jadval topilmadi (qayta uriniladi)');
   } catch (e) {
     console.error('Inventory audit DDL xato:', e.message);
   }

@@ -642,7 +642,7 @@ if (USE_PG) {
       sale_id TEXT NOT NULL REFERENCES sales(id),
       amount REAL NOT NULL,
       payment_date TEXT DEFAULT (date('now')),
-      method TEXT DEFAULT 'CASH' CHECK (method IN ('CASH','CARD','TRANSFER','OTHER')),
+      method TEXT DEFAULT 'CASH' CHECK (method IN ('CASH','CARD','TRANSFER','PAYME','CLICK','DISCOUNT','OTHER')),
       notes TEXT,
       created_by TEXT REFERENCES users(id),
       created_at TEXT DEFAULT (datetime('now'))

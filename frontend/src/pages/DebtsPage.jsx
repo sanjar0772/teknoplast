@@ -327,7 +327,7 @@ export default function DebtsPage() {
   const navigate = useNavigate();
   // payFor = { customer, totalDebt, items: [{sale_id, debt}, ...] }
   const [payFor, setPayFor] = useState(null);
-  const [payAmounts, setPayAmounts] = useState({ naqd: '', karta: '', bank: '', skidka: '' });
+  const [payAmounts, setPayAmounts] = useState({ naqd: '', karta: '', bank: '', payme: '', click: '', skidka: '' });
   const [receipt, setReceipt] = useState(null); // to'lovdan keyin chek
   const [faktura, setFaktura] = useState(null); // qarzdorning umumiy qarzi bo'yicha schyot-faktura
   const [view, setView] = useState('active'); // 'active' = qarzdorlar, 'paid' = to'langan qarzlar tarixi
@@ -436,7 +436,7 @@ export default function DebtsPage() {
   // naqd → karta → bank tartibida har bir qarzga yoziladi.
   // Qarzlar yopilgandan keyin qolgan ortiqcha pul — oxirgi savdoga HAQDOR sifatida yoziladi.
   const payMutation = useMutation({
-    mutationFn: async ({ items, naqd, karta, bank, skidka }) => {
+    mutationFn: async ({ items, naqd, karta, bank, payme, click, skidka }) => {
       const round = (n) => Math.round(n * 100) / 100;
       // Bitta to'lov operatsiyasi — barcha taqsimlangan to'lovlar shu ref bilan belgilanadi,
       // shunda mijoz tarixida bitta qator sifatida jamlanadi.
@@ -448,6 +448,8 @@ export default function DebtsPage() {
         { method: 'CASH',     remaining: naqd  || 0 },
         { method: 'CARD',     remaining: karta || 0 },
         { method: 'TRANSFER', remaining: bank  || 0 },
+        { method: 'PAYME',    remaining: payme || 0 },
+        { method: 'CLICK',    remaining: click || 0 },
       ].filter(p => p.remaining > 0.01);
 
       // 1) Har bir qarzni yopish: avval skidka, keyin pul
@@ -481,14 +483,14 @@ export default function DebtsPage() {
       }
     },
     onSuccess: (_, variables) => {
-      const { customer, totalDebt, naqd, karta, bank, skidka } = variables;
-      const total = (naqd || 0) + (karta || 0) + (bank || 0);
+      const { customer, totalDebt, naqd, karta, bank, payme, click, skidka } = variables;
+      const total = (naqd || 0) + (karta || 0) + (bank || 0) + (payme || 0) + (click || 0);
       const discountApplied = Math.min(Math.max(0, skidka || 0), totalDebt);
       const debtAfterDiscount = Math.max(0, totalDebt - discountApplied);
       const credit = Math.max(0, total - debtAfterDiscount);     // haqdor (oshiqcha pul)
       const remaining = Math.max(0, debtAfterDiscount - total);  // qolgan qarz
       setPayFor(null);
-      setReceipt({ customer, naqd: naqd || 0, karta: karta || 0, bank: bank || 0, skidka: skidka || 0, total, remaining, credit, date: new Date() });
+      setReceipt({ customer, naqd: naqd || 0, karta: karta || 0, bank: bank || 0, payme: payme || 0, click: click || 0, skidka: skidka || 0, total, remaining, credit, date: new Date() });
       toast.success(credit > 0 ? `To'lov saqlandi! Haqdor: +${fmt(credit)} so'm` : 'To\'lov saqlandi! Chek tayyor.');
       qc.invalidateQueries({ queryKey: ['debts'] });
       qc.invalidateQueries({ queryKey: ['debt-payments'] });
@@ -501,15 +503,17 @@ export default function DebtsPage() {
 
   // To'lov oynasini ochish — barcha maydonlar bo'sh (0), foydalanuvchi o'zi kiritadi
   const openPay = (g) => {
-    setPayAmounts({ naqd: '', karta: '', bank: '', skidka: '' });
+    setPayAmounts({ naqd: '', karta: '', bank: '', payme: '', click: '', skidka: '' });
     setPayFor({ customer: g.customer, totalDebt: g.totalDebt, items: g.items });
   };
 
   const naqd   = parseFloat(payAmounts.naqd)   || 0;
   const karta  = parseFloat(payAmounts.karta)  || 0;
   const bank   = parseFloat(payAmounts.bank)   || 0;
+  const payme  = parseFloat(payAmounts.payme)  || 0;
+  const click  = parseFloat(payAmounts.click)  || 0;
   const skidka = parseFloat(payAmounts.skidka) || 0;
-  const payTotal = naqd + karta + bank;           // haqiqiy pul
+  const payTotal = naqd + karta + bank + payme + click;   // haqiqiy pul
   const settled  = payTotal + skidka;             // qarz kamayishi (pul + skidka)
   // Preview: skidka qarzdan oshmaydi; ortiqcha pul haqdor bo'ladi
   const debtTotal       = payFor?.totalDebt || 0;
@@ -521,7 +525,7 @@ export default function DebtsPage() {
   const submitPay = () => {
     if (settled <= 0) return toast.error('Kamida bitta usulda summa yoki skidka kiriting');
     // Ortiqcha pul endi ruxsat — qarzdan oshgani haqdor bo'lib qoladi (skidka qarzdan oshmaydi)
-    payMutation.mutate({ items: payFor.items, naqd, karta, bank, skidka, customer: payFor.customer, totalDebt: payFor.totalDebt });
+    payMutation.mutate({ items: payFor.items, naqd, karta, bank, payme, click, skidka, customer: payFor.customer, totalDebt: payFor.totalDebt });
   };
 
   // To'langan qarzlar tabidan — tarixiy to'lov uchun chek (dastlabki/to'langan/joriy qarz bilan)
@@ -534,6 +538,8 @@ export default function DebtsPage() {
       naqd:   m === 'CASH'     ? amt : 0,
       karta:  m === 'CARD'     ? amt : 0,
       bank:   m === 'TRANSFER' ? amt : 0,
+      payme:  m === 'PAYME'    ? amt : 0,
+      click:  m === 'CLICK'    ? amt : 0,
       skidka: m === 'DISCOUNT' ? amt : 0,
       total:  m === 'DISCOUNT' ? 0   : amt,
       remaining: Math.max(0, parseFloat(p.sale_remaining) || 0),
@@ -955,6 +961,8 @@ export default function DebtsPage() {
                 { key: 'naqd',   label: '💵 Naqd',   cls: 'border-green-200 focus:ring-green-400'  },
                 { key: 'karta',  label: '💳 Karta',  cls: 'border-blue-200  focus:ring-blue-400'   },
                 { key: 'bank',   label: '🏦 Bank',   cls: 'border-purple-200 focus:ring-purple-400' },
+                { key: 'payme',  label: '📱 Pay Me', cls: 'border-cyan-200 focus:ring-cyan-400'   },
+                { key: 'click',  label: '⚡ Click',  cls: 'border-indigo-200 focus:ring-indigo-400' },
                 { key: 'skidka', label: '🏷️ Skidka', cls: 'border-orange-200 focus:ring-orange-400' },
               ].map(({ key, label, cls }) => (
                 <div key={key} className="flex items-center gap-3">
@@ -1037,6 +1045,8 @@ export default function DebtsPage() {
                 {receipt.naqd > 0 && <div className="flex justify-between"><span>Naqd:</span><span className="font-bold text-green-700">{fmt(receipt.naqd)} so'm</span></div>}
                 {receipt.karta > 0 && <div className="flex justify-between"><span>Karta:</span><span className="font-bold text-blue-700">{fmt(receipt.karta)} so'm</span></div>}
                 {receipt.bank > 0 && <div className="flex justify-between"><span>Bank:</span><span className="font-bold text-purple-700">{fmt(receipt.bank)} so'm</span></div>}
+                {receipt.payme > 0 && <div className="flex justify-between"><span>Pay Me:</span><span className="font-bold text-cyan-700">{fmt(receipt.payme)} so'm</span></div>}
+                {receipt.click > 0 && <div className="flex justify-between"><span>Click:</span><span className="font-bold text-indigo-700">{fmt(receipt.click)} so'm</span></div>}
                 {receipt.skidka > 0 && <div className="flex justify-between"><span>🏷️ Skidka:</span><span className="font-bold text-orange-600">{fmt(receipt.skidka)} so'm</span></div>}
               </div>
               <div className="flex justify-between font-bold text-[15px] pb-2 mb-1">

@@ -734,7 +734,16 @@ router.post('/inventory-adjust', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUN
     }
     await ensureInventoryAuditSchema();
     const cleanReason = (reason || '').toString().trim() || null;
-    const client = await require('../db').getClient();
+    // MUHIM: fragil umumiy tranzaksiyani (getClient + BEGIN/COMMIT) ATAYIN ishlatmaymiz.
+    // SQLite adapteri bitta ulanish + global _inTransaction bayrog'idan foydalanadi; u
+    // qotib qolganda saqlash bloklanib, "saqlangandek ko'rinib" restartда yo'qolardi.
+    // Autocommit shim: har yozuv darrov commit bo'ladi, BEGIN/COMMIT/ROLLBACK zararsiz no-op.
+    const client = {
+      query: (t, p) => (t === 'BEGIN' || t === 'COMMIT' || t === 'ROLLBACK')
+        ? Promise.resolve({ rows: [] })
+        : query(t, p),
+      release: () => {},
+    };
     let changed = 0;
     try {
       await client.query('BEGIN');
@@ -753,13 +762,16 @@ router.post('/inventory-adjust', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUN
         // Rang: qatorda berilган bo'lsa o'shani, bo'lmasa mahsulotning o'z rangini ishlatamiz
         const useRang = (it.rang !== undefined && it.rang !== null && String(it.rang).trim() !== '') ? it.rang : (cur.rows[0].rang || '');
         await client.query('UPDATE products SET stock_quantity=$1, updated_at=NOW() WHERE id=$2', [newStock, it.product_id]);
-        await addColorStock(client.query, it.product_id, useRang, delta);
+        try { await addColorStock(client.query, it.product_id, useRang, delta); }
+        catch (e) { console.error('inventory-adjust rang buket xato:', e.message); }
         // Tarixga yozamiz: dastlabki, yangi, farq (+/−), sabab, kim
-        await client.query(
-          `INSERT INTO inventory_audits (product_id, product_name, rang, old_qty, new_qty, delta, reason, created_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-          [it.product_id, cur.rows[0].name || '', useRang, oldStock, newStock, delta, cleanReason, req.user.id]
-        );
+        try {
+          await client.query(
+            `INSERT INTO inventory_audits (product_id, product_name, rang, old_qty, new_qty, delta, reason, created_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+            [it.product_id, cur.rows[0].name || '', useRang, oldStock, newStock, delta, cleanReason, req.user.id]
+          );
+        } catch (e) { console.error('inventory_audits yozuvida xato (ombor saqlandi):', e.message); }
         changed++;
       }
       await client.query('COMMIT');
@@ -769,6 +781,8 @@ router.post('/inventory-adjust', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUN
     } finally {
       client.release();
     }
+    // Diskka DARROV saqlaymiz (1200ms debounce'ni kutmasdan) — restart/deploy'da yo'qolmasin
+    try { const dbm = require('../db'); if (dbm.saveDB) await dbm.saveDB(); } catch (e) { console.error('saveDB xato:', e.message); }
     logAudit(req, { action: 'INVENTORY_ADJUST', table: 'products', recordId: 'BULK', newValues: { changed, reason: cleanReason } });
     res.json({ changed });
   } catch (err) { next(err); }

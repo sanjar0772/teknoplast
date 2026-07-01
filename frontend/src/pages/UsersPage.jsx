@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, UserCheck, UserX, Shield, KeyRound, Copy } from 'lucide-react';
+import { Plus, X, UserCheck, UserX, Shield, KeyRound, Copy, Trash2 } from 'lucide-react';
 import { authAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -72,6 +72,15 @@ export default function UsersPage() {
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id) => authAPI.deleteUser(id),
+    onSuccess: (res) => {
+      toast.success(res.data?.message || 'Foydalanuvchi o\'chirildi');
+      qc.invalidateQueries({ queryKey: ['users'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'O\'chirishda xato'),
+  });
+
   const onSubmit = (d) => createMutation.mutate(d);
 
   return (
@@ -129,6 +138,18 @@ export default function UsersPage() {
                           className={u.is_active ? 'btn-danger btn-sm' : 'btn-success btn-sm'}
                         >
                           {u.is_active ? <><UserX size={12} /> Bloklash</> : <><UserCheck size={12} /> Faollashtirish</>}
+                        </button>
+                      )}
+                      {!isMe && (
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`${u.full_name} ni BUTUNLAY o'chirasizmi?\nBu foydalanuvchi tizimga kira olmaydi. Qaytarib bo'lmaydi!`))
+                              deleteMutation.mutate(u.id);
+                          }}
+                          disabled={deleteMutation.isPending}
+                          title="Butunlay o'chirish"
+                          className="btn-sm bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg px-2 flex items-center">
+                          <Trash2 size={12} />
                         </button>
                       )}
                     </div>

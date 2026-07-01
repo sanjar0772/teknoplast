@@ -42,6 +42,7 @@ export const authAPI = {
   getUsers: () => api.get('/auth/users'),
   toggleUser: (id) => api.put(`/auth/users/${id}/toggle`),
   resetPassword: (id) => api.put(`/auth/users/${id}/reset-password`),
+  deleteUser: (id) => api.delete(`/auth/users/${id}`),
 };
 
 // Sales

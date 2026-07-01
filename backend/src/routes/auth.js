@@ -188,4 +188,26 @@ router.put('/users/:id/reset-password', authenticate, async (req, res, next) => 
   }
 });
 
+// DELETE /api/auth/users/:id (faqat OWNER) — foydalanuvchini butunlay o'chirish
+router.delete('/users/:id', authenticate, async (req, res, next) => {
+  try {
+    if (req.user.role !== 'OWNER') {
+      return res.status(403).json({ error: 'Faqat ega foydalanuvchini o\'chira oladi' });
+    }
+    if (req.params.id === String(req.user.id)) {
+      return res.status(400).json({ error: 'O\'zingizni o\'chira olmaysiz' });
+    }
+    const u = await query('SELECT id, full_name FROM users WHERE id = $1', [req.params.id]);
+    if (!u.rows.length) return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
+
+    await query('DELETE FROM users WHERE id = $1', [req.params.id]);
+    res.json({ success: true, message: `${u.rows[0].full_name} o'chirildi` });
+  } catch (err) {
+    if (err.message?.includes('foreign key') || err.message?.includes('FOREIGN KEY')) {
+      return res.status(400).json({ error: 'Bu foydalanuvchining ma\'lumotlari bor — avval bloklash (Bloklash tugmasi) ishlatilsin' });
+    }
+    next(err);
+  }
+});
+
 module.exports = router;

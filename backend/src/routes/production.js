@@ -456,6 +456,22 @@ router.get('/pending/pdf', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
   } catch (err) { next(err); }
 });
 
+// GET /api/production/rejected — qaytarilgan (to'g'irlash kerak) yozuvlar (barcha sanalar)
+router.get('/rejected', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async (req, res, next) => {
+  try {
+    const result = await query(`
+      SELECT ep.*, e.name as employee_name, e.type as employee_type,
+             p.name as product_name, p.kind as product_kind
+      FROM employee_production ep
+      JOIN employees e ON ep.employee_id = e.id
+      LEFT JOIN products p ON ep.product_id = p.id
+      WHERE ep.approval_status = 'REJECTED'
+      ORDER BY ep.production_date DESC, e.name
+    `, []);
+    res.json({ production: result.rows });
+  } catch (err) { next(err); }
+});
+
 // PUT /api/production/approve-day — bir xodimning bir kunini tasdiqlash → ombor yangilanadi
 router.put('/approve-day', requireRole('OWNER', 'SALES_HEAD'), async (req, res, next) => {
   try {

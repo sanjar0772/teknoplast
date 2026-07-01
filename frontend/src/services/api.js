@@ -128,6 +128,7 @@ export const productionAPI = {
   remove: (id) => api.delete(`/production/${id}`),
   removeAll: () => api.delete('/production/all'),
   getPending: () => api.get('/production/pending'),
+  getRejected: () => api.get('/production/rejected'),
   pendingExcel: () => api.get('/production/pending/excel', { responseType: 'blob' }),
   pendingPdf: () => api.get('/production/pending/pdf', { responseType: 'blob' }),
   approveDay: (employee_id, production_date) => api.put('/production/approve-day', { employee_id, production_date }),

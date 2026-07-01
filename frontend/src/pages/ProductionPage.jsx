@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { Html5Qrcode } from 'html5-qrcode';
-import { Plus, X, Save, Trash2, Download, Printer, ScanLine, Camera, Search } from 'lucide-react';
+import { Plus, X, Save, Trash2, Download, Printer, ScanLine, Camera, Search, RotateCcw } from 'lucide-react';
 import { productionAPI, employeesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import { RANGLAR, RANG_COLORS } from '../constants/colors';
@@ -40,6 +40,13 @@ export default function ProductionPage() {
   const { data: daily } = useQuery({
     queryKey: ['production-daily', date],
     queryFn: () => productionAPI.getAll({ date }).then(r => r.data),
+  });
+
+  // Savdo tomonidan qaytarilgan (to'g'irlash kerak) yozuvlar — barcha sanalar, doim ko'rinadi
+  const { data: rejectedData } = useQuery({
+    queryKey: ['production-rejected'],
+    queryFn: () => productionAPI.getRejected().then(r => r.data),
+    enabled: isOwner() || isProductionHead() || isKirimchi(),
   });
 
   const { data: empHistory } = useQuery({
@@ -124,6 +131,7 @@ export default function ProductionPage() {
       toast.success('Yozuv o\'chirildi');
       qc.invalidateQueries({ queryKey: ['production-daily', date] });
       qc.invalidateQueries({ queryKey: ['production-summary', month] });
+      qc.invalidateQueries({ queryKey: ['production-rejected'] });
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
@@ -329,6 +337,44 @@ export default function ProductionPage() {
           )}
         </div>
       </div>
+
+      {/* Savdo tomonidan QAYTARILGAN yozuvlar — to'g'irlash kerak (barcha sanalar) */}
+      {canWrite && rejectedData?.production?.length > 0 && (
+        <div className="card border-l-4 border-red-500 bg-red-50/40">
+          <div className="flex items-center gap-2 mb-3">
+            <RotateCcw size={16} className="text-red-500" />
+            <h2 className="font-semibold text-gray-800">Qaytarilgan — to'g'irlang ({rejectedData.production.length})</h2>
+          </div>
+          <div className="space-y-2">
+            {rejectedData.production.map(row => (
+              <div key={row.id} className="flex items-center justify-between gap-3 bg-white border border-red-100 rounded-xl p-2.5">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap text-sm">
+                    <span className="font-semibold text-gray-900">{row.employee_name}</span>
+                    <span className="text-gray-600">{row.product_name || '—'}</span>
+                    {row.rang && <span className="text-xs text-gray-500">· {row.rang}</span>}
+                    <span className="text-gray-500">{fmt(row.quantity_produced)} dona</span>
+                    <span className="text-xs text-gray-400">{new Date(row.production_date + 'T12:00:00').toLocaleDateString('uz-UZ')}</span>
+                  </div>
+                  {row.notes && <div className="text-[11px] text-red-500 mt-0.5">↩ {row.notes}</div>}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={() => setDate(row.production_date)}
+                    className="btn-sm bg-white border border-gray-200 rounded-lg px-2 text-xs hover:bg-gray-50" title="Shu kunga o'tish">
+                    Shu kun
+                  </button>
+                  <button onClick={() => { if (confirm(`${row.employee_name} — ${fmt(row.quantity_produced)} dona yozuvini o'chirasizmi?\nSo'ng "Kunlik kiritish" orqali to'g'ri kiriting.`)) deleteMutation.mutate(row.id); }}
+                    disabled={deleteMutation.isPending}
+                    className="btn-sm bg-red-50 text-red-600 border border-red-200 rounded-lg px-2 text-xs flex items-center gap-1 hover:bg-red-100">
+                    <Trash2 size={12} /> O'chirish
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-gray-500 mt-2">Bu yozuvlar savdo tomonidan qaytarildi. O'chirib, "Kunlik kiritish" orqali qaytadan to'g'ri kiriting.</p>
+        </div>
+      )}
 
       {/* Controls */}
       <div className="flex gap-3">

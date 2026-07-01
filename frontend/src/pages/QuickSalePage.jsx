@@ -37,6 +37,7 @@ const freshSession = () => ({
   payCard: '',
   payBank: '',
   payPayme: '',
+  payClick: '',
   discount: '',
   discountMode: 'sum', // 'sum' = so'm, 'pct' = foiz
   saleDate: todayStr(),
@@ -237,10 +238,11 @@ export default function QuickSalePage() {
         pay_card: checkoutRef.current.payCard || 0,
         pay_bank: checkoutRef.current.payBank || 0,
         pay_payme: checkoutRef.current.payPayme || 0,
+        pay_click: checkoutRef.current.payClick || 0,
         discount: checkoutRef.current.discount || 0,
         credit: checkoutRef.current.credit || 0,
       });
-      setSessions(ss => ss.map((ses, i) => i === idx ? { ...ses, cart: [], payCash: '', payCard: '', payBank: '', payPayme: '', discount: '' } : ses));
+      setSessions(ss => ss.map((ses, i) => i === idx ? { ...ses, cart: [], payCash: '', payCard: '', payBank: '', payPayme: '', payClick: '', discount: '' } : ses));
       setSearch('');
     },
   });
@@ -249,7 +251,8 @@ export default function QuickSalePage() {
   const cardAmt = parseFloat(s.payCard) || 0;
   const bankAmt = parseFloat(s.payBank) || 0;
   const paymeAmt = parseFloat(s.payPayme) || 0;
-  const paidTotal = cashAmt + cardAmt + bankAmt + paymeAmt;
+  const clickAmt = parseFloat(s.payClick) || 0;
+  const paidTotal = cashAmt + cardAmt + bankAmt + paymeAmt + clickAmt;
   // Chegirma (skidka) — so'm yoki foiz; jami summadan oshmaydi
   const discountInput = parseFloat(s.discount) || 0;
   const discountRaw = s.discountMode === 'pct' ? grandTotal * discountInput / 100 : discountInput;
@@ -287,7 +290,7 @@ export default function QuickSalePage() {
       itemsOut = s.cart.map(x => ({ product_id: x.id, quantity: parseInt(x.qty), unit_price: parseFloat(x.price), rang: x.rang }));
     }
 
-    checkoutRef.current = { idx: activeIdx, customerId: s.customerId, payCash: cashAmt, payCard: cardAmt, payBank: bankAmt, payPayme: paymeAmt, credit: creditAmt, discount: discountAmt };
+    checkoutRef.current = { idx: activeIdx, customerId: s.customerId, payCash: cashAmt, payCard: cardAmt, payBank: bankAmt, payPayme: paymeAmt, payClick: clickAmt, credit: creditAmt, discount: discountAmt };
     // Chekда ko'rsatish uchun — chegirma qo'llangan (net) narxlar
     lastCartRef.current = itemsOut.map((it, idx) => ({ name: s.cart[idx].name, qty: it.quantity, price: it.unit_price, unit: s.cart[idx].unit, rang: it.rang }));
     const noteParts = [];
@@ -295,6 +298,7 @@ export default function QuickSalePage() {
     if (cardAmt > 0) noteParts.push(`Karta: ${cardAmt}`);
     if (bankAmt > 0) noteParts.push(`Bank: ${bankAmt}`);
     if (paymeAmt > 0) noteParts.push(`Payme: ${paymeAmt}`);
+    if (clickAmt > 0) noteParts.push(`Click: ${clickAmt}`);
     if (debtAmt > 0) noteParts.push(`Qarz: ${debtAmt}`);
     if (creditAmt > 0) noteParts.push(`Haqdor: ${creditAmt}`);
     if (!noteParts.length) noteParts.push('Qarz');
@@ -392,7 +396,7 @@ export default function QuickSalePage() {
                 <span>JAMI:</span><span>{fmt(lastOrder.grand_total)} so'm</span>
               </div>
               {(() => {
-                const hasMixed = (lastOrder.pay_cash > 0) + (lastOrder.pay_card > 0) + (lastOrder.pay_bank > 0) + (lastOrder.pay_payme > 0) > 0;
+                const hasMixed = (lastOrder.pay_cash > 0) + (lastOrder.pay_card > 0) + (lastOrder.pay_bank > 0) + (lastOrder.pay_payme > 0) + (lastOrder.pay_click > 0) > 0;
                 const chekDebt = Math.max(0, lastOrder.grand_total - lastOrder.paid_amount);
                 const chekCredit = lastOrder.credit > 0 ? lastOrder.credit : Math.max(0, lastOrder.paid_amount - lastOrder.grand_total);
                 if (!hasMixed && chekDebt <= 0 && chekCredit <= 0) return null;
@@ -416,6 +420,11 @@ export default function QuickSalePage() {
                     {lastOrder.pay_payme > 0 && (
                       <div className="flex justify-between text-cyan-700">
                         <span>Pay Me:</span><span className="font-bold">{fmt(lastOrder.pay_payme)} so'm</span>
+                      </div>
+                    )}
+                    {lastOrder.pay_click > 0 && (
+                      <div className="flex justify-between text-indigo-700">
+                        <span>Click:</span><span className="font-bold">{fmt(lastOrder.pay_click)} so'm</span>
                       </div>
                     )}
                     {chekDebt > 0 && (
@@ -558,7 +567,7 @@ export default function QuickSalePage() {
             </div>
           </div>
 
-          {/* To'lov — 5 xil usul */}
+          {/* To'lov — 6 xil usul */}
           <div className="card p-3">
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] text-gray-500 font-medium uppercase">To'lov usullari</span>
@@ -615,6 +624,17 @@ export default function QuickSalePage() {
                   className="input text-xs py-1.5 border-cyan-200 focus:ring-cyan-400"
                 />
               </div>
+              <div>
+                <label className="text-[10px] text-indigo-600 font-medium flex items-center gap-1">⚡ Click</label>
+                <input
+                  type="number" min="0" step="1000"
+                  value={s.payClick}
+                  onChange={e => setField('payClick', e.target.value)}
+                  onFocus={e => e.target.select()}
+                  placeholder="0"
+                  className="input text-xs py-1.5 border-indigo-200 focus:ring-indigo-400"
+                />
+              </div>
               <div className="col-span-2 lg:col-span-2">
                 <label className={`text-[10px] font-medium flex items-center gap-1 ${creditAmt > 0 ? 'text-blue-600' : 'text-gray-500'}`}>
                   {creditAmt > 0 ? '💰 Haqdor' : '📝 Qarz'}
@@ -629,7 +649,7 @@ export default function QuickSalePage() {
             {grandTotal > 0 && (
               <button
                 type="button"
-                onClick={() => { setField('payCash', String(finalTotal)); setField('payCard', ''); setField('payBank', ''); setField('payPayme', ''); }}
+                onClick={() => { setField('payCash', String(finalTotal)); setField('payCard', ''); setField('payBank', ''); setField('payPayme', ''); setField('payClick', ''); }}
                 className="text-[10px] text-blue-500 hover:text-blue-700 mt-1"
               >
                 Hammasini naqd to'lash

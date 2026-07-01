@@ -707,10 +707,12 @@ function getInvoicePaymentLabel(sale) {
   const cardMatch = notes.match(/Karta:\s*([\d\s,.]+)/);
   const bankMatch = notes.match(/Bank:\s*([\d\s,.]+)/);
   const paymeMatch = notes.match(/Payme:\s*([\d\s,.]+)/);
+  const clickMatch = notes.match(/Click:\s*([\d\s,.]+)/);
   if (cashMatch) parts.push(`Naqd: ${formatMoney(parseAmt(cashMatch))}`);
   if (cardMatch) parts.push(`Karta: ${formatMoney(parseAmt(cardMatch))}`);
   if (bankMatch) parts.push(`Bank: ${formatMoney(parseAmt(bankMatch))}`);
   if (paymeMatch) parts.push(`Pay Me: ${formatMoney(parseAmt(paymeMatch))}`);
+  if (clickMatch) parts.push(`Click: ${formatMoney(parseAmt(clickMatch))}`);
   const discMatch = notes.match(/Chegirma:\s*([\d\s,.]+)/);
   if (parts.length) {
     const debt = Math.max(0, total - paid);

@@ -6,7 +6,7 @@ import { X, Phone, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot, Printer,
 import { reportsAPI, salesAPI, ahmadAPI, customersAPI } from '../services/api';
 import { COMPANY } from '../constants/company';
 
-const METHOD_LABEL = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', DISCOUNT: '🏷️ Skidka', OTHER: 'Boshqa' };
+const METHOD_LABEL = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', PAYME: '📱 Pay Me', CLICK: '⚡ Click', DISCOUNT: '🏷️ Skidka', OTHER: 'Boshqa' };
 
 // To'lov tarixi modal — schyot-faktura formatida, chop etish mumkin
 function PaymentHistoryModal({ group, onClose }) {

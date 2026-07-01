@@ -202,8 +202,9 @@ export default function EmployeesPage() {
   });
 
   const canWrite = isOwner() || isProductionHead();
-  // KIRIMCHI faqat yangi xodim (stanokchi/detalchi) qo'shishi mumkin
+  // KIRIMCHI faqat yangi xodim (stanokchi/detalchi) qo'shishi va tahrirlashi mumkin
   const canAdd = canWrite || isKirimchi();
+  const canEditPiece = isKirimchi(); // faqat stanokchi/detalchi tahrirlash
 
   const typeCount = (data?.employees || []).reduce((acc, e) => {
     if (e.is_active) acc[e.type] = (acc[e.type] || 0) + 1;
@@ -258,7 +259,7 @@ export default function EmployeesPage() {
       <div className="table-container">
         <table className="table">
           <thead>
-            <tr><th>Ismi</th><th>Turi</th><th>Smena</th><th>Oylik / Haq</th><th>Telefon</th><th>Yollangan sana</th><th>Holat</th>{canWrite && <th>Amal</th>}</tr>
+            <tr><th>Ismi</th><th>Turi</th><th>Smena</th><th>Oylik / Haq</th><th>Telefon</th><th>Yollangan sana</th><th>Holat</th>{(canWrite || canEditPiece) && <th>Amal</th>}</tr>
           </thead>
           <tbody>
             {isLoading ? (
@@ -296,7 +297,7 @@ export default function EmployeesPage() {
                     {emp.is_active ? 'Faol' : 'Nofaol'}
                   </span>
                 </td>
-                {canWrite && (
+                {(canWrite || (canEditPiece && isPieceRate(emp.type))) && (
                   <td className="flex gap-1 flex-wrap">
                     {(emp.type === 'STANOKCHI' || emp.type === 'DETALCHI') && (
                       <button onClick={() => setQrEmployee(emp)}
@@ -306,23 +307,27 @@ export default function EmployeesPage() {
                       </button>
                     )}
                     <button onClick={() => openEdit(emp)} className="btn-secondary btn-sm">Tahrirlash</button>
-                    <button
-                      onClick={() => {
-                        if (window.confirm(emp.is_active ? `${emp.name}ni nofaol qilasizmi?` : `${emp.name}ni faollashtirasizmi?`))
-                          deactivateMutation.mutate(emp);
-                      }}
-                      className={`btn-sm ${emp.is_active ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200 rounded-lg px-2' : 'bg-green-50 text-green-600 hover:bg-green-100 border border-green-200 rounded-lg px-2'}`}>
-                      {emp.is_active ? 'Nofaol' : 'Faollashtirish'}
-                    </button>
-                    <button
-                      title="Butunlay o'chirish"
-                      onClick={() => {
-                        if (window.confirm(`${emp.name}ni BUTUNLAY o'chirasizmi?\nBu xodim va uning maosh/ishlab chiqarish yozuvlari butunlay o'chadi. Qaytarib bo'lmaydi!`))
-                          deleteMutation.mutate(emp);
-                      }}
-                      className="btn-sm bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg px-2 flex items-center">
-                      <Trash2 size={14} />
-                    </button>
+                    {canWrite && (
+                      <>
+                        <button
+                          onClick={() => {
+                            if (window.confirm(emp.is_active ? `${emp.name}ni nofaol qilasizmi?` : `${emp.name}ni faollashtirasizmi?`))
+                              deactivateMutation.mutate(emp);
+                          }}
+                          className={`btn-sm ${emp.is_active ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200 rounded-lg px-2' : 'bg-green-50 text-green-600 hover:bg-green-100 border border-green-200 rounded-lg px-2'}`}>
+                          {emp.is_active ? 'Nofaol' : 'Faollashtirish'}
+                        </button>
+                        <button
+                          title="Butunlay o'chirish"
+                          onClick={() => {
+                            if (window.confirm(`${emp.name}ni BUTUNLAY o'chirasizmi?\nBu xodim va uning maosh/ishlab chiqarish yozuvlari butunlay o'chadi. Qaytarib bo'lmaydi!`))
+                              deleteMutation.mutate(emp);
+                          }}
+                          className="btn-sm bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg px-2 flex items-center">
+                          <Trash2 size={14} />
+                        </button>
+                      </>
+                    )}
                   </td>
                 )}
               </tr>

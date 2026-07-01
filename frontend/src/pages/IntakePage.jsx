@@ -660,7 +660,7 @@ function WorkerOutputTab({ canApprove, canEdit }) {
             <FileText size={13} /> {dlRange === 'pdf' ? '...' : 'PDF'}
           </button>
         </div>
-        <p className="text-[11px] text-gray-400 mt-2">Tanlangan davrdagi barcha stanokchi/detalchilarning ish kunlari, dona va hisoblangan haqi (jamlangan).</p>
+        <p className="text-[11px] text-gray-400 mt-2">Tanlangan davrda har bir ishchining chiqargan mahsuloti, dona va hisoblangan haqi.</p>
       </div>
 
       {/* TASDIQLASH BO'LIMI — faqat sales head/owner ko'radi */}

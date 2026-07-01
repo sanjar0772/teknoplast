@@ -108,6 +108,37 @@ function buildRangeSummaryQuery(employee_ids) {
   return { sql, extraParams };
 }
 
+// Davr bo'yicha MAHSULOT darajasida (Excel/PDF hisobot uchun) — har xodimning
+// chiqargan har bir mahsuloti alohida qator: nom, smena, dona, hisoblangan haq.
+function buildRangeDetailQuery(employee_ids) {
+  let sql = `
+    SELECT e.name, e.type, e.shift,
+           p.name AS product_name,
+           COUNT(DISTINCT ep.production_date) as work_days,
+           COALESCE(SUM(ep.quantity_produced), 0) as total_produced,
+           COALESCE(SUM(ep.calculated_amount), 0) as total_earned
+    FROM employees e
+    JOIN employee_production ep
+      ON ep.employee_id = e.id AND ep.production_date BETWEEN $1 AND $2
+    LEFT JOIN products p ON ep.product_id = p.id
+    WHERE e.type IN ('STANOKCHI', 'DETALCHI')
+  `;
+  const extraParams = [];
+  let idx = 3;
+
+  if (employee_ids) {
+    const ids = String(employee_ids).split(',').map(s => s.trim()).filter(Boolean);
+    if (ids.length) {
+      const placeholders = ids.map(() => `$${idx++}`).join(',');
+      sql += ` AND e.id IN (${placeholders})`;
+      extraParams.push(...ids);
+    }
+  }
+
+  sql += ' GROUP BY e.id, e.name, e.type, e.shift, p.name ORDER BY e.name, p.name';
+  return { sql, extraParams };
+}
+
 // GET /api/production/range-summary — tanlangan davr va xodimlar bo'yicha statistika (Stanokchi/Detalchi)
 router.get('/range-summary', async (req, res, next) => {
   try {
@@ -130,7 +161,7 @@ router.get('/range-summary/excel', async (req, res, next) => {
       return res.status(400).json({ error: 'start_date va end_date kerak' });
     }
 
-    const { sql, extraParams } = buildRangeSummaryQuery(employee_ids);
+    const { sql, extraParams } = buildRangeDetailQuery(employee_ids);
     const result = await query(sql, [start_date, end_date, ...extraParams]);
 
     const reportService = require('../services/reportService');
@@ -149,7 +180,7 @@ router.get('/range-summary/pdf', async (req, res, next) => {
       return res.status(400).json({ error: 'start_date va end_date kerak' });
     }
 
-    const { sql, extraParams } = buildRangeSummaryQuery(employee_ids);
+    const { sql, extraParams } = buildRangeDetailQuery(employee_ids);
     const result = await query(sql, [start_date, end_date, ...extraParams]);
 
     const reportService = require('../services/reportService');

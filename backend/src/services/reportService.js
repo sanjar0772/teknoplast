@@ -284,25 +284,24 @@ async function generateProductionRangeExcel(rows, startDate, endDate) {
 
   sheet.columns = [
     { header: '№', key: 'num', width: 5 },
-    { header: 'Xodim', key: 'name', width: 25 },
-    { header: 'Turi', key: 'type', width: 14 },
-    { header: 'Smena', key: 'shift', width: 12 },
-    { header: 'Ish kunlari', key: 'work_days', width: 12 },
-    { header: "Ishlab chiqargan (dona)", key: 'total_produced', width: 20 },
+    { header: 'Xodim', key: 'name', width: 22 },
+    { header: 'Mahsulot', key: 'product', width: 30 },
+    { header: 'Smena', key: 'shift', width: 10 },
+    { header: 'Ish kunlari', key: 'work_days', width: 11 },
+    { header: "Chiqargan (dona)", key: 'total_produced', width: 16 },
     { header: "Hisoblangan haq (so'm)", key: 'total_earned', width: 20 },
   ];
 
   sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF065F46' } };
 
-  const typeMap = { STANOKCHI: 'Stanokchi', DETALCHI: 'Detalchi' };
   const shiftMap = { '1-SMENA': '1-Smena', '2-SMENA': '2-Smena' };
 
   rows.forEach((r, i) => {
     sheet.addRow({
       num: i + 1,
       name: r.name,
-      type: typeMap[r.type] || r.type,
+      product: r.product_name || '—',
       shift: r.type === 'STANOKCHI' ? (shiftMap[r.shift] || r.shift || '—') : '—',
       work_days: r.work_days || 0,
       total_produced: parseFloat(r.total_produced || 0),
@@ -333,23 +332,22 @@ async function generateProductionRangePDF(rows, startDate, endDate) {
     doc.on('error', reject);
 
     const money = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n) || 0));
-    const typeMap = { STANOKCHI: 'Stanokchi', DETALCHI: 'Detalchi' };
     const shiftMap = { '1-SMENA': '1-Smena', '2-SMENA': '2-Smena' };
 
     doc.fontSize(18).font('Arial-Bold').text('TEKNOPLAST', { align: 'center' });
-    doc.fontSize(12).font('Arial').text('Ishchilar ishi hisoboti (Stanokchi / Detalchi)', { align: 'center' });
+    doc.fontSize(12).font('Arial').text('Ishchilar ishi hisoboti', { align: 'center' });
     doc.fontSize(9).fillColor('#666').text(`Davr: ${startDate} — ${endDate}   ·   Yaratildi: ${new Date().toLocaleDateString('uz-UZ')}`, { align: 'center' });
     doc.fillColor('black').moveDown(0.8);
 
     // Ustun x-koordinatalari (A4, margin 40 → 40..555)
-    const col = { num: 40, name: 70, type: 220, shift: 290, days: 350, qty: 400, earned: 460 };
+    const col = { num: 40, name: 62, product: 170, shift: 324, days: 370, qty: 408, earned: 460 };
     const right = 555;
 
     const drawHeader = (y) => {
       doc.font('Arial-Bold').fontSize(9).fillColor('black');
       doc.text('№', col.num, y);
       doc.text('Xodim', col.name, y);
-      doc.text('Turi', col.type, y);
+      doc.text('Mahsulot', col.product, y);
       doc.text('Smena', col.shift, y);
       doc.text('Kun', col.days, y);
       doc.text('Dona', col.qty, y);
@@ -369,14 +367,18 @@ async function generateProductionRangePDF(rows, startDate, endDate) {
       const earned = parseFloat(r.total_earned) || 0;
       tDays += days; tQty += qty; tEarned += earned;
       doc.fillColor('black');
-      doc.text(String(i + 1), col.num, y, { width: 25 });
-      doc.text(r.name || '—', col.name, y, { width: 145 });
-      doc.text(typeMap[r.type] || r.type || '—', col.type, y, { width: 65 });
-      doc.text(r.type === 'STANOKCHI' ? (shiftMap[r.shift] || r.shift || '—') : '—', col.shift, y, { width: 55 });
-      doc.text(String(days), col.days, y, { width: 45 });
-      doc.text(money(qty), col.qty, y, { width: 55 });
+      doc.text(String(i + 1), col.num, y, { width: 20 });
+      doc.text(r.name || '—', col.name, y, { width: 105 });
+      doc.text(r.product_name || '—', col.product, y, { width: 150 });
+      doc.text(r.type === 'STANOKCHI' ? (shiftMap[r.shift] || r.shift || '—') : '—', col.shift, y, { width: 42 });
+      doc.text(String(days), col.days, y, { width: 34 });
+      doc.text(money(qty), col.qty, y, { width: 48 });
       doc.text(money(earned), col.earned, y, { width: right - col.earned, align: 'right' });
-      const h = Math.max(doc.heightOfString(r.name || '—', { width: 145 }), 12);
+      const h = Math.max(
+        doc.heightOfString(r.name || '—', { width: 105 }),
+        doc.heightOfString(r.product_name || '—', { width: 150 }),
+        12
+      );
       y += h + 4;
     });
 

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, AlertTriangle, Warehouse, Package, Boxes, PackagePlus, Pencil, Trash2, Factory, FileSpreadsheet, FileText, ClipboardList, Save, Search } from 'lucide-react';
+import { Plus, Minus, X, AlertTriangle, Warehouse, Package, Boxes, PackagePlus, Pencil, Trash2, Factory, FileSpreadsheet, FileText, ClipboardList, Save, Search } from 'lucide-react';
 import { productsAPI, reportsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import clsx from 'clsx';
@@ -48,6 +48,7 @@ export default function InventoryPage() {
   const [tExporting, setTExporting] = useState(null);
   // Inventarizatsiya (sanab tekshirish)
   const [auditCounts, setAuditCounts] = useState({}); // { [productId]: 'sanalган son' }
+  const [adjAmounts, setAdjAmounts] = useState({});   // { [productId]: 'tez +/- miqdori' }
   const [auditSearch, setAuditSearch] = useState('');
   const [auditCat, setAuditCat] = useState('all'); // 'all' | 'finished' | 'component'
   const [auditReason, setAuditReason] = useState(''); // sabab (nima uchun)
@@ -209,6 +210,26 @@ export default function InventoryPage() {
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Saqlashda xato'),
   });
+
+  // Tez qo'shish/ayirish (＋ / −) — bitta mahsulot omboriga to'g'ridan-to'g'ri
+  const quickAdjustMutation = useMutation({
+    mutationFn: ({ product_id, delta, reason }) => productsAPI.inventoryAdjust([{ product_id, delta }], reason).then(r => r.data),
+    onSuccess: (d, vars) => {
+      toast.success(vars.delta > 0
+        ? `Omborga +${Math.abs(vars.delta)} qo'shildi`
+        : `Ombordan ${Math.abs(vars.delta)} ayirildi`);
+      setAdjAmounts(prev => { const n = { ...prev }; delete n[vars.product_id]; return n; });
+      qc.invalidateQueries({ queryKey: ['inventory-products'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['inventory-audits'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+  const applyQuick = (p, sign) => {
+    const amt = parseFloat(adjAmounts[p.id]);
+    if (!amt || amt <= 0) return toast.error('Miqdorni kiriting');
+    quickAdjustMutation.mutate({ product_id: p.id, delta: sign * amt, reason: auditReason });
+  };
 
   // Inventarizatsiya tarixini Excel/PDF qilib yuklab olish (sana oralig'i bo'yicha)
   const downloadAudit = async (kind) => {
@@ -581,7 +602,9 @@ export default function InventoryPage() {
               <p className="text-xs text-gray-500">
                 Har bir mahsulotni <b>sanab</b>, "Sanaldi" ustuniga haqiqiy sonini yozing. "Farq" o'zi hisoblanadi.
                 <b> Saqlash</b> bosilganda tizimdagi ombor qoldig'i siz sanagan songa to'g'rilanadi. Bo'sh qoldirilган
-                qatorlarga tegilmaydi.
+                qatorlarga tegilmaydi. Yoki <b>Qo'shish / Ayirish</b> ustunidagi son bilan
+                <span className="text-green-600 font-bold"> ＋</span> /
+                <span className="text-red-600 font-bold"> −</span> tugmalarini bosib omborga darrov qo'shing yoki ayiring (tarixga yoziladi).
               </p>
             </div>
 
@@ -643,11 +666,12 @@ export default function InventoryPage() {
                     <th className="text-right">Tizimda</th>
                     <th className="text-right">Sanaldi</th>
                     <th className="text-right">Farq</th>
+                    <th className="text-right">Qo'shish / Ayirish</th>
                   </tr>
                 </thead>
                 <tbody>
                   {!auditList.length ? (
-                    <tr><td colSpan={5} className="text-center py-10 text-gray-400">
+                    <tr><td colSpan={6} className="text-center py-10 text-gray-400">
                       <ClipboardList size={26} className="mx-auto mb-2 text-gray-300" />
                       {auditSearch ? `"${auditSearch}" bo'yicha topilmadi` : 'Mahsulot yo\'q'}
                     </td></tr>
@@ -675,11 +699,31 @@ export default function InventoryPage() {
                             : diff > 0 ? <span className="text-blue-600">+{fmt(diff)}</span>
                             : <span className="text-red-600">−{fmt(Math.abs(diff))}</span>}
                         </td>
+                        <td className="text-right">
+                          <div className="flex items-center gap-1 justify-end">
+                            <input type="number" min="1" inputMode="numeric"
+                              value={adjAmounts[p.id] ?? ''}
+                              onChange={e => setAdjAmounts(prev => ({ ...prev, [p.id]: e.target.value }))}
+                              onFocus={e => e.target.select()}
+                              placeholder="son"
+                              className="input py-1 w-16 text-right" />
+                            <button onClick={() => applyQuick(p, 1)} disabled={quickAdjustMutation.isPending}
+                              className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 disabled:opacity-50"
+                              title="Omborga qo'shish">
+                              <Plus size={14} />
+                            </button>
+                            <button onClick={() => applyQuick(p, -1)} disabled={quickAdjustMutation.isPending}
+                              className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50"
+                              title="Ombordan ayirish">
+                              <Minus size={14} />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
                   {auditList.length > auditShown.length && (
-                    <tr><td colSpan={5} className="text-center py-3 text-xs text-gray-400">
+                    <tr><td colSpan={6} className="text-center py-3 text-xs text-gray-400">
                       Yana {auditList.length - auditShown.length} ta mahsulot — yuqoridagi qidiruv yoki kategoriya bilan toping
                     </td></tr>
                   )}

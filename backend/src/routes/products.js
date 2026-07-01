@@ -739,12 +739,15 @@ router.post('/inventory-adjust', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUN
     try {
       await client.query('BEGIN');
       for (const it of items) {
+        if (!it || !it.product_id) continue;
+        // Ikki xil rejim: counted = sanalган jami (o'rnatiladi) | delta = qo'shish/ayirish (+/−)
+        const hasDelta = it.delta !== undefined && it.delta !== null && !isNaN(parseFloat(it.delta));
         const counted = parseFloat(it.counted);
-        if (!it || !it.product_id || isNaN(counted)) continue;
+        if (!hasDelta && isNaN(counted)) continue;
         const cur = await client.query("SELECT name, stock_quantity, COALESCE(rang,'') AS rang FROM products WHERE id=$1", [it.product_id]);
         if (!cur.rows.length) continue;
         const oldStock = parseFloat(cur.rows[0].stock_quantity || 0);
-        const newStock = Math.max(0, counted);
+        const newStock = hasDelta ? Math.max(0, oldStock + parseFloat(it.delta)) : Math.max(0, counted);
         const delta = newStock - oldStock;
         if (delta === 0) continue; // farq yo'q — tegmaymiz
         await client.query('UPDATE products SET stock_quantity=$1, updated_at=NOW() WHERE id=$2', [newStock, it.product_id]);

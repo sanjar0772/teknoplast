@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Plus, X, Store, Pencil, Eye, Warehouse, Phone, MapPin, UserPlus, KeyRound, Copy, Trash2, UserCheck, UserX, LogIn, PackagePlus } from 'lucide-react';
+import { Plus, X, Store, Pencil, Eye, Warehouse, Phone, MapPin, UserPlus, KeyRound, Copy, Trash2, UserCheck, UserX, LogIn, PackagePlus, Truck } from 'lucide-react';
 import { branchesAPI, authAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -11,6 +11,7 @@ const rangLabel = (r) => (r && String(r).trim()) ? r : 'Rangsiz';
 const BRANCH_ROLE = {
   SALES_HEAD: { label: 'Savdo boshlig\'i', cls: 'badge-green' },
   AGENT:      { label: 'Savdo agenti',    cls: 'badge-blue' },
+  SHOPIR:     { label: 'Haydovchi',        cls: 'badge-yellow' },
 };
 const branchRoleInfo = (r) => BRANCH_ROLE[r] || { label: r, cls: 'badge-gray' };
 
@@ -90,7 +91,7 @@ export default function BranchesPage() {
   const createSellerMutation = useMutation({
     mutationFn: (d) => authAPI.register({
       full_name: d.full_name, phone: d.phone, password: d.password,
-      role: d.role === 'AGENT' ? 'AGENT' : 'SALES_HEAD', branch_id: detailId,
+      role: ['AGENT', 'SHOPIR'].includes(d.role) ? d.role : 'SALES_HEAD', branch_id: detailId,
     }),
     onSuccess: () => {
       toast.success('Qo\'shildi — endi shu login-parol bilan filialga kira oladi');
@@ -137,7 +138,7 @@ export default function BranchesPage() {
       full_name: seller.full_name.trim(),
       phone: seller.phone.trim(),
       password: seller.password,
-      role: seller.role === 'AGENT' ? 'AGENT' : 'SALES_HEAD',
+      role: ['AGENT', 'SHOPIR'].includes(seller.role) ? seller.role : 'SALES_HEAD',
     });
   };
 
@@ -281,12 +282,18 @@ export default function BranchesPage() {
                       className="btn-secondary btn-sm">
                       <UserPlus size={13} /> Agent qo'shish
                     </button>
+                    <button onClick={() => setSeller({ full_name: '', phone: '', password: '', role: 'SHOPIR' })}
+                      className="btn-secondary btn-sm">
+                      <Truck size={13} /> Shopir qo'shish
+                    </button>
                   </div>
                 </div>
                 <p className="text-xs text-gray-500">
                   Filialga <b>login-parol</b> yarating: <b>Savdo boshlig'i</b> — filialni to'liq boshqaradi
                   (mahsulot, ombor, mijoz, qarz, hisobot); <b>Savdo agenti</b> — faqat o'z savdolarini qiladi
-                  (mijoz topadi, sotadi). Ikkovi ham kirganda to'g'ridan-to'g'ri <b>{detail.name}</b> ichida ishlaydi.
+                  (mijoz topadi, sotadi); <b>Haydovchi (shopir)</b> — agent olgan <b>dostavka</b> zakazlarini
+                  mijozga yetkazib beradi va "yetkazildi" deb belgilaydi. Hammasi kirganda to'g'ridan-to'g'ri
+                  <b> {detail.name}</b> ichida ishlaydi.
                 </p>
                 <div className="border border-gray-100 rounded-xl overflow-hidden bg-white">
                   <table className="table text-sm">
@@ -407,13 +414,17 @@ export default function BranchesPage() {
 
       {/* Filialga sotuvchi (kirish) qo'shish */}
       <Modal open={!!seller} onClose={() => setSeller(null)}
-        title={`${seller?.role === 'AGENT' ? 'Agent' : 'Sotuvchi'} qo'shish — ${detail?.name || ''}`}>
+        title={`${seller?.role === 'AGENT' ? 'Agent' : seller?.role === 'SHOPIR' ? 'Shopir' : 'Sotuvchi'} qo'shish — ${detail?.name || ''}`}>
         {seller && (
           <div className="space-y-4">
             <p className="text-xs text-gray-500">
               {seller.role === 'AGENT' ? (
                 <>Bu xodim <b>savdo agenti</b> sifatida shu login-parol bilan kirib, faqat
                 <b> {detail?.name}</b> filiali bo'yicha, faqat <b>o'z savdolarini</b> qiladi (mijoz topadi, sotadi).</>
+              ) : seller.role === 'SHOPIR' ? (
+                <>Bu xodim <b>haydovchi (shopir)</b> sifatida shu login-parol bilan kirib,
+                <b> {detail?.name}</b> filialining <b>dostavka</b> zakazlarini ko'radi (mijoz manzili, telefoni,
+                lokatsiyasi bilan) va yetkazgach "yetkazildi" deb belgilaydi. Savdo qila olmaydi.</>
               ) : (
                 <>Bu xodim <b>savdo boshlig'i</b> sifatida shu login-parol bilan kirib,
                 <b> {detail?.name}</b> filialini to'liq boshqaradi (mahsulot, ombor, mijoz, qarz, hisobot).</>

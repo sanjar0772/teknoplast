@@ -86,7 +86,7 @@ router.post('/register', authenticate, [
   body('phone').notEmpty().withMessage('Telefon kiritilmagan'),
   body('password').isLength({ min: 6 }).withMessage('Parol kamida 6 belgi'),
   body('full_name').notEmpty().withMessage('Ism kiritilmagan'),
-  body('role').isIn(['OWNER', 'ACCOUNTANT', 'SALES_HEAD', 'PRODUCTION_HEAD', 'KIRIMCHI', 'OMBORCHI', 'TAMINOTCHI', 'CYCLE_TIME', 'AGENT']).withMessage('Noto\'g\'ri rol'),
+  body('role').isIn(['OWNER', 'ACCOUNTANT', 'SALES_HEAD', 'PRODUCTION_HEAD', 'KIRIMCHI', 'OMBORCHI', 'TAMINOTCHI', 'CYCLE_TIME', 'AGENT', 'SHOPIR']).withMessage('Noto\'g\'ri rol'),
 ], async (req, res, next) => {
   try {
     if (req.user.role !== 'OWNER') {

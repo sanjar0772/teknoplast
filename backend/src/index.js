@@ -58,6 +58,7 @@ app.use('/api/ai', require('./routes/ai'));
 app.use('/api/ahmad', require('./routes/ahmad'));
 app.use('/api/branches', require('./routes/branches'));
 app.use('/api/agent', require('./routes/agent'));
+app.use('/api/deliveries', require('./routes/deliveries'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString(), env: process.env.NODE_ENV });
@@ -65,7 +66,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'kassa-daily', commit: 'v102' });
+  res.json({ version: 'shopir-dostavka', commit: 'v103' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

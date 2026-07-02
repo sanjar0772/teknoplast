@@ -123,6 +123,13 @@ export const agentAPI = {
   getTrack: (id, params) => api.get(`/agent/${id}/track`, { params }),
 };
 
+// Dostavka (yetkazib berish) — SHOPIR (haydovchi)
+export const deliveriesAPI = {
+  getAll: (params) => api.get('/deliveries', { params }),
+  markDelivered: (orderRef) => api.patch(`/deliveries/${orderRef}/deliver`),
+  undeliver: (orderRef) => api.patch(`/deliveries/${orderRef}/undeliver`),
+};
+
 // Expenses
 export const expensesAPI = {
   getAll: (params) => api.get('/expenses', { params }),

@@ -42,6 +42,13 @@ const ROLE_PERMISSIONS = {
     'sales:read', 'sales:write', 'returns:write',
     'products:read', 'customers:read', 'customers:write'
   ],
+  SHOPIR: [
+    // Haydovchi (filial) — savdo agenti olgan dostavka zakazlarini yetkazib beradi.
+    // Faqat KO'RADI: dostavka ro'yxati, mijoz manzili/telefoni/lokatsiyasi;
+    // yagona yozuv amali — "yetkazildi" deb belgilash (deliveries:write).
+    'sales:read', 'deliveries:read', 'deliveries:write',
+    'products:read', 'customers:read'
+  ],
 };
 
 const requireRole = (...roles) => (req, res, next) => {

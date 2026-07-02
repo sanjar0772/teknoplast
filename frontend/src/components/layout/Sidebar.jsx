@@ -123,6 +123,11 @@ export default function Sidebar() {
           <div className="min-w-0">
             <p className="text-sm font-medium text-gray-900 truncate">{user?.full_name}</p>
             <p className="text-xs text-gray-500">{ROLE_LABELS[user?.role]}</p>
+            {user?.branch_name && (
+              <p className="text-[11px] text-blue-600 font-medium flex items-center gap-0.5 truncate">
+                <Store size={10} /> {user.branch_name}
+              </p>
+            )}
           </div>
         </div>
         <button

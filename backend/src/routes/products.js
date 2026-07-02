@@ -38,11 +38,24 @@ router.get('/', async (req, res, next) => {
     if (date_to)   { sql += ` AND DATE(p.created_at) <= $${idx++}`; params.push(date_to); }
     sql += ' ORDER BY p.name';
     const result = await query(sql, params);
-    // Rang bo'yicha ombor — har bir mahsulotga biriktiramiz
-    const cs = await query('SELECT product_id, rang, quantity FROM product_color_stock WHERE quantity > 0', []);
+    // Rang bo'yicha ombor — har bir mahsulotga biriktiramiz.
+    // FILIAL foydalanuvchisi uchun — filial ombori (branch_stock), zavod ombori emas:
+    // shunda Savdo qilish / Ombor sahifalari avtomatik filial qoldig'ini ko'rsatadi.
+    const branchId = req.user.branch_id || null;
     const byProduct = {};
-    for (const row of cs.rows) {
-      (byProduct[row.product_id] = byProduct[row.product_id] || []).push({ rang: row.rang || '', quantity: parseFloat(row.quantity) });
+    const branchTotals = {};
+    if (branchId) {
+      const bs = await query(
+        'SELECT product_id, rang, quantity FROM branch_stock WHERE branch_id = $1 AND quantity > 0', [branchId]);
+      for (const row of bs.rows) {
+        (byProduct[row.product_id] = byProduct[row.product_id] || []).push({ rang: row.rang || '', quantity: parseFloat(row.quantity) });
+        branchTotals[row.product_id] = (branchTotals[row.product_id] || 0) + parseFloat(row.quantity);
+      }
+    } else {
+      const cs = await query('SELECT product_id, rang, quantity FROM product_color_stock WHERE quantity > 0', []);
+      for (const row of cs.rows) {
+        (byProduct[row.product_id] = byProduct[row.product_id] || []).push({ rang: row.rang || '', quantity: parseFloat(row.quantity) });
+      }
     }
     let periodStats = {};
     if (start_date || end_date) {
@@ -59,6 +72,8 @@ router.get('/', async (req, res, next) => {
     }
     const products = result.rows.map(p => ({
       ...p, color_stock: byProduct[p.id] || [],
+      // Filial foydalanuvchisi uchun umumiy qoldiq ham filialniki
+      ...(branchId ? { stock_quantity: branchTotals[p.id] || 0 } : {}),
       ...(start_date || end_date ? { period: periodStats[p.id] || { sold_qty: 0, sold_amount: 0, sold_count: 0 } } : {}),
     }));
     res.json({ products });

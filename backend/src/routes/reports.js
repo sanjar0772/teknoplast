@@ -12,10 +12,12 @@ router.get('/dashboard', async (req, res, next) => {
   try {
     const today = new Date().toISOString().slice(0, 10);
     const thisMonth = new Date().toISOString().slice(0, 7);
+    // Filial foydalanuvchisi — savdo ko'rsatkichlari faqat o'z filialiniki
+    const bFilter = req.user.branch_id ? ` AND branch_id='${String(req.user.branch_id).replace(/'/g, "''")}'` : '';
 
     const [todaySales, monthSales, monthExpenses, employees, lowStock, machines] = await Promise.all([
-      query(`SELECT COALESCE(SUM(total_amount),0) as total, COUNT(*) as count FROM sales WHERE strftime('%Y-%m-%d',sale_date)=$1`, [today]),
-      query(`SELECT COALESCE(SUM(total_amount),0) as total, COALESCE(SUM(CASE WHEN status='PAID' THEN total_amount ELSE 0 END),0) as paid FROM sales WHERE TO_CHAR(sale_date,'YYYY-MM')=$1`, [thisMonth]),
+      query(`SELECT COALESCE(SUM(total_amount),0) as total, COUNT(*) as count FROM sales WHERE strftime('%Y-%m-%d',sale_date)=$1${bFilter}`, [today]),
+      query(`SELECT COALESCE(SUM(total_amount),0) as total, COALESCE(SUM(CASE WHEN status='PAID' THEN total_amount ELSE 0 END),0) as paid FROM sales WHERE TO_CHAR(sale_date,'YYYY-MM')=$1${bFilter}`, [thisMonth]),
       query(`SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE TO_CHAR(expense_date,'YYYY-MM')=$1`, [thisMonth]),
       query(`SELECT COUNT(*) as total, COUNT(CASE WHEN is_active=1 THEN 1 END) as active FROM employees`),
       query(`SELECT COUNT(*) as count FROM products WHERE stock_quantity < 10 AND is_active=1`),
@@ -30,15 +32,16 @@ router.get('/dashboard', async (req, res, next) => {
     const sixMonthsAgoStr = sixMonthsAgo.toISOString().slice(0, 10);
     const salesTrend = await query(`
       SELECT strftime('%Y-%m', sale_date) as month, SUM(total_amount) as revenue, COUNT(*) as count
-      FROM sales WHERE sale_date >= $1
+      FROM sales WHERE sale_date >= $1${bFilter}
       GROUP BY strftime('%Y-%m', sale_date) ORDER BY month
     `, [sixMonthsAgoStr]);
 
     // Top 5 mahsulot
+    const bFilterS = req.user.branch_id ? bFilter.replace('branch_id', 's.branch_id') : '';
     const topProducts = await query(`
       SELECT p.name, SUM(s.quantity) as qty, SUM(s.total_amount) as revenue
       FROM sales s JOIN products p ON s.product_id = p.id
-      WHERE TO_CHAR(s.sale_date,'YYYY-MM') = $1
+      WHERE TO_CHAR(s.sale_date,'YYYY-MM') = $1${bFilterS}
       GROUP BY p.name ORDER BY revenue DESC LIMIT 5
     `, [thisMonth]);
 
@@ -70,6 +73,8 @@ router.get('/debts', async (req, res, next) => {
     let idx = 1;
     if (date_from) { where += ` AND DATE(s.sale_date) >= $${idx++}`; params.push(date_from); }
     if (date_to)   { where += ` AND DATE(s.sale_date) <= $${idx++}`; params.push(date_to); }
+    // Filial foydalanuvchisi faqat o'z filialining qarzlarini ko'radi
+    if (req.user.branch_id) { where += ` AND s.branch_id = $${idx++}`; params.push(req.user.branch_id); }
 
     const rows = (await query(`
       SELECT s.id, s.sale_date, s.total_amount, s.payment_amount,
@@ -234,6 +239,8 @@ router.get('/debt-payments', async (req, res, next) => {
     let idx = 1;
     if (date_from) { where += ` AND DATE(p.payment_date) >= $${idx++}`; params.push(date_from); }
     if (date_to)   { where += ` AND DATE(p.payment_date) <= $${idx++}`; params.push(date_to); }
+    // Filial foydalanuvchisi faqat o'z filialining to'lovlarini ko'radi
+    if (req.user.branch_id) { where += ` AND s.branch_id = $${idx++}`; params.push(req.user.branch_id); }
 
     const rows = (await query(`
       SELECT p.id, p.amount, p.method, p.payment_date, p.notes, p.created_at,

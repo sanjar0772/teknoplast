@@ -57,6 +57,8 @@ router.get('/', async (req, res, next) => {
     if (customer)   { sql += ` AND s.customer_name ILIKE $${idx++}`; params.push(`%${customer}%`); }
     // AGENT faqat o'z savdolarini ko'radi
     if (req.user.role === 'AGENT') { sql += ` AND s.created_by = $${idx++}`; params.push(req.user.id); }
+    // Filial foydalanuvchisi faqat o'z filialining savdolarini ko'radi
+    if (req.user.branch_id) { sql += ` AND s.branch_id = $${idx++}`; params.push(req.user.branch_id); }
 
     const countResult = await query(`SELECT COUNT(*) as count FROM (${sql}) t`, params);
     const total = parseInt(countResult.rows[0]?.count ?? countResult.rows[0]?.['COUNT(*)'] ?? 0);
@@ -85,6 +87,9 @@ router.get('/summary', async (req, res, next) => {
       where = `TO_CHAR(sale_date, 'YYYY-MM') = $1`;
       params = [month || monthUZB()];
     }
+    // Filial foydalanuvchisi — faqat o'z filiali; AGENT — faqat o'z savdolari
+    if (req.user.branch_id) { where += ` AND branch_id = $${params.length + 1}`; params.push(req.user.branch_id); }
+    if (req.user.role === 'AGENT') { where += ` AND created_by = $${params.length + 1}`; params.push(req.user.id); }
 
     const result = await query(`
       SELECT
@@ -635,11 +640,16 @@ router.delete('/:id', requireRole('OWNER'), async (req, res, next) => {
     const client = await require('../db').getClient();
     try {
       await client.query('BEGIN');
-      await client.query(
-        'UPDATE products SET stock_quantity = stock_quantity + $1 WHERE id = $2',
-        [sale.rows[0].quantity, sale.rows[0].product_id]
-      );
-      await addColorStock(client.query, sale.rows[0].product_id, sale.rows[0].rang, parseFloat(sale.rows[0].quantity));
+      if (sale.rows[0].branch_id) {
+        // Filial savdosi — tovar filial omboriga qaytadi
+        await addBranchStock(client.query, sale.rows[0].branch_id, sale.rows[0].product_id, sale.rows[0].rang, parseFloat(sale.rows[0].quantity));
+      } else {
+        await client.query(
+          'UPDATE products SET stock_quantity = stock_quantity + $1 WHERE id = $2',
+          [sale.rows[0].quantity, sale.rows[0].product_id]
+        );
+        await addColorStock(client.query, sale.rows[0].product_id, sale.rows[0].rang, parseFloat(sale.rows[0].quantity));
+      }
       await client.query('DELETE FROM sales WHERE id = $1', [req.params.id]);
       await client.query('COMMIT');
       logAudit(req, {
@@ -789,12 +799,17 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
       await client.query('BEGIN');
 
       if (condition === 'GOOD') {
-        // Yaxshi tovar — omborga qaytadi (mahsulot + rang bo'yicha)
-        await client.query(
-          'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at = NOW() WHERE id = $2',
-          [qty, sale.product_id]
-        );
-        await addColorStock(client.query, sale.product_id, sale.rang, qty);
+        // Yaxshi tovar — omborga qaytadi (mahsulot + rang bo'yicha).
+        // Filial savdosi bo'lsa — FILIAL omboriga qaytadi, zavodga emas.
+        if (sale.branch_id) {
+          await addBranchStock(client.query, sale.branch_id, sale.product_id, sale.rang, qty);
+        } else {
+          await client.query(
+            'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at = NOW() WHERE id = $2',
+            [qty, sale.product_id]
+          );
+          await addColorStock(client.query, sale.product_id, sale.rang, qty);
+        }
       } else {
         // Brak tovar — omborga QAYTMAYDI, ziyon sifatida xarajatga yoziladi
         await client.query(

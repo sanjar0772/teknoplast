@@ -56,6 +56,15 @@ router.post('/login', [
       { expiresIn }
     );
 
+    // Filialga biriktirilgan bo'lsa — filial nomini ham qaytaramiz
+    let branchName = null;
+    if (user.branch_id) {
+      try {
+        const b = await query('SELECT name FROM branches WHERE id = $1', [user.branch_id]);
+        branchName = b.rows[0]?.name || null;
+      } catch { /* branches jadvali hali yo'q bo'lsa — e'tiborsiz */ }
+    }
+
     res.json({
       token,
       user: {
@@ -64,6 +73,7 @@ router.post('/login', [
         full_name: user.full_name,
         role: user.role,
         branch_id: user.branch_id || null,
+        branch_name: branchName,
       },
     });
   } catch (err) {

@@ -9,6 +9,9 @@ const api = axios.create({
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('token') || sessionStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  // EGA filialga "admin sifatida" kirgan bo'lsa — o'sha filial konteksti (backend scope qiladi)
+  const activeBranchId = localStorage.getItem('active_branch_id');
+  if (activeBranchId) config.headers['X-Branch-Id'] = activeBranchId;
   return config;
 });
 

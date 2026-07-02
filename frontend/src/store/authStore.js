@@ -15,13 +15,37 @@ function readUser() {
   } catch { return null; }
 }
 
+// EGA (OWNER) "admin sifatida kirgan" filial (yoki null = zavod/asosiy tizim)
+function readActiveBranch() {
+  try {
+    const s = localStorage.getItem('active_branch');
+    return s ? JSON.parse(s) : null;
+  } catch { return null; }
+}
+
 const initToken = readToken();
 const initUser = readUser();
+const initActiveBranch = readActiveBranch();
 
 const useAuthStore = create((set, get) => ({
   user: initUser,
   token: initToken,
   isAuthenticated: !!(initToken && initUser),
+  // EGA filialga kirgan bo'lsa — { id, name }; aks holda null (zavod)
+  activeBranch: initActiveBranch,
+
+  // EGA filialga "admin sifatida" kiradi — barcha so'rovlar shu filial bo'yicha scope bo'ladi.
+  // Sahifa yangilanadi (react-query keshi tozalanib, filial ma'lumoti yuklanadi).
+  enterBranch: (branch) => {
+    localStorage.setItem('active_branch', JSON.stringify({ id: branch.id, name: branch.name }));
+    localStorage.setItem('active_branch_id', branch.id);
+    window.location.href = '/';
+  },
+  exitBranch: () => {
+    localStorage.removeItem('active_branch');
+    localStorage.removeItem('active_branch_id');
+    window.location.href = '/';
+  },
 
   // remember=true → localStorage (brauzer yopilsa ham qoladi, 30 kun)
   // remember=false → sessionStorage (brauzer yopilsa o'chadi, 8 soat)
@@ -45,9 +69,11 @@ const useAuthStore = create((set, get) => ({
     localStorage.removeItem('token');
     localStorage.removeItem('auth_user');
     localStorage.removeItem('teknoplast-auth');
+    localStorage.removeItem('active_branch');
+    localStorage.removeItem('active_branch_id');
     sessionStorage.removeItem('token');
     sessionStorage.removeItem('auth_user');
-    set({ token: null, user: null, isAuthenticated: false });
+    set({ token: null, user: null, isAuthenticated: false, activeBranch: null });
   },
 
   updateUser: (user) => {

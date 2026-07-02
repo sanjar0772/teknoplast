@@ -25,7 +25,7 @@ function Modal({ open, onClose, title, children, wide }) {
 }
 
 export default function BranchesPage() {
-  const { isOwner } = useAuthStore();
+  const { isOwner, enterBranch, activeBranch } = useAuthStore();
   const qc = useQueryClient();
   const [form, setForm] = useState(null);         // filial qo'shish/tahrirlash
   const [detailId, setDetailId] = useState(null); // filial tafsiloti
@@ -187,6 +187,18 @@ export default function BranchesPage() {
                     className="btn-secondary btn-sm"><Pencil size={12} /></button>
                 )}
               </div>
+              {isOwner() && b.is_active && (
+                activeBranch?.id === b.id ? (
+                  <div className="w-full text-center text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg py-1.5">
+                    <Store size={12} className="inline mr-1" /> Hozir shu filial ichidasiz
+                  </div>
+                ) : (
+                  <button onClick={() => enterBranch(b)}
+                    className="btn-primary btn-sm w-full">
+                    <LogIn size={13} /> Admin sifatida kirish
+                  </button>
+                )
+              )}
             </div>
           ))}
         </div>

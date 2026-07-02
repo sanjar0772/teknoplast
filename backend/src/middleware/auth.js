@@ -23,6 +23,23 @@ const authenticate = async (req, res, next) => {
     }
 
     req.user = result.rows[0];
+
+    // EGA (OWNER) filialga "admin sifatida kirishi" — X-Branch-Id header bo'lsa, o'sha filial
+    // konteksti (branch_id) o'rnatiladi va butun tizim shu filial bo'yicha scope bo'ladi.
+    // Faqat OWNER uchun; filial sotuvchisining branch_id'si bazadan olinadi, header e'tiborsiz.
+    if (req.user.role === 'OWNER') {
+      const actingBranch = req.headers['x-branch-id'];
+      if (actingBranch) {
+        try {
+          const b = await query('SELECT id, name FROM branches WHERE id = $1', [actingBranch]);
+          if (b.rows.length) {
+            req.user.branch_id = b.rows[0].id;
+            req.user.branch_name = b.rows[0].name;
+            req.user.acting_as_branch = true;
+          }
+        } catch { /* branches jadvali yo'q — e'tiborsiz */ }
+      }
+    }
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError') {

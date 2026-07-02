@@ -49,7 +49,7 @@ const NAV_ITEMS = [
 ];
 
 export default function Sidebar() {
-  const { user, logout } = useAuthStore();
+  const { user, logout, activeBranch, exitBranch } = useAuthStore();
   const navigate = useNavigate();
 
   const [showPwd, setShowPwd] = useState(false);
@@ -93,6 +93,25 @@ export default function Sidebar() {
           </div>
         </div>
       </div>
+
+      {/* EGA filialga "admin sifatida" kirgan bo'lsa — ogohlantiruvchi banner + chiqish */}
+      {activeBranch && (
+        <div className="mx-3 mt-3 rounded-xl bg-amber-50 border border-amber-300 p-3">
+          <div className="flex items-center gap-2 text-amber-800">
+            <Store size={15} className="flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs font-bold truncate">{activeBranch.name}</p>
+              <p className="text-[10px] text-amber-600 leading-tight">Filial ichidasiz (admin)</p>
+            </div>
+          </div>
+          <button
+            onClick={() => exitBranch()}
+            className="mt-2 w-full text-xs font-medium bg-amber-600 text-white rounded-lg py-1.5 hover:bg-amber-700 flex items-center justify-center gap-1"
+          >
+            <LogOut size={12} /> Zavodga qaytish
+          </button>
+        </div>
+      )}
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-0.5">

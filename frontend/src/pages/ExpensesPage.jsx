@@ -31,9 +31,11 @@ function Modal({ open, onClose, title, children }) {
 }
 
 export default function ExpensesPage() {
-  const { user, isOwner, isAccountant } = useAuthStore();
+  const { user, isOwner, isAccountant, activeBranch } = useAuthStore();
   // Ta'minotchi — faqat "Xom ashyo" toifasidagi kunlik xarajatlarni yoza oladi
   const taminotchiOnly = user?.role === 'TAMINOTCHI';
+  // FILIAL konteksti (filial xodimi YOKI EGA filialga kirgan) — filialda xom ashyo YO'Q
+  const inBranch = !!(user?.branch_id || activeBranch);
   const qc = useQueryClient();
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [showModal, setShowModal] = useState(false);
@@ -72,8 +74,9 @@ export default function ExpensesPage() {
   const selRm = rawMats.find(r => r.id === selRmId);
   const calcAmount = selRm && selKg ? Math.round(parseFloat(selKg) * parseFloat(selRm.price_per_unit || 0)) : 0;
 
-  // Kirim/Harajat/Qoldiq hisoboti (tanlangan davr) — Ta'minotchi, OWNER va ACCOUNTANT ko'radi
-  const canSeeRawMaterialReport = isOwner() || isAccountant() || taminotchiOnly;
+  // Kirim/Harajat/Qoldiq hisoboti (tanlangan davr) — Ta'minotchi, OWNER va ACCOUNTANT ko'radi.
+  // FILIALDA xom ashyo yo'q — bu (zavod) hisoboti filialда KO'RSATILMAYDI.
+  const canSeeRawMaterialReport = !inBranch && (isOwner() || isAccountant() || taminotchiOnly);
   const { data: rangeSummary, isLoading: rangeLoading } = useQuery({
     queryKey: ['raw-material-range-summary', rangeStart, rangeEnd],
     queryFn: () => productsAPI.getRawMaterialRangeSummary({ start_date: rangeStart, end_date: rangeEnd }).then(r => r.data),
@@ -339,7 +342,7 @@ export default function ExpensesPage() {
             <div>
               <label className="label">Kategoriya *</label>
               <select {...register('category', { required: true })} className="select">
-                {Object.entries(CATS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                {Object.entries(CATS).filter(([k]) => !(inBranch && k === 'RAW_MATERIAL')).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
           )}

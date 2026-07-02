@@ -7,6 +7,12 @@ import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 const rangLabel = (r) => (r && String(r).trim()) ? r : 'Rangsiz';
+// Filial xodimi rollari
+const BRANCH_ROLE = {
+  SALES_HEAD: { label: 'Savdo boshlig\'i', cls: 'badge-green' },
+  AGENT:      { label: 'Savdo agenti',    cls: 'badge-blue' },
+};
+const branchRoleInfo = (r) => BRANCH_ROLE[r] || { label: r, cls: 'badge-gray' };
 
 function Modal({ open, onClose, title, children, wide }) {
   if (!open) return null;
@@ -80,11 +86,14 @@ export default function BranchesPage() {
     onError: (e) => toast.error(e.response?.data?.error || 'Nusxalashda xato'),
   });
 
-  // Filialga sotuvchi (savdo boshlig'i) logini yaratish — mavjud auth/register'dan foydalanadi
+  // Filialga xodim (savdo boshlig'i yoki savdo agenti) logini yaratish — mavjud auth/register'dan
   const createSellerMutation = useMutation({
-    mutationFn: (d) => authAPI.register({ ...d, role: 'SALES_HEAD', branch_id: detailId }),
+    mutationFn: (d) => authAPI.register({
+      full_name: d.full_name, phone: d.phone, password: d.password,
+      role: d.role === 'AGENT' ? 'AGENT' : 'SALES_HEAD', branch_id: detailId,
+    }),
     onSuccess: () => {
-      toast.success('Sotuvchi qo\'shildi — endi shu login-parol bilan filialga kira oladi');
+      toast.success('Qo\'shildi — endi shu login-parol bilan filialga kira oladi');
       qc.invalidateQueries({ queryKey: ['branch-users', detailId] });
       setSeller(null);
     },
@@ -121,13 +130,14 @@ export default function BranchesPage() {
   };
 
   const submitSeller = () => {
-    if (!seller.full_name?.trim()) return toast.error('Sotuvchi ismini kiriting');
+    if (!seller.full_name?.trim()) return toast.error('Ismini kiriting');
     if (!seller.phone?.trim()) return toast.error('Telefon (login) kiriting');
     if (!seller.password || seller.password.length < 6) return toast.error('Parol kamida 6 belgi');
     createSellerMutation.mutate({
       full_name: seller.full_name.trim(),
       phone: seller.phone.trim(),
       password: seller.password,
+      role: seller.role === 'AGENT' ? 'AGENT' : 'SALES_HEAD',
     });
   };
 
@@ -138,11 +148,7 @@ export default function BranchesPage() {
     <div className="space-y-6">
       <div className="page-header">
         <h1 className="page-title flex items-center gap-2"><Store size={22} /> Filiallar</h1>
-        {isOwner() && (
-          <button onClick={() => setForm({ name: '', address: '', phone: '' })} className="btn-primary btn-sm">
-            <Plus size={14} /> Filial qo'shish
-          </button>
-        )}
+        {/* "Filial qo'shish" tugmasi hozircha olib tashlangan (egasi talabi) */}
       </div>
 
       {/* Filiallar ro'yxati — kartalar */}
@@ -151,7 +157,7 @@ export default function BranchesPage() {
       ) : !branches.length ? (
         <div className="card text-center py-12 text-gray-400">
           <Store size={36} className="mx-auto mb-3 opacity-30" />
-          Hali filial yo'q — "Filial qo'shish" tugmasi bilan birinchisini yarating
+          Hali filial yo'q
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -262,32 +268,39 @@ export default function BranchesPage() {
             {/* Filial sotuvchilari (kirish loginlari) — faqat OWNER */}
             {isOwner() && (
               <div className="border border-green-200 bg-green-50/50 rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2 text-sm font-semibold text-green-800">
-                    <LogIn size={15} /> Filial sotuvchilari (kirish)
+                    <LogIn size={15} /> Filial xodimlari (kirish)
                   </div>
-                  <button onClick={() => setSeller({ full_name: '', phone: '', password: '' })}
-                    className="btn-primary btn-sm">
-                    <UserPlus size={13} /> Sotuvchi qo'shish
-                  </button>
+                  <div className="flex gap-2">
+                    <button onClick={() => setSeller({ full_name: '', phone: '', password: '', role: 'SALES_HEAD' })}
+                      className="btn-primary btn-sm">
+                      <UserPlus size={13} /> Sotuvchi qo'shish
+                    </button>
+                    <button onClick={() => setSeller({ full_name: '', phone: '', password: '', role: 'AGENT' })}
+                      className="btn-secondary btn-sm">
+                      <UserPlus size={13} /> Agent qo'shish
+                    </button>
+                  </div>
                 </div>
                 <p className="text-xs text-gray-500">
-                  Bu yerda filialga sotuvchi (savdo boshlig'i) uchun <b>login-parol</b> yarating.
-                  U shu login bilan tizimga kirganda to'g'ridan-to'g'ri <b>{detail.name}</b> ichida,
-                  aynan asosiy tizimdagidek ishlaydi (savdo, mijozlar, qarzlar, ombor — hammasi shu filial bo'yicha).
+                  Filialga <b>login-parol</b> yarating: <b>Savdo boshlig'i</b> — filialni to'liq boshqaradi
+                  (mahsulot, ombor, mijoz, qarz, hisobot); <b>Savdo agenti</b> — faqat o'z savdolarini qiladi
+                  (mijoz topadi, sotadi). Ikkovi ham kirganda to'g'ridan-to'g'ri <b>{detail.name}</b> ichida ishlaydi.
                 </p>
                 <div className="border border-gray-100 rounded-xl overflow-hidden bg-white">
                   <table className="table text-sm">
-                    <thead><tr><th>Ism</th><th>Login (telefon)</th><th>Holat</th><th className="text-right">Amal</th></tr></thead>
+                    <thead><tr><th>Ism</th><th>Login (telefon)</th><th>Rol</th><th>Holat</th><th className="text-right">Amal</th></tr></thead>
                     <tbody>
                       {!(usersData?.users || []).length ? (
-                        <tr><td colSpan={4} className="text-center py-6 text-gray-400">
-                          Hali sotuvchi yo'q — "Sotuvchi qo'shish" bilan filialga kirish uchun login yarating
+                        <tr><td colSpan={5} className="text-center py-6 text-gray-400">
+                          Hali xodim yo'q — "Sotuvchi qo'shish" yoki "Agent qo'shish" bilan filialga kirish uchun login yarating
                         </td></tr>
                       ) : usersData.users.map(u => (
                         <tr key={u.id}>
                           <td className="font-medium">{u.full_name}</td>
                           <td className="whitespace-nowrap">{u.phone}</td>
+                          <td><span className={branchRoleInfo(u.role).cls}>{branchRoleInfo(u.role).label}</span></td>
                           <td>{u.is_active ? <span className="badge-green">Faol</span> : <span className="badge-gray">Bloklangan</span>}</td>
                           <td>
                             <div className="flex gap-1 justify-end">
@@ -377,12 +390,18 @@ export default function BranchesPage() {
       </Modal>
 
       {/* Filialga sotuvchi (kirish) qo'shish */}
-      <Modal open={!!seller} onClose={() => setSeller(null)} title={`Sotuvchi qo'shish — ${detail?.name || ''}`}>
+      <Modal open={!!seller} onClose={() => setSeller(null)}
+        title={`${seller?.role === 'AGENT' ? 'Agent' : 'Sotuvchi'} qo'shish — ${detail?.name || ''}`}>
         {seller && (
           <div className="space-y-4">
             <p className="text-xs text-gray-500">
-              Bu sotuvchi <b>savdo boshlig'i</b> sifatida shu login-parol bilan kirib, faqat
-              <b> {detail?.name}</b> filiali bo'yicha ishlaydi.
+              {seller.role === 'AGENT' ? (
+                <>Bu xodim <b>savdo agenti</b> sifatida shu login-parol bilan kirib, faqat
+                <b> {detail?.name}</b> filiali bo'yicha, faqat <b>o'z savdolarini</b> qiladi (mijoz topadi, sotadi).</>
+              ) : (
+                <>Bu xodim <b>savdo boshlig'i</b> sifatida shu login-parol bilan kirib,
+                <b> {detail?.name}</b> filialini to'liq boshqaradi (mahsulot, ombor, mijoz, qarz, hisobot).</>
+              )}
             </p>
             <div>
               <label className="label">To'liq ism *</label>

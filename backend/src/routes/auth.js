@@ -156,7 +156,8 @@ router.get('/users', authenticate, async (req, res, next) => {
     const scope = req.user.branch_id || null;
     const result = await query(
       `SELECT u.id, u.phone, u.full_name, u.role, u.is_active, u.last_login, u.created_at,
-              u.branch_id, b.name AS branch_name
+              u.branch_id, b.name AS branch_name,
+              u.last_lat, u.last_lng, u.last_location_at
        FROM users u LEFT JOIN branches b ON u.branch_id = b.id
        WHERE ${scope ? 'u.branch_id = $1' : 'u.branch_id IS NULL'}
        ORDER BY u.created_at DESC`,

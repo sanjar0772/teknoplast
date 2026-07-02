@@ -715,7 +715,8 @@ router.get('/:id/returns', async (req, res, next) => {
 
 // POST /api/sales/:id/return — vozvrat (qisman ham). Sabab majburiy.
 // Ombor qaytariladi, sotuv summasi/miqdori kamayadi, qarz/refund avtomatik hisoblanadi.
-router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
+// AGENT ham vozvrat qiladi (mijozdan brak/ortiqcha tovarni borib ko'rib) — lekin faqat O'Z filialida.
+router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), async (req, res, next) => {
   try {
     await saleReturns.ensureReturnsSchema();
     const qty = parseInt(req.body.quantity, 10);
@@ -734,6 +735,11 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
     const saleR = await query('SELECT * FROM sales WHERE id = $1', [req.params.id]);
     if (!saleR.rows.length) return res.status(404).json({ error: 'Sotuv topilmadi' });
     const sale = saleR.rows[0];
+
+    // FILIAL AJRATISH: filial xodimi (agent/sotuvchi) faqat O'Z filialining savdosini qaytara oladi
+    if (req.user.branch_id && String(sale.branch_id || '') !== String(req.user.branch_id)) {
+      return res.status(403).json({ error: "Bu savdo sizning filialingizniki emas — vozvrat qilib bo'lmaydi" });
+    }
 
     const soldQty = parseInt(sale.quantity, 10) || 0;
     if (qty > soldQty) {

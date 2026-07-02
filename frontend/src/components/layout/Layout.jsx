@@ -3,8 +3,10 @@ import { Bell } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import Sidebar from './Sidebar';
 import { aiAPI } from '../../services/api';
+import useAgentLocation from '../../hooks/useAgentLocation';
 
 export default function Layout() {
+  useAgentLocation(); // AGENT bo'lsa — GPS joylashuvni avtomatik yuboradi
   const { data: alertsData } = useQuery({
     queryKey: ['alerts'],
     queryFn: () => aiAPI.getAlerts().then(r => r.data),

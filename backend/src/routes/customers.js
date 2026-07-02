@@ -247,37 +247,49 @@ router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), [
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { name, phone, company_name, address, customer_type, credit_limit, notes, created_at } = req.body;
+    const { name, phone, company_name, address, customer_type, credit_limit, notes, created_at, latitude, longitude } = req.body;
     // Qo'shilgan sana — qo'lda kiritilsa o'sha sana, aks holda bugun
     const createdAt = created_at ? String(created_at).slice(0, 10) : new Date().toISOString();
     // Filial foydalanuvchisi qo'shsa — mijoz o'sha filialniki (branch_id); zavod bo'lsa NULL.
     const branchId = req.user.branch_id || null;
+    // Lokatsiya (agent mijoz oldida turib GPS bilan belgilaydi)
+    const lat = isFinite(parseFloat(latitude)) ? parseFloat(latitude) : null;
+    const lng = isFinite(parseFloat(longitude)) ? parseFloat(longitude) : null;
     const result = await query(
-      `INSERT INTO customers (name, phone, company_name, address, customer_type, credit_limit, notes, created_by, created_at, branch_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      `INSERT INTO customers (name, phone, company_name, address, customer_type, credit_limit, notes, created_by, created_at, branch_id, latitude, longitude)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [name, phone || null, company_name || null, address || null,
-       customer_type || 'RETAIL', credit_limit || 0, notes || null, req.user.id, createdAt, branchId]
+       customer_type || 'RETAIL', credit_limit || 0, notes || null, req.user.id, createdAt, branchId, lat, lng]
     );
     res.status(201).json({ customer: result.rows[0] });
   } catch (err) { next(err); }
 });
 
-// PUT /api/customers/:id — tahrirlash
-router.put('/:id', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
+// PUT /api/customers/:id — tahrirlash (AGENT ham — mijoz manzili/lokatsiyasini qo'shishi uchun;
+// lekin O'CHIRISH faqat EGA'da qoladi — pastdagi DELETE'ga qarang)
+router.put('/:id', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), async (req, res, next) => {
   try {
-    const { name, phone, company_name, address, customer_type, credit_limit, notes, is_active, created_at } = req.body;
+    const { name, phone, company_name, address, customer_type, credit_limit, notes, is_active, created_at, latitude, longitude } = req.body;
+    // AGENT mijozni nofaol qila olmaydi (yashirin "o'chirish" bo'lib qolmasin)
+    if (req.user.role === 'AGENT' && is_active !== undefined && !is_active) {
+      return res.status(403).json({ error: "Agent mijozni o'chira/nofaol qila olmaydi" });
+    }
     // Qo'shilgan sana — berilsa yangilanadi, aks holda eskisi qoladi
     const createdAt = created_at ? String(created_at).slice(0, 10) : null;
+    // Lokatsiya — berilsa yangilanadi, aks holda eskisi qoladi
+    const lat = latitude !== undefined && isFinite(parseFloat(latitude)) ? parseFloat(latitude) : null;
+    const lng = longitude !== undefined && isFinite(parseFloat(longitude)) ? parseFloat(longitude) : null;
     // Filial foydalanuvchisi faqat O'Z mijozini tahrirlaydi (zavodnikiga tegmaydi).
     const scope = req.user.branch_id || null;
     const updParams = [name, phone, company_name, address, customer_type, credit_limit, notes,
-      is_active === undefined ? 1 : is_active, createdAt, req.params.id];
-    let whereCond = 'id=$10';
-    if (scope) { updParams.push(scope); whereCond += ' AND branch_id=$11'; }
+      is_active === undefined ? 1 : is_active, createdAt, lat, lng, req.params.id];
+    let whereCond = 'id=$12';
+    if (scope) { updParams.push(scope); whereCond += ' AND branch_id=$13'; }
     else { whereCond += ' AND branch_id IS NULL'; }
     const result = await query(
       `UPDATE customers SET name=$1, phone=$2, company_name=$3, address=$4,
-         customer_type=$5, credit_limit=$6, notes=$7, is_active=$8, created_at=COALESCE($9, created_at), updated_at=NOW()
+         customer_type=$5, credit_limit=$6, notes=$7, is_active=$8, created_at=COALESCE($9, created_at),
+         latitude=COALESCE($10, latitude), longitude=COALESCE($11, longitude), updated_at=NOW()
        WHERE ${whereCond} RETURNING *`,
       updParams
     );

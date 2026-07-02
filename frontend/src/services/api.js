@@ -114,6 +114,15 @@ export const branchesAPI = {
   copyProducts: (id) => api.post(`/branches/${id}/copy-products`),
 };
 
+// Agent — shaxsiy ma'lumotlar (profil) va GPS joylashuv
+export const agentAPI = {
+  getProfile: () => api.get('/agent/profile'),
+  updateProfile: (data) => api.put('/agent/profile', data),
+  sendLocation: (data) => api.post('/agent/location', data),
+  getLocations: () => api.get('/agent/locations'),
+  getTrack: (id, params) => api.get(`/agent/${id}/track`, { params }),
+};
+
 // Expenses
 export const expensesAPI = {
   getAll: (params) => api.get('/expenses', { params }),

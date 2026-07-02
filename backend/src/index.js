@@ -57,6 +57,7 @@ app.use('/api/reports', require('./routes/reports'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/ahmad', require('./routes/ahmad'));
 app.use('/api/branches', require('./routes/branches'));
+app.use('/api/agent', require('./routes/agent'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString(), env: process.env.NODE_ENV });
@@ -64,7 +65,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'branch-expenses-clean', commit: 'v100' });
+  res.json({ version: 'agent-profile-gps-vozvrat', commit: 'v101' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)
@@ -153,6 +154,11 @@ require('./services/saleReturns')
 require('./services/branchSchema')
   .ensureBranchSchema()
   .catch(e => console.error('Branch schema init xato:', e.message));
+
+// Agent tizimi (profil, GPS joylashuv, mijoz lokatsiyasi) jadvallarini tayyorlash
+require('./services/agentSchema')
+  .ensureAgentSchema()
+  .catch(e => console.error('Agent schema init xato:', e.message));
 
 // Inventarizatsiya tarixi jadvalini tayyorlash
 require('./services/inventoryAudit')

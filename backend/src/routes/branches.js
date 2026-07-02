@@ -181,7 +181,8 @@ router.get('/:id/products', requireRole('OWNER'), async (req, res, next) => {
 router.get('/:id/users', requireRole('OWNER'), async (req, res, next) => {
   try {
     const rows = (await query(
-      `SELECT id, phone, full_name, role, is_active, last_login, created_at
+      `SELECT id, phone, full_name, role, is_active, last_login, created_at,
+              last_lat, last_lng, last_location_at
        FROM users WHERE branch_id = $1 ORDER BY created_at DESC`,
       [req.params.id]
     )).rows;

@@ -36,8 +36,10 @@ const ROLE_PERMISSIONS = {
     'products:read'
   ],
   AGENT: [
-    // Sotuv agenti — distansion: mijoz topadi, sotadi, dostavka belgilaydi
-    'sales:read', 'sales:write',
+    // Sotuv agenti — distansion: mijoz topadi, sotadi, dostavka belgilaydi,
+    // mijoz manzili/lokatsiyasini qo'shadi, brak tovarni borib ko'rib vozvrat qiladi.
+    // O'chirish huquqi YO'Q: mijozni o'chirish faqat EGA'da.
+    'sales:read', 'sales:write', 'returns:write',
     'products:read', 'customers:read', 'customers:write'
   ],
 };

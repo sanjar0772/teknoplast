@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, UserCheck, UserX, Shield, KeyRound, Copy, Trash2, Store } from 'lucide-react';
+import { Plus, X, UserCheck, UserX, Shield, KeyRound, Copy, Trash2, Store, MapPin } from 'lucide-react';
 import { authAPI, branchesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -133,6 +133,13 @@ export default function UsersPage() {
                   </td>
                   <td className="text-sm text-gray-500">
                     {u.last_login ? new Date(u.last_login).toLocaleString('uz-UZ') : '—'}
+                    {u.role === 'AGENT' && u.last_lat != null && u.last_lng != null && (
+                      <a href={`https://maps.google.com/?q=${u.last_lat},${u.last_lng}`}
+                        target="_blank" rel="noreferrer"
+                        className="text-emerald-600 hover:text-emerald-700 text-xs font-medium flex items-center gap-1 mt-0.5">
+                        <MapPin size={11} /> Joylashuvi (GPS)
+                      </a>
+                    )}
                   </td>
                   <td>
                     <div className="flex gap-1">

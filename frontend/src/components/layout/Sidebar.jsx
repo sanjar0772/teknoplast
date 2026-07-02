@@ -27,7 +27,7 @@ const NAV_ITEMS = [
   { to: '/history',    icon: History,         label: 'Tarix',            roles: ['OWNER','ACCOUNTANT','SALES_HEAD','AGENT'] },
   { to: '/customers',  icon: UserSquare2,     label: 'Mijozlar',         roles: ['OWNER','ACCOUNTANT','SALES_HEAD','AGENT'] },
   { to: '/debts',      icon: Wallet,          label: 'Qarzlar',          roles: ['OWNER','ACCOUNTANT','SALES_HEAD'] },
-  { to: '/vozvrat',    icon: RotateCcw,       label: 'Vozvratlar',       roles: ['OWNER','ACCOUNTANT','SALES_HEAD'] },
+  { to: '/vozvrat',    icon: RotateCcw,       label: 'Vozvratlar',       roles: ['OWNER','ACCOUNTANT','SALES_HEAD','AGENT'] },
   { to: '/expenses',   icon: Receipt,         label: 'Xarajatlar',       roles: ['OWNER','ACCOUNTANT','TAMINOTCHI'] },
   { to: '/employees',  icon: Users,           label: 'Xodimlar',         roles: ['OWNER','ACCOUNTANT','PRODUCTION_HEAD','KIRIMCHI'] },
   { to: '/production', icon: Factory,         label: 'Ishlab Chiqarish', roles: ['OWNER','PRODUCTION_HEAD','KIRIMCHI'] },
@@ -44,6 +44,7 @@ const NAV_ITEMS = [
   // { to: '/tarozi',     icon: Scale,           label: 'Tarozi',           roles: ['OWNER','KIRIMCHI','OMBORCHI','SALES_HEAD','PRODUCTION_HEAD'] },
   { to: '/reports',    icon: FileBarChart,    label: 'Hisobotlar',       roles: ['OWNER','ACCOUNTANT'] },
   { to: '/users',      icon: ShieldCheck,     label: 'Foydalanuvchilar', roles: ['OWNER'] },
+  { to: '/agent-profile', icon: UserSquare2,  label: 'Mening profilim',  roles: ['AGENT'] },
   { to: '/ai',         icon: Bot,             label: 'Lola',             roles: null },
   { to: '/worker',     icon: Sparkles,        label: 'AI Ishchi',        roles: ['OWNER','ACCOUNTANT'] },
 ];

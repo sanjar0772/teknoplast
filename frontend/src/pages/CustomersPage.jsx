@@ -229,7 +229,25 @@ export default function CustomersPage({ embedded = false }) {
     });
   };
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm();
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm();
+  // Mijoz lokatsiyasi (GPS) — forma ichida ko'rsatish uchun
+  const formLat = watch('latitude');
+  const formLng = watch('longitude');
+  const [gettingLoc, setGettingLoc] = useState(false);
+  const captureLocation = () => {
+    if (!navigator.geolocation) return toast.error('Bu qurilmada GPS mavjud emas');
+    setGettingLoc(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setValue('latitude', pos.coords.latitude);
+        setValue('longitude', pos.coords.longitude);
+        setGettingLoc(false);
+        toast.success('Joylashuv olindi — saqlashni bosing');
+      },
+      () => { setGettingLoc(false); toast.error('GPS ruxsati berilmagan yoki joylashuv aniqlanmadi'); },
+      { enableHighAccuracy: true, timeout: 15000 }
+    );
+  };
 
   const saveMutation = useMutation({
     mutationFn: (d) => editing ? customersAPI.update(editing.id, d) : customersAPI.create(d),
@@ -363,6 +381,13 @@ export default function CustomersPage({ embedded = false }) {
                   <td>
                     <div className="font-medium text-gray-900">{c.name}</div>
                     {c.company_name && <div className="text-xs text-gray-400">{c.company_name}</div>}
+                    {c.latitude != null && c.longitude != null && (
+                      <a href={`https://maps.google.com/?q=${c.latitude},${c.longitude}`}
+                        target="_blank" rel="noreferrer"
+                        className="text-xs text-emerald-600 hover:text-emerald-700 flex items-center gap-0.5 mt-0.5">
+                        <MapPin size={10} /> Xaritada
+                      </a>
+                    )}
                   </td>
                   <td className="whitespace-nowrap">{c.phone || <span className="text-gray-400">—</span>}</td>
                   <td><span className={T.cls}>{T.label}</span></td>
@@ -425,6 +450,36 @@ export default function CustomersPage({ embedded = false }) {
           <div>
             <label className="label">Manzil</label>
             <input {...register('address')} className="input" placeholder="Ixtiyoriy" />
+          </div>
+          {/* Mijoz lokatsiyasi — agent mijoz oldida turib GPS bilan belgilaydi */}
+          <div className="rounded-xl border border-gray-200 p-3 space-y-2">
+            <input type="hidden" {...register('latitude')} />
+            <input type="hidden" {...register('longitude')} />
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                <MapPin size={14} className="text-emerald-600" /> Lokatsiya (xarita)
+              </span>
+              <button type="button" onClick={captureLocation} disabled={gettingLoc}
+                className="btn-secondary btn-sm">
+                <MapPin size={12} /> {gettingLoc ? 'Aniqlanmoqda...' : 'Hozirgi joyni olish'}
+              </button>
+            </div>
+            {formLat && formLng ? (
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <a href={`https://maps.google.com/?q=${formLat},${formLng}`} target="_blank" rel="noreferrer"
+                  className="text-blue-600 hover:text-blue-700 font-medium">
+                  📍 Xaritada ko'rish ({parseFloat(formLat).toFixed(5)}, {parseFloat(formLng).toFixed(5)})
+                </a>
+                <button type="button" className="text-gray-400 hover:text-red-500"
+                  onClick={() => { setValue('latitude', ''); setValue('longitude', ''); }}>
+                  <X size={13} />
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400">
+                Mijoz do'koni/uyi oldida turib "Hozirgi joyni olish" tugmasini bosing — manzil xaritada saqlanadi.
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

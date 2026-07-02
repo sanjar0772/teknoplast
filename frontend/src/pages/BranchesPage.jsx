@@ -290,10 +290,10 @@ export default function BranchesPage() {
                 </p>
                 <div className="border border-gray-100 rounded-xl overflow-hidden bg-white">
                   <table className="table text-sm">
-                    <thead><tr><th>Ism</th><th>Login (telefon)</th><th>Rol</th><th>Holat</th><th className="text-right">Amal</th></tr></thead>
+                    <thead><tr><th>Ism</th><th>Login (telefon)</th><th>Rol</th><th>Holat</th><th>Joylashuv (GPS)</th><th className="text-right">Amal</th></tr></thead>
                     <tbody>
                       {!(usersData?.users || []).length ? (
-                        <tr><td colSpan={5} className="text-center py-6 text-gray-400">
+                        <tr><td colSpan={6} className="text-center py-6 text-gray-400">
                           Hali xodim yo'q — "Sotuvchi qo'shish" yoki "Agent qo'shish" bilan filialga kirish uchun login yarating
                         </td></tr>
                       ) : usersData.users.map(u => (
@@ -302,6 +302,22 @@ export default function BranchesPage() {
                           <td className="whitespace-nowrap">{u.phone}</td>
                           <td><span className={branchRoleInfo(u.role).cls}>{branchRoleInfo(u.role).label}</span></td>
                           <td>{u.is_active ? <span className="badge-green">Faol</span> : <span className="badge-gray">Bloklangan</span>}</td>
+                          <td className="whitespace-nowrap">
+                            {u.last_lat != null && u.last_lng != null ? (
+                              <a href={`https://maps.google.com/?q=${u.last_lat},${u.last_lng}`}
+                                target="_blank" rel="noreferrer"
+                                className="text-emerald-600 hover:text-emerald-700 text-xs font-medium flex items-center gap-1">
+                                <MapPin size={12} /> Xaritada ko'rish
+                                {u.last_location_at && (
+                                  <span className="text-gray-400 font-normal">
+                                    ({new Date(u.last_location_at).toLocaleString('uz-UZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})
+                                  </span>
+                                )}
+                              </a>
+                            ) : (
+                              <span className="text-xs text-gray-300">—</span>
+                            )}
+                          </td>
                           <td>
                             <div className="flex gap-1 justify-end">
                               <button

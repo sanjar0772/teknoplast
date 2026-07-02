@@ -3,6 +3,7 @@ const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
 const reportService = require('../services/reportService');
+const { todayUZB } = require('../utils/date');
 
 const router = express.Router();
 router.use(authenticate);
@@ -270,6 +271,138 @@ router.get('/debt-payments', async (req, res, next) => {
 
     const total = rows.reduce((sm, r) => sm + parseFloat(r.amount || 0), 0);
     res.json({ payments: rows, total, count: rows.length });
+  } catch (err) { next(err); }
+});
+
+// GET /api/reports/kassa?date=YYYY-MM-DD — kunlik KASSA: shu kundagi barcha pul
+// operatsiyalari raqamlangan qisqa ro'yxat (vaqt, mijoz, tur, summa) + jami kirim/chiqim.
+// Operatsiya turlari:
+//   SAVDO      — shu kuni qilingan savdo (chek bo'yicha jamlangan; naqd va qarz qismi ajratilgan)
+//   QARZ_TOLOV — shu kuni to'langan qarz (payment_ref bo'yicha jamlangan)
+//   VOZVRAT    — shu kuni naqd qaytarilgan pul (chiqim)
+router.get('/kassa', async (req, res, next) => {
+  try {
+    const date = (req.query.date && String(req.query.date).slice(0, 10)) || todayUZB();
+    const scope = req.user.branch_id || null;
+    const sScope = scope ? ` AND s.branch_id = $2` : ` AND s.branch_id IS NULL`;
+    const params = scope ? [date, scope] : [date];
+
+    // 1) Shu kungi savdolar — chek (order_ref) bo'yicha guruhlanadi: bitta operatsiya = bitta chek
+    const sales = (await query(`
+      SELECT s.id, s.order_ref, s.total_amount, s.payment_amount, s.created_at,
+             COALESCE(c.name, s.customer_name) AS customer_name
+      FROM sales s LEFT JOIN customers c ON s.customer_id = c.id
+      WHERE DATE(s.sale_date) = $1${sScope}
+      ORDER BY s.created_at`, params)).rows;
+
+    // Shu savdolarning payments jadvalidagi to'lovlari — savdo PAYTIDA to'langan
+    // qismni ajratish uchun (payment_amount − keyingi qarz to'lovlari)
+    const paidRows = (await query(`
+      SELECT pm.sale_id, COALESCE(SUM(pm.amount), 0) AS paid
+      FROM payments pm JOIN sales s ON pm.sale_id = s.id
+      WHERE DATE(s.sale_date) = $1${sScope}
+      GROUP BY pm.sale_id`, params)).rows;
+    const paidMap = {};
+    paidRows.forEach(r => { paidMap[r.sale_id] = parseFloat(r.paid) || 0; });
+
+    // MUHIM: vozvratda naqd qaytarilganda sale.payment_amount KAMAYADI — savdo
+    // paytidagi ASL to'lovni tiklash uchun qaytarilgan refund'ni qo'shib qo'yamiz
+    // (aks holda refund ikki marta ayirilib, kassa kam ko'rinadi).
+    const refundMap = {};
+    try {
+      const refRows = (await query(`
+        SELECT sr.sale_id, COALESCE(SUM(sr.refund_amount), 0) AS refunded
+        FROM sale_returns sr JOIN sales s ON sr.sale_id = s.id
+        WHERE DATE(s.sale_date) = $1${sScope}
+        GROUP BY sr.sale_id`, params)).rows;
+      refRows.forEach(r => { refundMap[r.sale_id] = parseFloat(r.refunded) || 0; });
+    } catch (e) { /* sale_returns hali bo'lmasa */ }
+
+    const groups = {}; const order = [];
+    for (const s of sales) {
+      const key = s.order_ref || s.id;
+      if (!groups[key]) {
+        groups[key] = { time: s.created_at, customer: s.customer_name || 'Tasodifiy mijoz', total: 0, paid_now: 0, items: 0 };
+        order.push(key);
+      }
+      const g = groups[key];
+      g.total += parseFloat(s.total_amount) || 0;
+      g.paid_now += Math.max(0, (parseFloat(s.payment_amount) || 0) + (refundMap[s.id] || 0) - (paidMap[s.id] || 0));
+      g.items += 1;
+    }
+
+    const ops = [];
+    for (const key of order) {
+      const g = groups[key];
+      ops.push({
+        type: 'SAVDO', time: g.time, customer: g.customer, items: g.items,
+        amount: Math.round(g.total),
+        paid: Math.round(g.paid_now),
+        debt: Math.max(0, Math.round(g.total - g.paid_now)),
+      });
+    }
+
+    // 2) Shu kungi qarz to'lovlari — payment_ref bo'yicha jamlangan (bitta to'lov = bitta qator)
+    const pays = (await query(`
+      SELECT pm.id, pm.amount, pm.method, pm.payment_ref, pm.created_at,
+             COALESCE(c.name, s.customer_name) AS customer_name
+      FROM payments pm
+      JOIN sales s ON pm.sale_id = s.id
+      LEFT JOIN customers c ON s.customer_id = c.id
+      WHERE DATE(pm.payment_date) = $1${sScope}
+      ORDER BY pm.created_at`, params)).rows;
+    const pGroups = {}; const pOrder = [];
+    for (const p of pays) {
+      const key = p.payment_ref || p.id;
+      if (!pGroups[key]) {
+        pGroups[key] = { time: p.created_at, customer: p.customer_name || '—', amount: 0, method: p.method };
+        pOrder.push(key);
+      }
+      pGroups[key].amount += parseFloat(p.amount) || 0;
+    }
+    for (const key of pOrder) {
+      const g = pGroups[key];
+      ops.push({ type: 'QARZ_TOLOV', time: g.time, customer: g.customer, amount: Math.round(g.amount), method: g.method });
+    }
+
+    // 3) Shu kungi vozvratlar — mijozga NAQD qaytarilgan pul (kassadan chiqim)
+    let returns = [];
+    try {
+      const rScope = scope ? ` AND sr.branch_id = $2` : ` AND sr.branch_id IS NULL`;
+      returns = (await query(`
+        SELECT sr.refund_amount, sr.created_at, COALESCE(c.name, s.customer_name) AS customer_name
+        FROM sale_returns sr
+        LEFT JOIN sales s ON sr.sale_id = s.id
+        LEFT JOIN customers c ON sr.customer_id = c.id
+        WHERE DATE(COALESCE(sr.return_date, sr.created_at)) = $1${rScope} AND sr.refund_amount > 0
+        ORDER BY sr.created_at`, params)).rows;
+    } catch (e) { returns = []; /* sale_returns hali bo'lmasa */ }
+    for (const r of returns) {
+      ops.push({ type: 'VOZVRAT', time: r.created_at, customer: r.customer_name || '—', amount: Math.round(parseFloat(r.refund_amount) || 0) });
+    }
+
+    // Vaqt bo'yicha tartiblab raqamlaymiz
+    ops.sort((a, b) => new Date(a.time) - new Date(b.time));
+    ops.forEach((o, i) => { o.n = i + 1; });
+
+    const sum = (type, field) => ops.filter(o => o.type === type).reduce((s, o) => s + (o[field] || 0), 0);
+    const savdo_naqd = sum('SAVDO', 'paid');
+    const qarz_tolov = sum('QARZ_TOLOV', 'amount');
+    const chiqim = sum('VOZVRAT', 'amount');
+
+    res.json({
+      date, ops,
+      totals: {
+        count: ops.length,
+        savdo_jami: sum('SAVDO', 'amount'),  // kunlik savdo (cheklar jami)
+        savdo_naqd,                          // savdo paytida to'langan
+        qarz_tolov,                          // qarz to'lovlari
+        qarzga: sum('SAVDO', 'debt'),        // qarzga berilgan
+        kirim: savdo_naqd + qarz_tolov,      // kassaga kirgan pul
+        chiqim,                              // vozvrat — naqd qaytarilgan
+        sof: savdo_naqd + qarz_tolov - chiqim, // sof kassa
+      },
+    });
   } catch (err) { next(err); }
 });
 

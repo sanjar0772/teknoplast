@@ -20,10 +20,10 @@ router.get('/dashboard', async (req, res, next) => {
     const [todaySales, monthSales, monthExpenses, employees, lowStock, machines] = await Promise.all([
       query(`SELECT COALESCE(SUM(total_amount),0) as total, COUNT(*) as count FROM sales WHERE strftime('%Y-%m-%d',sale_date)=$1${bFilter}`, [today]),
       query(`SELECT COALESCE(SUM(total_amount),0) as total, COALESCE(SUM(CASE WHEN status='PAID' THEN total_amount ELSE 0 END),0) as paid FROM sales WHERE TO_CHAR(sale_date,'YYYY-MM')=$1${bFilter}`, [thisMonth]),
-      query(`SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE TO_CHAR(expense_date,'YYYY-MM')=$1`, [thisMonth]),
-      query(`SELECT COUNT(*) as total, COUNT(CASE WHEN is_active=1 THEN 1 END) as active FROM employees`),
+      query(`SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE TO_CHAR(expense_date,'YYYY-MM')=$1${bFilter}`, [thisMonth]),
+      query(`SELECT COUNT(*) as total, COUNT(CASE WHEN is_active=1 THEN 1 END) as active FROM employees WHERE 1=1${bFilter}`),
       query(`SELECT COUNT(*) as count FROM products WHERE stock_quantity < 10 AND is_active=1${bFilter}`),
-      query(`SELECT status, COUNT(*) as count FROM machines WHERE is_active=1 GROUP BY status`),
+      query(`SELECT status, COUNT(*) as count FROM machines WHERE is_active=1${bFilter} GROUP BY status`),
     ]);
 
     const profit = parseFloat(monthSales.rows[0].total) - parseFloat(monthExpenses.rows[0].total);

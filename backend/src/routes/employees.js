@@ -30,6 +30,9 @@ router.get('/', async (req, res, next) => {
     } else if (type) { sql += ` AND type = $${idx++}`; params.push(type); }
     if (shift)  { sql += ` AND shift = $${idx++}`; params.push(shift); }
     if (search) { sql += ` AND name ILIKE $${idx++}`; params.push(`%${search}%`); }
+    // FILIAL AJRATISH: filial faqat o'z xodimlari; zavod faqat zavodnikini
+    if (req.user.branch_id) { sql += ` AND branch_id = $${idx++}`; params.push(req.user.branch_id); }
+    else { sql += ` AND branch_id IS NULL`; }
     sql += ' ORDER BY name';
     const result = await query(sql, params);
     res.json({ employees: result.rows });
@@ -80,8 +83,8 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
     const salary_percent = Number(req.body.salary_percent) || 0;
     const bonus_percent = Number(req.body.bonus_percent) || 0; // qo'shimcha foiz (oyligchilarga)
     const result = await query(
-      'INSERT INTO employees (name, type, daily_tariff, hourly_tariff, hire_date, phone, address, shift, salary_type, monthly_salary, salary_percent, bonus_percent) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
-      [name, type, daily_tariff, hourly_tariff || null, hire_date || new Date(), phone, address, shift || '1-SMENA', salary_type, monthly_salary, salary_percent, bonus_percent]
+      'INSERT INTO employees (name, type, daily_tariff, hourly_tariff, hire_date, phone, address, shift, salary_type, monthly_salary, salary_percent, bonus_percent, branch_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+      [name, type, daily_tariff, hourly_tariff || null, hire_date || new Date(), phone, address, shift || '1-SMENA', salary_type, monthly_salary, salary_percent, bonus_percent, req.user.branch_id || null]
     );
     res.status(201).json({ employee: result.rows[0] });
   } catch (err) { next(err); }

@@ -16,8 +16,8 @@ router.get('/', async (req, res, next) => {
         (SELECT d.reason FROM machine_downtime d WHERE d.machine_id = m.id AND d.ended_at IS NULL ORDER BY d.started_at DESC LIMIT 1) AS pause_reason,
         (SELECT d.mold_minutes FROM machine_downtime d WHERE d.machine_id = m.id AND d.ended_at IS NULL ORDER BY d.started_at DESC LIMIT 1) AS pause_mold_minutes
       FROM machines m LEFT JOIN employees e ON m.operator_id = e.id
-      WHERE m.is_active = true ORDER BY m.name
-    `);
+      WHERE m.is_active = true${req.user.branch_id ? ' AND m.branch_id = $1' : ' AND m.branch_id IS NULL'} ORDER BY m.name
+    `, req.user.branch_id ? [req.user.branch_id] : []);
     res.json({ machines: result.rows });
   } catch (err) { next(err); }
 });
@@ -32,8 +32,8 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), [
 
     const { name, code, type, status, operator_id, last_service_date, next_service_date, daily_production_capacity, location } = req.body;
     const result = await query(
-      'INSERT INTO machines (name, code, type, status, operator_id, last_service_date, next_service_date, daily_production_capacity, location) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
-      [name, code || null, type || 'STANOK', status || 'WORKING', operator_id || null, last_service_date, next_service_date, daily_production_capacity || 0, location]
+      'INSERT INTO machines (name, code, type, status, operator_id, last_service_date, next_service_date, daily_production_capacity, location, branch_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+      [name, code || null, type || 'STANOK', status || 'WORKING', operator_id || null, last_service_date, next_service_date, daily_production_capacity || 0, location, req.user.branch_id || null]
     );
     res.status(201).json({ machine: result.rows[0] });
   } catch (err) { next(err); }

@@ -151,11 +151,16 @@ router.get('/users', authenticate, async (req, res, next) => {
     if (req.user.role !== 'OWNER') {
       return res.status(403).json({ error: 'Ruxsat yo\'q' });
     }
+    // FILIAL AJRATISH: EGA filial ichida bo'lsa (acting) — faqat o'sha filial xodimlari;
+    // zavodda bo'lsa — faqat zavod (branch_id NULL) foydalanuvchilari.
+    const scope = req.user.branch_id || null;
     const result = await query(
       `SELECT u.id, u.phone, u.full_name, u.role, u.is_active, u.last_login, u.created_at,
               u.branch_id, b.name AS branch_name
        FROM users u LEFT JOIN branches b ON u.branch_id = b.id
-       ORDER BY u.created_at DESC`
+       WHERE ${scope ? 'u.branch_id = $1' : 'u.branch_id IS NULL'}
+       ORDER BY u.created_at DESC`,
+      scope ? [scope] : []
     );
     res.json({ users: result.rows });
   } catch (err) {

@@ -796,10 +796,10 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), asy
       } else {
         // Brak tovar — omborga QAYTMAYDI, ziyon sifatida xarajatga yoziladi
         await client.query(
-          `INSERT INTO expenses (category, amount, description, expense_date, created_by)
-           VALUES ($1,$2,$3,$4,$5)`,
+          `INSERT INTO expenses (category, amount, description, expense_date, created_by, branch_id)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
           ['OTHER', lossAmount, `Brak tovar (vozvrat): ${prodName} x${qty}${reason ? ' — ' + reason : ''}`,
-           todayUZB(), req.user.id]
+           todayUZB(), req.user.id, sale.branch_id || null]
         );
       }
 

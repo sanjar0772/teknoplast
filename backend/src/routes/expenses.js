@@ -22,6 +22,9 @@ router.get('/', async (req, res, next) => {
     if (start_date) { sql += ` AND e.expense_date >= $${idx++}`; params.push(start_date); }
     if (end_date)   { sql += ` AND e.expense_date <= $${idx++}`; params.push(end_date); }
     if (category)   { sql += ` AND e.category = $${idx++}`; params.push(category); }
+    // FILIAL AJRATISH: filial faqat o'z xarajatlari; zavod faqat zavodnikini
+    if (req.user.branch_id) { sql += ` AND e.branch_id = $${idx++}`; params.push(req.user.branch_id); }
+    else { sql += ` AND e.branch_id IS NULL`; }
 
     const countResult = await query(`SELECT COUNT(*) as count FROM (${sql}) t`, params);
     const total = parseInt(countResult.rows[0]?.count ?? countResult.rows[0]?.['COUNT(*)'] ?? 0);
@@ -39,25 +42,28 @@ router.get('/summary', async (req, res, next) => {
   try {
     const { month } = req.query;
     const period = month || new Date().toISOString().slice(0, 7);
+    // FILIAL AJRATISH: filial faqat o'z xarajatlari; zavod faqat zavodnikini
+    const bScope = req.user.branch_id ? ' AND branch_id = $2' : ' AND branch_id IS NULL';
+    const bParams = req.user.branch_id ? [period, req.user.branch_id] : [period];
 
     const total = await query(`
       SELECT COALESCE(SUM(amount), 0) as total FROM expenses
-      WHERE TO_CHAR(expense_date, 'YYYY-MM') = $1
-    `, [period]);
+      WHERE TO_CHAR(expense_date, 'YYYY-MM') = $1${bScope}
+    `, bParams);
 
     const byCategory = await query(`
       SELECT category, COALESCE(SUM(amount), 0) as total, COUNT(*) as count
       FROM expenses
-      WHERE TO_CHAR(expense_date, 'YYYY-MM') = $1
+      WHERE TO_CHAR(expense_date, 'YYYY-MM') = $1${bScope}
       GROUP BY category ORDER BY total DESC
-    `, [period]);
+    `, bParams);
 
     const byDay = await query(`
       SELECT TO_CHAR(expense_date, 'YYYY-MM-DD') as day, SUM(amount) as total
       FROM expenses
-      WHERE TO_CHAR(expense_date, 'YYYY-MM') = $1
+      WHERE TO_CHAR(expense_date, 'YYYY-MM') = $1${bScope}
       GROUP BY expense_date ORDER BY expense_date
-    `, [period]);
+    `, bParams);
 
     res.json({
       total: total.rows[0].total,
@@ -85,8 +91,8 @@ router.post('/', requireRole('OWNER', 'ACCOUNTANT', 'TAMINOTCHI'), [
     }
 
     const result = await query(
-      'INSERT INTO expenses (category, amount, description, expense_date, created_by, raw_material_id, quantity) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-      [category, amount, description, expense_date || new Date(), req.user.id, raw_material_id || null, quantity || null]
+      'INSERT INTO expenses (category, amount, description, expense_date, created_by, raw_material_id, quantity, branch_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+      [category, amount, description, expense_date || new Date(), req.user.id, raw_material_id || null, quantity || null, req.user.branch_id || null]
     );
 
     // Xom ashyo sarfi qayd etilgan bo'lsa — ombor balansidan kamaytiramiz (Qoldiq hisoboti uchun)

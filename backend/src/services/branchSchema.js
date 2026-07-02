@@ -92,6 +92,9 @@ async function ensureBranchSchema() {
           `ALTER TABLE customers ADD COLUMN IF NOT EXISTS branch_id UUID`,
           `ALTER TABLE sale_returns ADD COLUMN IF NOT EXISTS branch_id UUID`,
           `ALTER TABLE product_intakes ADD COLUMN IF NOT EXISTS branch_id UUID`,
+          `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS branch_id UUID`,
+          `ALTER TABLE employees ADD COLUMN IF NOT EXISTS branch_id UUID`,
+          `ALTER TABLE machines ADD COLUMN IF NOT EXISTS branch_id UUID`,
         ]
       : [
           `ALTER TABLE users ADD COLUMN branch_id TEXT`,
@@ -101,6 +104,9 @@ async function ensureBranchSchema() {
           `ALTER TABLE customers ADD COLUMN branch_id TEXT`,
           `ALTER TABLE sale_returns ADD COLUMN branch_id TEXT`,
           `ALTER TABLE product_intakes ADD COLUMN branch_id TEXT`,
+          `ALTER TABLE expenses ADD COLUMN branch_id TEXT`,
+          `ALTER TABLE employees ADD COLUMN branch_id TEXT`,
+          `ALTER TABLE machines ADD COLUMN branch_id TEXT`,
         ];
     for (const sql of addCols) {
       try { await db.query(sql); } catch (e) { /* ustun allaqachon mavjud */ }

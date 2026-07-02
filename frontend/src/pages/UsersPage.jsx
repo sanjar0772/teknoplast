@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, UserCheck, UserX, Shield, KeyRound, Copy, Trash2 } from 'lucide-react';
-import { authAPI } from '../services/api';
+import { Plus, X, UserCheck, UserX, Shield, KeyRound, Copy, Trash2, Store } from 'lucide-react';
+import { authAPI, branchesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
 const ROLES = [
@@ -15,6 +15,7 @@ const ROLES = [
   { value: 'OMBORCHI',        label: 'Omborchi',                    cls: 'badge-gray' },
   { value: 'TAMINOTCHI',      label: "Ta'minotchi",                 cls: 'badge-green' },
   { value: 'CYCLE_TIME',      label: 'Cycle-time operatori',        cls: 'badge-blue' },
+  { value: 'AGENT',           label: 'Sotuv agenti (distansion)',   cls: 'badge-blue' },
 ];
 const roleInfo = (r) => ROLES.find(x => x.value === r) || { label: r, cls: 'badge-gray' };
 
@@ -44,6 +45,12 @@ export default function UsersPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['users'],
     queryFn: () => authAPI.getUsers().then(r => r.data),
+  });
+
+  // Filiallar — foydalanuvchini filialga biriktirish uchun
+  const { data: branchesData } = useQuery({
+    queryKey: ['branches'],
+    queryFn: () => branchesAPI.getAll().then(r => r.data),
   });
 
   const createMutation = useMutation({
@@ -111,7 +118,14 @@ export default function UsersPage() {
                     {u.full_name} {isMe && <span className="text-xs text-blue-500">(siz)</span>}
                   </td>
                   <td className="whitespace-nowrap">{u.phone}</td>
-                  <td><span className={info.cls}>{info.label}</span></td>
+                  <td>
+                    <span className={info.cls}>{info.label}</span>
+                    {u.branch_name && (
+                      <div className="text-[11px] text-blue-500 mt-0.5 flex items-center gap-0.5">
+                        <Store size={10} /> {u.branch_name}
+                      </div>
+                    )}
+                  </td>
                   <td>
                     {u.is_active
                       ? <span className="badge-green">Faol</span>
@@ -182,6 +196,20 @@ export default function UsersPage() {
               {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
           </div>
+          {(branchesData?.branches || []).length > 0 && (
+            <div>
+              <label className="label flex items-center gap-1"><Store size={13} /> Filial (ixtiyoriy)</label>
+              <select {...register('branch_id')} className="select">
+                <option value="">Zavod (asosiy)</option>
+                {branchesData.branches.filter(b => b.is_active).map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">
+                Filial tanlansa — bu foydalanuvchi o'sha filial omboridan sotadi.
+              </p>
+            </div>
+          )}
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={() => setShowForm(false)} className="btn-secondary flex-1">Bekor</button>
             <button type="submit" disabled={createMutation.isPending} className="btn-primary flex-1">

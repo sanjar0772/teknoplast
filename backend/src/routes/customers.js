@@ -231,7 +231,7 @@ router.post('/import-debts', requireRole('OWNER'), async (req, res, next) => {
 });
 
 // POST /api/customers — yangi mijoz
-router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), [
+router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), [
   body('name').notEmpty().trim().withMessage('Mijoz ismi kerak'),
   body('phone').optional().trim(),
   body('customer_type').optional().isIn(['RETAIL', 'WHOLESALE', 'VIP']),

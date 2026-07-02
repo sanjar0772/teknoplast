@@ -97,6 +97,17 @@ export const fulfillmentAPI = {
   exportPDF:   (params) => api.get('/fulfillment/export/pdf',   { params, responseType: 'blob' }),
 };
 
+// Filiallar (branch) — sotuv nuqtalari, alohida ombor
+export const branchesAPI = {
+  getAll: () => api.get('/branches'),
+  create: (data) => api.post('/branches', data),
+  update: (id, data) => api.put(`/branches/${id}`, data),
+  getStock: (id) => api.get(`/branches/${id}/stock`),
+  transfer: (id, data) => api.post(`/branches/${id}/transfer`, data),
+  getTransfers: (id) => api.get(`/branches/${id}/transfers`),
+  getSummary: (id, params) => api.get(`/branches/${id}/summary`, { params }),
+};
+
 // Expenses
 export const expensesAPI = {
   getAll: (params) => api.get('/expenses', { params }),

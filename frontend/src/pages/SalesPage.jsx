@@ -524,6 +524,9 @@ export default function SalesPage({ embedded = false }) {
                       ) : (
                         <span className="badge-gray">Aralash</span>
                       )}
+                      {first.delivery_type === 'DELIVERY' && (
+                        <div className="text-[10px] text-amber-600 font-medium mt-0.5">🚚 Dostavka</div>
+                      )}
                     </td>
                     <td>
                       <div className="flex gap-2">

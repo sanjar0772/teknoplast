@@ -6,6 +6,7 @@ const { requireRole } = require('../middleware/rbac');
 const { logAudit } = require('../services/auditService');
 const reportService = require('../services/reportService');
 const { getColorStock, addColorStock } = require('../utils/colorStock');
+const { getBranchStock, addBranchStock } = require('../services/branchSchema');
 const { todayUZB, monthUZB } = require('../utils/date');
 const saleReturns = require('../services/saleReturns');
 
@@ -54,6 +55,8 @@ router.get('/', async (req, res, next) => {
     if (end_date)   { sql += ` AND s.sale_date <= $${idx++}`; params.push(end_date); }
     if (status)     { sql += ` AND s.status = $${idx++}`; params.push(status); }
     if (customer)   { sql += ` AND s.customer_name ILIKE $${idx++}`; params.push(`%${customer}%`); }
+    // AGENT faqat o'z savdolarini ko'radi
+    if (req.user.role === 'AGENT') { sql += ` AND s.created_by = $${idx++}`; params.push(req.user.id); }
 
     const countResult = await query(`SELECT COUNT(*) as count FROM (${sql}) t`, params);
     const total = parseInt(countResult.rows[0]?.count ?? countResult.rows[0]?.['COUNT(*)'] ?? 0);
@@ -235,7 +238,7 @@ router.get('/:id/invoice-pdf', async (req, res, next) => {
 });
 
 // POST /api/sales
-router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), [
+router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), [
   body('product_id').notEmpty().withMessage('product_id kerak'),
   body('quantity').isInt({ min: 1 }),
   body('unit_price').isFloat({ min: 0 }),
@@ -245,9 +248,11 @@ router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), [
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { product_id, customer_id, quantity, unit_price, customer_name, customer_phone, sale_date, status, payment_amount, discount_id, notes, rang } = req.body;
+    const { product_id, customer_id, quantity, unit_price, customer_name, customer_phone, sale_date, status, payment_amount, discount_id, notes, rang, delivery_type } = req.body;
     if (!customer_id) return res.status(400).json({ error: 'Mijozni tanlang — savdo faqat mijozga qilinadi' });
     const total_amount = quantity * unit_price;
+    // Filialga biriktirilgan foydalanuvchi — filial omboridan sotadi
+    const branchId = req.user.branch_id || null;
 
     // Mijoz tanlangan bo'lsa, ism/telefonni avtomatik to'ldirish
     let custName = customer_name, custPhone = customer_phone;
@@ -261,9 +266,16 @@ router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), [
 
     const product = await query('SELECT name FROM products WHERE id = $1', [product_id]);
     if (!product.rows.length) return res.status(404).json({ error: 'Mahsulot topilmadi' });
-    const availColor = await getColorStock(query, product_id, rang);
-    if (availColor < quantity) {
-      return res.status(400).json({ error: `"${product.rows[0].name}" — ${rangLabel(rang)} rangidan faqat ${availColor} dona bor (so'ralgan: ${quantity})` });
+    if (branchId) {
+      const availBranch = await getBranchStock(query, branchId, product_id, rang);
+      if (availBranch < quantity) {
+        return res.status(400).json({ error: `Filial omborida "${product.rows[0].name}" — ${rangLabel(rang)} rangidan faqat ${availBranch} dona bor (so'ralgan: ${quantity})` });
+      }
+    } else {
+      const availColor = await getColorStock(query, product_id, rang);
+      if (availColor < quantity) {
+        return res.status(400).json({ error: `"${product.rows[0].name}" — ${rangLabel(rang)} rangidan faqat ${availColor} dona bor (so'ralgan: ${quantity})` });
+      }
     }
 
     const order_ref = await genOrderRef();
@@ -272,16 +284,21 @@ router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), [
       await client.query('BEGIN');
       const saleResult = await client.query(
         `INSERT INTO sales (product_id, customer_id, quantity, unit_price, total_amount, customer_name, customer_phone,
-          sale_date, status, payment_amount, discount_id, notes, created_by, order_ref, rang)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+          sale_date, status, payment_amount, discount_id, notes, created_by, order_ref, rang, branch_id, delivery_type)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
         [product_id, customer_id || null, quantity, unit_price, total_amount, custName, custPhone,
-         sale_date || todayUZB(), status || 'PENDING', payment_amount || 0, discount_id || null, notes, req.user.id, order_ref, rang || null]
+         sale_date || todayUZB(), status || 'PENDING', payment_amount || 0, discount_id || null, notes, req.user.id, order_ref, rang || null,
+         branchId, delivery_type === 'DELIVERY' ? 'DELIVERY' : 'PICKUP']
       );
-      await client.query(
-        'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW() WHERE id = $2',
-        [quantity, product_id]
-      );
-      await addColorStock(client.query, product_id, rang, -quantity);
+      if (branchId) {
+        await addBranchStock(client.query, branchId, product_id, rang, -quantity);
+      } else {
+        await client.query(
+          'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW() WHERE id = $2',
+          [quantity, product_id]
+        );
+        await addColorStock(client.query, product_id, rang, -quantity);
+      }
       await client.query('COMMIT');
       const sale = saleResult.rows[0];
       logAudit(req, {
@@ -299,15 +316,18 @@ router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), [
 });
 
 // POST /api/sales/bulk — bir nechta mahsulotni bitta chekda sotish
-router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
+router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), async (req, res, next) => {
   try {
-    const { customer_id, customer_name, customer_phone, sale_date, status, items, notes, payment_amount: reqPayment } = req.body;
+    const { customer_id, customer_name, customer_phone, sale_date, status, items, notes, payment_amount: reqPayment, delivery_type } = req.body;
     if (!Array.isArray(items) || !items.length) {
       return res.status(400).json({ error: 'Kamida bitta mahsulot kerak' });
     }
     if (!customer_id) {
       return res.status(400).json({ error: 'Mijozni tanlang — savdo faqat mijozga qilinadi' });
     }
+    // Filialga biriktirilgan foydalanuvchi — filial omboridan sotadi
+    const branchId = req.user.branch_id || null;
+    const deliveryType = delivery_type === 'DELIVERY' ? 'DELIVERY' : 'PICKUP';
 
     // Mijoz ma'lumotini olish
     let custName = customer_name, custPhone = customer_phone;
@@ -319,14 +339,16 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (re
       }
     }
 
-    // Ombor yetarliligini tekshirish — RANG bo'yicha
+    // Ombor yetarliligini tekshirish — RANG bo'yicha (filial bo'lsa — filial ombori)
     for (const it of items) {
       const p = await query('SELECT name FROM products WHERE id = $1', [it.product_id]);
       if (!p.rows.length) return res.status(404).json({ error: `Mahsulot topilmadi: ${it.product_id}` });
-      const avail = await getColorStock(query, it.product_id, it.rang);
+      const avail = branchId
+        ? await getBranchStock(query, branchId, it.product_id, it.rang)
+        : await getColorStock(query, it.product_id, it.rang);
       if (avail < it.quantity) {
         return res.status(400).json({
-          error: `"${p.rows[0].name}" — ${rangLabel(it.rang)} rangidan faqat ${avail} dona bor (so'ralgan: ${it.quantity})`
+          error: `${branchId ? 'Filial omborida ' : ''}"${p.rows[0].name}" — ${rangLabel(it.rang)} rangidan faqat ${avail} dona bor (so'ralgan: ${it.quantity})`
         });
       }
     }
@@ -369,16 +391,20 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (re
         }
         const r = await client.query(
           `INSERT INTO sales (product_id, customer_id, quantity, unit_price, total_amount,
-            customer_name, customer_phone, sale_date, status, payment_amount, notes, created_by, order_ref, rang)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+            customer_name, customer_phone, sale_date, status, payment_amount, notes, created_by, order_ref, rang, branch_id, delivery_type)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
           [it.product_id, customer_id || null, qty, price, total, custName, custPhone,
-           saleDate, saleStatus, itemPaid, notes || null, req.user.id, order_ref, it.rang || null]
+           saleDate, saleStatus, itemPaid, notes || null, req.user.id, order_ref, it.rang || null, branchId, deliveryType]
         );
-        await client.query(
-          'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW() WHERE id = $2',
-          [qty, it.product_id]
-        );
-        await addColorStock(client.query, it.product_id, it.rang, -qty);
+        if (branchId) {
+          await addBranchStock(client.query, branchId, it.product_id, it.rang, -qty);
+        } else {
+          await client.query(
+            'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW() WHERE id = $2',
+            [qty, it.product_id]
+          );
+          await addColorStock(client.query, it.product_id, it.rang, -qty);
+        }
         created.push(r.rows[0]);
       }
       await client.query('COMMIT');
@@ -414,7 +440,7 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (re
 });
 
 // PUT /api/sales/:id/status
-router.put('/:id/status', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
+router.put('/:id/status', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), async (req, res, next) => {
   try {
     const { status, payment_amount } = req.body;
     if (!['PENDING', 'PAID', 'PARTIALLY_PAID'].includes(status)) {
@@ -548,7 +574,7 @@ router.get('/:id/payments', async (req, res, next) => {
 });
 
 // POST /api/sales/:id/payments — to'lov kiritish (bo'lib-bo'lib to'lash)
-router.post('/:id/payments', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
+router.post('/:id/payments', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), async (req, res, next) => {
   try {
     const { amount, method, payment_date, notes, allow_overpay, payment_ref } = req.body;
     const amt = parseFloat(amount);

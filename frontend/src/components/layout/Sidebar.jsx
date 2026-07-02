@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   LayoutDashboard, ShoppingCart, Receipt, Users, Factory,
   Banknote, Package, Warehouse, Cog, FileBarChart, Bot,
-  LogOut, ChevronRight, UserSquare2, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X, Sparkles, ShoppingBag, Boxes, History, RotateCcw, Scale
+  LogOut, ChevronRight, UserSquare2, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X, Sparkles, ShoppingBag, Boxes, History, RotateCcw, Scale, Store
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { authAPI } from '../../services/api';
@@ -19,12 +19,13 @@ const ROLE_LABELS = {
   KIRIMCHI: 'Mahsulot Kirimchi',
   OMBORCHI: 'Omborchi',
   TAMINOTCHI: "Ta'minotchi",
+  AGENT: 'Sotuv agenti',
 };
 
 const NAV_ITEMS = [
   { to: '/',           icon: LayoutDashboard, label: 'Bosh Sahifa',      roles: null },
-  { to: '/history',    icon: History,         label: 'Tarix',            roles: ['OWNER','ACCOUNTANT','SALES_HEAD'] },
-  { to: '/customers',  icon: UserSquare2,     label: 'Mijozlar',         roles: ['OWNER','ACCOUNTANT','SALES_HEAD'] },
+  { to: '/history',    icon: History,         label: 'Tarix',            roles: ['OWNER','ACCOUNTANT','SALES_HEAD','AGENT'] },
+  { to: '/customers',  icon: UserSquare2,     label: 'Mijozlar',         roles: ['OWNER','ACCOUNTANT','SALES_HEAD','AGENT'] },
   { to: '/debts',      icon: Wallet,          label: 'Qarzlar',          roles: ['OWNER','ACCOUNTANT','SALES_HEAD'] },
   { to: '/vozvrat',    icon: RotateCcw,       label: 'Vozvratlar',       roles: ['OWNER','ACCOUNTANT','SALES_HEAD'] },
   { to: '/expenses',   icon: Receipt,         label: 'Xarajatlar',       roles: ['OWNER','ACCOUNTANT','TAMINOTCHI'] },
@@ -35,9 +36,10 @@ const NAV_ITEMS = [
   { to: '/salaries',   icon: Banknote,        label: 'Maoshlar',         roles: ['OWNER','ACCOUNTANT'] },
   { to: '/products',   icon: Package,         label: 'Mahsulotlar',      roles: ['OWNER','PRODUCTION_HEAD','SALES_HEAD','KIRIMCHI'] },
   { to: '/components', icon: Boxes,           label: 'Komponentlar',     roles: ['OWNER','PRODUCTION_HEAD','KIRIMCHI'] },
-  { to: '/quick-sale', icon: ShoppingBag,     label: 'Savdo qilish',     roles: ['OWNER','ACCOUNTANT','SALES_HEAD'] },
+  { to: '/quick-sale', icon: ShoppingBag,     label: 'Savdo qilish',     roles: ['OWNER','ACCOUNTANT','SALES_HEAD','AGENT'] },
   { to: '/inventory',  icon: Warehouse,       label: 'Ombor',            roles: ['OWNER','ACCOUNTANT','PRODUCTION_HEAD','KIRIMCHI','OMBORCHI','TAMINOTCHI','SALES_HEAD'] },
   { to: '/machines',   icon: Cog,             label: 'Mashinalar',       roles: ['OWNER','PRODUCTION_HEAD','CYCLE_TIME'] },
+  { to: '/branches',   icon: Store,           label: 'Filiallar',        roles: ['OWNER'] },
   // Tarozi vaqtincha yashirilgan (2026-07-01) — keyin qayta yoqiladi
   // { to: '/tarozi',     icon: Scale,           label: 'Tarozi',           roles: ['OWNER','KIRIMCHI','OMBORCHI','SALES_HEAD','PRODUCTION_HEAD'] },
   { to: '/reports',    icon: FileBarChart,    label: 'Hisobotlar',       roles: ['OWNER','ACCOUNTANT'] },

@@ -35,6 +35,11 @@ const ROLE_PERMISSIONS = {
     'machines:read', 'machines:write',
     'products:read'
   ],
+  AGENT: [
+    // Sotuv agenti — distansion: mijoz topadi, sotadi, dostavka belgilaydi
+    'sales:read', 'sales:write',
+    'products:read', 'customers:read', 'customers:write'
+  ],
 };
 
 const requireRole = (...roles) => (req, res, next) => {

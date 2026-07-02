@@ -56,6 +56,7 @@ app.use('/api/machines', require('./routes/machines'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/ahmad', require('./routes/ahmad'));
+app.use('/api/branches', require('./routes/branches'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString(), env: process.env.NODE_ENV });
@@ -147,6 +148,11 @@ require('./services/rawMaterialLedger')
 require('./services/saleReturns')
   .ensureReturnsSchema()
   .catch(e => console.error('Sale returns init xato:', e.message));
+
+// Filial (branch) tizimi jadvallarini tayyorlash
+require('./services/branchSchema')
+  .ensureBranchSchema()
+  .catch(e => console.error('Branch schema init xato:', e.message));
 
 // Inventarizatsiya tarixi jadvalini tayyorlash
 require('./services/inventoryAudit')

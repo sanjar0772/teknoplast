@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Search, Plus, Trash2, ShoppingCart, X, Package, CheckCircle, Eraser, FileDown, QrCode, FileText, Tag
+  Search, Plus, Trash2, ShoppingCart, X, Package, CheckCircle, Eraser, FileDown, QrCode, FileText, Tag, Truck
 } from 'lucide-react';
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import { productsAPI, customersAPI, salesAPI, fulfillmentAPI } from '../services/api';
@@ -81,6 +81,7 @@ export default function QuickSalePage() {
   const [activeIdx, setActiveIdx] = useState(loadActiveIdx);
   const [search, setSearch] = useState('');
   const [lastOrder, setLastOrder] = useState(null);
+  const [delivery, setDelivery] = useState(false); // dostavka (yetkazib berish) belgisi
 
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions)); } catch {}
@@ -244,6 +245,7 @@ export default function QuickSalePage() {
       });
       setSessions(ss => ss.map((ses, i) => i === idx ? { ...ses, cart: [], payCash: '', payCard: '', payBank: '', payPayme: '', payClick: '', discount: '' } : ses));
       setSearch('');
+      setDelivery(false);
     },
   });
 
@@ -309,6 +311,7 @@ export default function QuickSalePage() {
       payment_amount: paidTotal,
       notes: `To'lov: ${noteParts.join(' · ')}`,
       items: itemsOut,
+      delivery_type: delivery ? 'DELIVERY' : 'PICKUP',
     });
   };
 
@@ -771,6 +774,15 @@ export default function QuickSalePage() {
                 </div>
                 {discountAmt > 0 && <span className="text-[11px] text-rose-600 font-medium">−{fmt(discountAmt)} so'm</span>}
               </div>
+              {/* Dostavka (yetkazib berish) belgisi */}
+              <button type="button" onClick={() => setDelivery(d => !d)}
+                className={`w-full flex items-center justify-center gap-1.5 rounded-lg border py-1.5 text-xs font-medium transition-colors ${
+                  delivery
+                    ? 'bg-amber-500 text-white border-amber-500'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-amber-400 hover:text-amber-600'
+                }`}>
+                <Truck size={13} /> {delivery ? 'Dostavka orqali ✓' : 'Dostavka orqali'}
+              </button>
               {/* Yakuniy summa + Sotish */}
               <div className="flex items-center justify-between">
                 <div>

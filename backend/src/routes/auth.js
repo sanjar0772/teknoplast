@@ -63,6 +63,7 @@ router.post('/login', [
         phone: user.phone,
         full_name: user.full_name,
         role: user.role,
+        branch_id: user.branch_id || null,
       },
     });
   } catch (err) {
@@ -75,7 +76,7 @@ router.post('/register', authenticate, [
   body('phone').notEmpty().withMessage('Telefon kiritilmagan'),
   body('password').isLength({ min: 6 }).withMessage('Parol kamida 6 belgi'),
   body('full_name').notEmpty().withMessage('Ism kiritilmagan'),
-  body('role').isIn(['OWNER', 'ACCOUNTANT', 'SALES_HEAD', 'PRODUCTION_HEAD', 'KIRIMCHI', 'OMBORCHI', 'TAMINOTCHI', 'CYCLE_TIME']).withMessage('Noto\'g\'ri rol'),
+  body('role').isIn(['OWNER', 'ACCOUNTANT', 'SALES_HEAD', 'PRODUCTION_HEAD', 'KIRIMCHI', 'OMBORCHI', 'TAMINOTCHI', 'CYCLE_TIME', 'AGENT']).withMessage('Noto\'g\'ri rol'),
 ], async (req, res, next) => {
   try {
     if (req.user.role !== 'OWNER') {
@@ -87,12 +88,12 @@ router.post('/register', authenticate, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { phone, password, full_name, role } = req.body;
+    const { phone, password, full_name, role, branch_id } = req.body;
     const password_hash = await bcrypt.hash(password, 10);
 
     const result = await query(
-      'INSERT INTO users (phone, password_hash, full_name, role) VALUES ($1, $2, $3, $4) RETURNING id, phone, full_name, role',
-      [phone, password_hash, full_name, role]
+      'INSERT INTO users (phone, password_hash, full_name, role, branch_id) VALUES ($1, $2, $3, $4, $5) RETURNING id, phone, full_name, role, branch_id',
+      [phone, password_hash, full_name, role, branch_id || null]
     );
 
     res.status(201).json({ user: result.rows[0] });
@@ -141,7 +142,10 @@ router.get('/users', authenticate, async (req, res, next) => {
       return res.status(403).json({ error: 'Ruxsat yo\'q' });
     }
     const result = await query(
-      'SELECT id, phone, full_name, role, is_active, last_login, created_at FROM users ORDER BY created_at DESC'
+      `SELECT u.id, u.phone, u.full_name, u.role, u.is_active, u.last_login, u.created_at,
+              u.branch_id, b.name AS branch_name
+       FROM users u LEFT JOIN branches b ON u.branch_id = b.id
+       ORDER BY u.created_at DESC`
     );
     res.json({ users: result.rows });
   } catch (err) {

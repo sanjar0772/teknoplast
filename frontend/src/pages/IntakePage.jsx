@@ -1181,9 +1181,11 @@ export default function IntakePage() {
   // Tahrirlash/o'chirish — backend ruxsati bilan bir xil (OWNER/PRODUCTION_HEAD/KIRIMCHI)
   const canEdit = isOwner() || isProductionHead() || isKirimchi();
 
+  // FILIAL foydalanuvchisida "Ishchilar ishi" YO'Q — filialда ishlab chiqarish/ishchi bo'lmaydi
+  const isBranch = !!user?.branch_id;
   const TABS = [
     { key: 'intake',  label: 'Mahsulot kirimi', icon: PackagePlus },
-    { key: 'workers', label: 'Ishchilar ishi',   icon: Users },
+    ...(isBranch ? [] : [{ key: 'workers', label: 'Ishchilar ishi', icon: Users }]),
   ];
 
   return (

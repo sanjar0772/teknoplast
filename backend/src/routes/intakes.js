@@ -25,7 +25,10 @@ router.get('/', async (req, res, next) => {
       WHERE 1=1
     `;
     const params = [];
-    if (status) { sql += ` AND i.status = $1`; params.push(status); }
+    if (status) { sql += ` AND i.status = $${params.length + 1}`; params.push(status); }
+    // FILIAL AJRATISH: filial faqat o'z kirimlarini; zavod faqat zavodnikini
+    if (req.user.branch_id) { sql += ` AND i.branch_id = $${params.length + 1}`; params.push(req.user.branch_id); }
+    else { sql += ` AND i.branch_id IS NULL`; }
     sql += ' ORDER BY i.created_at DESC';
     const result = await query(sql, params);
     res.json({ intakes: result.rows });
@@ -33,7 +36,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // Kirimlarni (intake_items yassilangan) olish — Excel/PDF eksport uchun
-async function fetchIntakeRows({ status, start_date, end_date }) {
+async function fetchIntakeRows({ status, start_date, end_date, branchId }) {
   let sql = `
     SELECT i.id, i.status, i.notes, i.created_at, i.approved_at,
            u.full_name AS created_by_name, a.full_name AS approved_by_name,
@@ -50,6 +53,9 @@ async function fetchIntakeRows({ status, start_date, end_date }) {
   if (status)     { sql += ` AND i.status = $${idx++}`; params.push(status); }
   if (start_date) { sql += ` AND DATE(i.created_at) >= $${idx++}`; params.push(start_date); }
   if (end_date)   { sql += ` AND DATE(i.created_at) <= $${idx++}`; params.push(end_date); }
+  // FILIAL AJRATISH: filial faqat o'z kirimlari; zavod faqat zavodnikini
+  if (branchId) { sql += ` AND i.branch_id = $${idx++}`; params.push(branchId); }
+  else { sql += ` AND i.branch_id IS NULL`; }
   sql += ' ORDER BY i.created_at DESC, p.name';
   return (await query(sql, params)).rows;
 }
@@ -58,7 +64,7 @@ async function fetchIntakeRows({ status, start_date, end_date }) {
 router.get('/excel', async (req, res, next) => {
   try {
     const { status, start_date, end_date } = req.query;
-    const rows = await fetchIntakeRows({ status, start_date, end_date });
+    const rows = await fetchIntakeRows({ status, start_date, end_date, branchId: req.user.branch_id || null });
     const reportService = require('../services/reportService');
     const buffer = await reportService.generateIntakesExcel(rows, { status, start_date, end_date });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -71,7 +77,7 @@ router.get('/excel', async (req, res, next) => {
 router.get('/pdf', async (req, res, next) => {
   try {
     const { status, start_date, end_date } = req.query;
-    const rows = await fetchIntakeRows({ status, start_date, end_date });
+    const rows = await fetchIntakeRows({ status, start_date, end_date, branchId: req.user.branch_id || null });
     const reportService = require('../services/reportService');
     const buffer = await reportService.generateIntakesPDF(rows, { status, start_date, end_date });
     res.setHeader('Content-Type', 'application/pdf');
@@ -118,9 +124,10 @@ router.post('/', requireRole('OWNER', 'KIRIMCHI', 'PRODUCTION_HEAD', 'SALES_HEAD
     const client = await require('../db').getClient();
     try {
       await client.query('BEGIN');
+      // Filial foydalanuvchisi kirim qilsa — o'sha filialniki (branch_id); zavod bo'lsa NULL.
       const intakeR = await client.query(
-        `INSERT INTO product_intakes (status, notes, created_by) VALUES ('PENDING', $1, $2) RETURNING *`,
-        [notes || null, req.user.id]
+        `INSERT INTO product_intakes (status, notes, created_by, branch_id) VALUES ('PENDING', $1, $2, $3) RETURNING *`,
+        [notes || null, req.user.id, req.user.branch_id || null]
       );
       const intake = intakeR.rows[0];
       for (const it of items) {

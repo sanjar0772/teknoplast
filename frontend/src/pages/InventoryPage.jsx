@@ -33,6 +33,8 @@ export default function InventoryPage() {
   const qc = useQueryClient();
   // Ta'minotchi (Owner emas) — faqat Xom ashyo bo'limini ko'radi, Tayyor mahsulot ombori unga ko'rinmaydi
   const taminotchiOnly = user?.role === 'TAMINOTCHI';
+  // FILIAL foydalanuvchisi — faqat O'Z ombori (Tayyor mahsulotlar); ishlab chiqarish/xom ashyo YO'Q
+  const isBranch = !!user?.branch_id;
   const [tab, setTab] = useState(taminotchiOnly ? 'raw' : 'products'); // 'products' | 'raw'
   const [showRmModal, setShowRmModal] = useState(false);
   const [showCompModal, setShowCompModal] = useState(false); // ishlab chiqarish ombori — mahsulot qo'shish
@@ -326,7 +328,9 @@ export default function InventoryPage() {
     { key: 'production', label: 'Ishlab chiqarish ombori', icon: Factory },
     { key: 'raw',        label: 'Xom ashyo',              icon: Boxes },
     ...(isOwner() ? [{ key: 'audit', label: 'Inventarizatsiya', icon: ClipboardList }] : []),
-  ].filter(t => !(taminotchiOnly && (t.key === 'products' || t.key === 'production' || t.key === 'audit')));
+  ].filter(t => !(taminotchiOnly && (t.key === 'products' || t.key === 'production' || t.key === 'audit')))
+   // Filial faqat o'z omborini (Tayyor mahsulotlar) ko'radi — ishlab chiqarish/xom ashyo/inventarizatsiya yo'q
+   .filter(t => !(isBranch && t.key !== 'products'));
 
   return (
     <div className="space-y-6">

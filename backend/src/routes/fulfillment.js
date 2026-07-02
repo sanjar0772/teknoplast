@@ -12,9 +12,13 @@ router.use(authenticate);
 router.get('/', async (req, res, next) => {
   try {
     const { status } = req.query; // PENDING (default) yoki DELIVERED yoki all
+    const params = [];
     let cond = "s.order_ref IS NOT NULL";
     if (status === 'DELIVERED') cond += " AND s.fulfillment_status='DELIVERED'";
     else if (status !== 'all') cond += " AND s.fulfillment_status='PENDING'";
+    // FILIAL AJRATISH: filial faqat o'z buyurtmalarini; zavod faqat zavodnikini
+    if (req.user.branch_id) { cond += ` AND s.branch_id = $${params.length + 1}`; params.push(req.user.branch_id); }
+    else { cond += ` AND s.branch_id IS NULL`; }
 
     const result = await query(`
       SELECT s.order_ref,
@@ -30,7 +34,7 @@ router.get('/', async (req, res, next) => {
       WHERE ${cond}
       GROUP BY s.order_ref
       ORDER BY created_at DESC
-    `);
+    `, params);
     res.json({ orders: result.rows });
   } catch (err) { next(err); }
 });
@@ -102,12 +106,15 @@ router.get('/:ref/nakladnoy', async (req, res, next) => {
 });
 
 // Berilgan buyurtmalarni davr bo'yicha olish (Excel/PDF eksport uchun umumiy)
-async function fetchDeliveredRange(start_date, end_date) {
+async function fetchDeliveredRange(start_date, end_date, branchId) {
   const params = [];
   let where = "s.order_ref IS NOT NULL AND s.fulfillment_status='DELIVERED'";
   let idx = 1;
   if (start_date) { where += ` AND DATE(COALESCE(s.fulfilled_at, s.sale_date)) >= $${idx++}`; params.push(start_date); }
   if (end_date)   { where += ` AND DATE(COALESCE(s.fulfilled_at, s.sale_date)) <= $${idx++}`; params.push(end_date); }
+  // FILIAL AJRATISH: filial faqat o'z berilgan buyurtmalari; zavod faqat zavodnikini
+  if (branchId) { where += ` AND s.branch_id = $${idx++}`; params.push(branchId); }
+  else { where += ` AND s.branch_id IS NULL`; }
 
   const result = await query(`
     SELECT s.order_ref,
@@ -130,7 +137,7 @@ async function fetchDeliveredRange(start_date, end_date) {
 router.get('/export/excel', async (req, res, next) => {
   try {
     const { start_date, end_date } = req.query;
-    const rows = await fetchDeliveredRange(start_date, end_date);
+    const rows = await fetchDeliveredRange(start_date, end_date, req.user.branch_id || null);
     const buf = await reportService.generateFulfillmentExcel({ rows, start_date, end_date });
     const label = start_date && end_date ? `${start_date}_${end_date}` : (start_date || end_date || 'barcha');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -143,7 +150,7 @@ router.get('/export/excel', async (req, res, next) => {
 router.get('/export/pdf', async (req, res, next) => {
   try {
     const { start_date, end_date } = req.query;
-    const rows = await fetchDeliveredRange(start_date, end_date);
+    const rows = await fetchDeliveredRange(start_date, end_date, req.user.branch_id || null);
     const pdf = await reportService.generateFulfillmentPDF({ rows, start_date, end_date });
     const label = start_date && end_date ? `${start_date}_${end_date}` : (start_date || end_date || 'barcha');
     res.setHeader('Content-Type', 'application/pdf');

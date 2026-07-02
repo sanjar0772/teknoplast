@@ -45,6 +45,9 @@ router.get('/', async (req, res, next) => {
         OR EXISTS (SELECT 1 FROM sale_returns sr2 WHERE sr2.customer_id = c.id AND ${retConds.join(' AND ')})
       )`;
     }
+    // FILIAL AJRATISH: filial faqat o'z mijozlarini; zavod (asosiy) faqat zavodnikini
+    if (req.user.branch_id) { sql += ` AND c.branch_id = $${idx++}`; params.push(req.user.branch_id); }
+    else { sql += ` AND c.branch_id IS NULL`; }
     sql += ' GROUP BY c.id ORDER BY total_purchases DESC, c.name';
 
     const result = await query(sql, params);
@@ -55,18 +58,22 @@ router.get('/', async (req, res, next) => {
 // GET /api/customers/summary — umumiy statistika
 router.get('/summary', async (req, res, next) => {
   try {
+    // FILIAL AJRATISH: filial faqat o'z mijozlari/qarzlari; zavod faqat zavodnikini
+    const scope = req.user.branch_id || null;
+    const cScope = scope ? ' AND branch_id = $1' : ' AND branch_id IS NULL';
+    const cParams = scope ? [scope] : [];
     const result = await query(`
       SELECT
         COUNT(*) as total_customers,
         COUNT(CASE WHEN customer_type='VIP' THEN 1 END) as vip_count,
         COUNT(CASE WHEN customer_type='WHOLESALE' THEN 1 END) as wholesale_count,
         COUNT(CASE WHEN customer_type='RETAIL' THEN 1 END) as retail_count
-      FROM customers WHERE is_active = 1
-    `);
+      FROM customers WHERE is_active = 1${cScope}
+    `, cParams);
     const debt = await query(`
       SELECT COALESCE(SUM(total_amount - payment_amount), 0) as total_debt
-      FROM sales WHERE customer_id IS NOT NULL AND status != 'PAID'
-    `);
+      FROM sales WHERE customer_id IS NOT NULL AND status != 'PAID'${cScope}
+    `, cParams);
     res.json({ summary: { ...result.rows[0], total_debt: debt.rows[0].total_debt } });
   } catch (err) { next(err); }
 });
@@ -243,11 +250,13 @@ router.post('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), [
     const { name, phone, company_name, address, customer_type, credit_limit, notes, created_at } = req.body;
     // Qo'shilgan sana — qo'lda kiritilsa o'sha sana, aks holda bugun
     const createdAt = created_at ? String(created_at).slice(0, 10) : new Date().toISOString();
+    // Filial foydalanuvchisi qo'shsa — mijoz o'sha filialniki (branch_id); zavod bo'lsa NULL.
+    const branchId = req.user.branch_id || null;
     const result = await query(
-      `INSERT INTO customers (name, phone, company_name, address, customer_type, credit_limit, notes, created_by, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      `INSERT INTO customers (name, phone, company_name, address, customer_type, credit_limit, notes, created_by, created_at, branch_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [name, phone || null, company_name || null, address || null,
-       customer_type || 'RETAIL', credit_limit || 0, notes || null, req.user.id, createdAt]
+       customer_type || 'RETAIL', credit_limit || 0, notes || null, req.user.id, createdAt, branchId]
     );
     res.status(201).json({ customer: result.rows[0] });
   } catch (err) { next(err); }
@@ -259,12 +268,18 @@ router.put('/:id', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT'), async (req,
     const { name, phone, company_name, address, customer_type, credit_limit, notes, is_active, created_at } = req.body;
     // Qo'shilgan sana — berilsa yangilanadi, aks holda eskisi qoladi
     const createdAt = created_at ? String(created_at).slice(0, 10) : null;
+    // Filial foydalanuvchisi faqat O'Z mijozini tahrirlaydi (zavodnikiga tegmaydi).
+    const scope = req.user.branch_id || null;
+    const updParams = [name, phone, company_name, address, customer_type, credit_limit, notes,
+      is_active === undefined ? 1 : is_active, createdAt, req.params.id];
+    let whereCond = 'id=$10';
+    if (scope) { updParams.push(scope); whereCond += ' AND branch_id=$11'; }
+    else { whereCond += ' AND branch_id IS NULL'; }
     const result = await query(
       `UPDATE customers SET name=$1, phone=$2, company_name=$3, address=$4,
          customer_type=$5, credit_limit=$6, notes=$7, is_active=$8, created_at=COALESCE($9, created_at), updated_at=NOW()
-       WHERE id=$10 RETURNING *`,
-      [name, phone, company_name, address, customer_type, credit_limit, notes,
-       is_active === undefined ? 1 : is_active, createdAt, req.params.id]
+       WHERE ${whereCond} RETURNING *`,
+      updParams
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Mijoz topilmadi' });
     res.json({ customer: result.rows[0] });

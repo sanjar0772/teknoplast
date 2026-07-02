@@ -8,7 +8,7 @@ const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
 const { logAudit } = require('../services/auditService');
 const { getColorStock, addColorStock } = require('../utils/colorStock');
-const { addBranchStock, getBranchStock } = require('../services/branchSchema');
+const { addBranchStock, getBranchStock, copyProductsToBranch } = require('../services/branchSchema');
 
 const router = express.Router();
 router.use(authenticate);
@@ -21,11 +21,11 @@ router.get('/', async (req, res, next) => {
     const branches = (await query(`SELECT * FROM branches ORDER BY created_at`)).rows;
     const month = new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 7);
     for (const b of branches) {
+      // Filial ombori qiymati = filial O'Z mahsulotlarining qoldig'i (branch_id bo'yicha)
       const stock = await query(`
-        SELECT COALESCE(SUM(bs.quantity), 0) AS total_qty,
-               COALESCE(SUM(bs.quantity * p.price), 0) AS total_value
-        FROM branch_stock bs JOIN products p ON bs.product_id = p.id
-        WHERE bs.branch_id = $1`, [b.id]);
+        SELECT COALESCE(SUM(stock_quantity), 0) AS total_qty,
+               COALESCE(SUM(stock_quantity * price), 0) AS total_value
+        FROM products WHERE branch_id = $1 AND is_active = true`, [b.id]);
       const sales = await query(`
         SELECT COUNT(*) AS cnt, COALESCE(SUM(total_amount), 0) AS revenue
         FROM sales WHERE branch_id = $1 AND TO_CHAR(sale_date, 'YYYY-MM') = $2`, [b.id, month]);
@@ -150,6 +150,30 @@ router.get('/:id/transfers', async (req, res, next) => {
       ORDER BY bt.created_at DESC
       LIMIT 200`, [req.params.id])).rows;
     res.json({ transfers: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/branches/:id/copy-products — zavod (asosiy) mahsulot katalogini filialga NUSXALASH (OWNER).
+// Faqat sotiladigan mahsulotlar, qoldiq 0 dan (filial o'zi kiritadi). Zavod mahsulotlariga TEGMAYDI.
+router.post('/:id/copy-products', requireRole('OWNER'), async (req, res, next) => {
+  try {
+    const b = await query('SELECT id, name FROM branches WHERE id = $1', [req.params.id]);
+    if (!b.rows.length) return res.status(404).json({ error: 'Filial topilmadi' });
+    const result = await copyProductsToBranch(query, req.params.id);
+    logAudit(req, { action: 'BRANCH_COPY_PRODUCTS', table: 'products', recordId: req.params.id, newValues: result });
+    res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+});
+
+// GET /api/branches/:id/products — filialning O'Z mahsulotlari (o'z ombori bilan) (OWNER)
+router.get('/:id/products', requireRole('OWNER'), async (req, res, next) => {
+  try {
+    const rows = (await query(`
+      SELECT id, name, rang, unit, price, stock_quantity
+      FROM products WHERE branch_id = $1 AND is_active = true
+      ORDER BY name`, [req.params.id])).rows;
+    const total_value = rows.reduce((s, r) => s + (parseFloat(r.stock_quantity) || 0) * (parseFloat(r.price) || 0), 0);
+    res.json({ products: rows, total_value, count: rows.length });
   } catch (err) { next(err); }
 });
 

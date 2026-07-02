@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Plus, X, Store, Pencil, Eye, ArrowRight, ArrowLeft, Truck, Warehouse, History, Phone, MapPin, UserPlus, KeyRound, Copy, Trash2, UserCheck, UserX, LogIn } from 'lucide-react';
-import { branchesAPI, productsAPI, authAPI } from '../services/api';
+import { Plus, X, Store, Pencil, Eye, Warehouse, Phone, MapPin, UserPlus, KeyRound, Copy, Trash2, UserCheck, UserX, LogIn, PackagePlus } from 'lucide-react';
+import { branchesAPI, authAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -29,7 +29,6 @@ export default function BranchesPage() {
   const qc = useQueryClient();
   const [form, setForm] = useState(null);         // filial qo'shish/tahrirlash
   const [detailId, setDetailId] = useState(null); // filial tafsiloti
-  const [transfer, setTransfer] = useState({ product_id: '', rang: '', quantity: '', direction: 'IN' });
   const [seller, setSeller] = useState(null);     // filialga sotuvchi (kirish) qo'shish: { full_name, phone, password }
   const [resetResult, setResetResult] = useState(null); // { full_name, phone, temp_password }
 
@@ -38,28 +37,17 @@ export default function BranchesPage() {
     queryFn: () => branchesAPI.getAll().then(r => r.data),
   });
 
-  const { data: stockData } = useQuery({
-    queryKey: ['branch-stock', detailId],
-    queryFn: () => branchesAPI.getStock(detailId).then(r => r.data),
-    enabled: !!detailId,
-  });
-
-  const { data: transfersData } = useQuery({
-    queryKey: ['branch-transfers', detailId],
-    queryFn: () => branchesAPI.getTransfers(detailId).then(r => r.data),
-    enabled: !!detailId,
-  });
-
   const { data: summaryData } = useQuery({
     queryKey: ['branch-summary', detailId],
     queryFn: () => branchesAPI.getSummary(detailId).then(r => r.data),
     enabled: !!detailId,
   });
 
-  const { data: productsData } = useQuery({
-    queryKey: ['products'],
-    queryFn: () => productsAPI.getAll().then(r => r.data),
-    enabled: !!detailId,
+  // Filialning O'Z mahsulotlari (nusxalangan katalog + o'z ombori)
+  const { data: branchProductsData } = useQuery({
+    queryKey: ['branch-products', detailId],
+    queryFn: () => branchesAPI.getProducts(detailId).then(r => r.data),
+    enabled: !!detailId && isOwner(),
   });
 
   // Filialga biriktirilgan sotuvchilar (kirish uchun loginlar)
@@ -79,17 +67,17 @@ export default function BranchesPage() {
     onError: (e) => toast.error(e.response?.data?.error || 'Saqlashda xato'),
   });
 
-  const transferMutation = useMutation({
-    mutationFn: (d) => branchesAPI.transfer(detailId, d),
-    onSuccess: (res) => {
-      toast.success(res.data?.message || 'Ko\'chirildi');
-      qc.invalidateQueries({ queryKey: ['branch-stock', detailId] });
-      qc.invalidateQueries({ queryKey: ['branch-transfers', detailId] });
+  // Zavod mahsulot katalogini filialga nusxalash (qoldiq 0 dan; zavodga tegmaydi)
+  const copyMutation = useMutation({
+    mutationFn: () => branchesAPI.copyProducts(detailId).then(r => r.data),
+    onSuccess: (d) => {
+      toast.success(d.copied > 0
+        ? `${d.copied} ta mahsulot filialga nusxalandi`
+        : 'Yangi mahsulot yo\'q — hammasi allaqachon nusxalangan');
+      qc.invalidateQueries({ queryKey: ['branch-products', detailId] });
       qc.invalidateQueries({ queryKey: ['branches'] });
-      qc.invalidateQueries({ queryKey: ['products'] });
-      setTransfer(t => ({ ...t, quantity: '' }));
     },
-    onError: (e) => toast.error(e.response?.data?.error || 'Ko\'chirishda xato'),
+    onError: (e) => toast.error(e.response?.data?.error || 'Nusxalashda xato'),
   });
 
   // Filialga sotuvchi (savdo boshlig'i) logini yaratish — mavjud auth/register'dan foydalanadi
@@ -143,24 +131,6 @@ export default function BranchesPage() {
     });
   };
 
-  const submitTransfer = () => {
-    if (!transfer.product_id) return toast.error('Mahsulotni tanlang');
-    const qty = parseFloat(transfer.quantity);
-    if (!qty || qty <= 0) return toast.error('Miqdorni kiriting');
-    transferMutation.mutate({
-      product_id: transfer.product_id,
-      rang: transfer.rang || null,
-      quantity: qty,
-      direction: transfer.direction,
-    });
-  };
-
-  // Tanlangan mahsulotning zavoddagi rang buketlari (IN uchun) / filialdagi (OUT uchun)
-  const selProduct = productsData?.products?.find(p => p.id === transfer.product_id);
-  const zavodColors = selProduct?.color_stock || [];
-  const branchColors = (stockData?.stock || []).filter(s => s.product_id === transfer.product_id);
-  const colorOptions = transfer.direction === 'IN' ? zavodColors : branchColors.map(s => ({ rang: s.rang, quantity: s.quantity }));
-
   const branches = data?.branches || [];
   const detail = branches.find(b => b.id === detailId);
 
@@ -210,7 +180,7 @@ export default function BranchesPage() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => { setDetailId(b.id); setTransfer({ product_id: '', rang: '', quantity: '', direction: 'IN' }); }}
+                <button onClick={() => setDetailId(b.id)}
                   className="btn-secondary btn-sm flex-1"><Eye size={12} /> Ko'rish</button>
                 {isOwner() && (
                   <button onClick={() => setForm({ id: b.id, name: b.name, address: b.address || '', phone: b.phone || '', is_active: !!b.is_active })}
@@ -258,11 +228,11 @@ export default function BranchesPage() {
         )}
       </Modal>
 
-      {/* Filial tafsiloti — ombor, ko'chirish, tarix, hisobot */}
+      {/* Filial tafsiloti — kirish loginlari, mahsulot nusxalash, filial ombori, hisobot */}
       <Modal open={!!detailId} onClose={() => setDetailId(null)} title={`Filial: ${detail?.name || ''}`} wide>
         {detail && (
           <div className="space-y-5">
-            {/* Hisobot kartalari */}
+            {/* Hisobot kartalari — faqat shu filial savdosi */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
                 { label: 'Jami savdo', value: fmt(summaryData?.summary?.total_revenue), color: 'text-blue-700' },
@@ -337,105 +307,59 @@ export default function BranchesPage() {
               </div>
             )}
 
-            {/* Tovar ko'chirish — faqat OWNER */}
+            {/* Mahsulot katalogini nusxalash — faqat OWNER */}
             {isOwner() && (
               <div className="border border-blue-200 bg-blue-50/50 rounded-xl p-4 space-y-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-blue-800">
-                  <Truck size={15} /> Tovar ko'chirish
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => setTransfer(t => ({ ...t, direction: 'IN', rang: '' }))}
-                    className={`btn-sm flex-1 rounded-lg border flex items-center justify-center gap-1 ${transfer.direction === 'IN' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}>
-                    <ArrowRight size={13} /> Zavod → Filial
-                  </button>
-                  <button onClick={() => setTransfer(t => ({ ...t, direction: 'OUT', rang: '' }))}
-                    className={`btn-sm flex-1 rounded-lg border flex items-center justify-center gap-1 ${transfer.direction === 'OUT' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}>
-                    <ArrowLeft size={13} /> Filial → Zavod
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-blue-800">
+                    <PackagePlus size={15} /> Filial mahsulot katalogi
+                  </div>
+                  <button
+                    onClick={() => { if (window.confirm('Zavod mahsulotlari shu filialga nusxalansinmi?\nZavod omboriga TEGILMAYDI, filial qoldig\'i 0 dan boshlanadi.')) copyMutation.mutate(); }}
+                    disabled={copyMutation.isPending} className="btn-primary btn-sm">
+                    <PackagePlus size={13} /> {copyMutation.isPending ? 'Nusxalanmoqda...' : 'Zavod mahsulotlarini nusxalash'}
                   </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                  <select value={transfer.product_id}
-                    onChange={e => setTransfer(t => ({ ...t, product_id: e.target.value, rang: '' }))}
-                    className="select text-sm">
-                    <option value="">— Mahsulot —</option>
-                    {(productsData?.products || []).filter(p => p.kind !== 'KOMPONENT').map(p => (
-                      <option key={p.id} value={p.id}>{p.name} (Zavod: {p.stock_quantity})</option>
-                    ))}
-                  </select>
-                  <select value={transfer.rang}
-                    onChange={e => setTransfer(t => ({ ...t, rang: e.target.value }))}
-                    className="select text-sm" disabled={!transfer.product_id}>
-                    <option value="">{colorOptions.length ? '— Rang —' : 'Rangsiz'}</option>
-                    {colorOptions.map((c, i) => (
-                      <option key={i} value={c.rang || ''}>{rangLabel(c.rang)} ({fmt(c.quantity)})</option>
-                    ))}
-                  </select>
-                  <input type="number" min="1" value={transfer.quantity}
-                    onChange={e => setTransfer(t => ({ ...t, quantity: e.target.value }))}
-                    placeholder="Miqdor" className="input text-sm" />
-                </div>
-                <button onClick={submitTransfer} disabled={transferMutation.isPending}
-                  className="btn-primary btn-sm w-full">
-                  {transferMutation.isPending ? 'Ko\'chirilmoqda...' : (transfer.direction === 'IN' ? 'Filialga jo\'natish' : 'Zavodga qaytarish')}
-                </button>
+                <p className="text-xs text-gray-500">
+                  Filialning <b>o'z</b> mahsulot ro'yxati. "Nusxalash" zavod katalogini bu filialga ko'chiradi
+                  (narxi bilan, qoldiq 0). Keyin filial sotuvchisi qoldiqni <b>o'zi kiritadi</b> (Mahsulotlar sahifasida).
+                  <b> Zavod ombori hech qachon o'zgarmaydi.</b> Zavodga yangi mahsulot qo'shsangiz — shu tugmani yana bosib
+                  filialga qo'shib olasiz (mavjudlari takrorlanmaydi).
+                </p>
               </div>
             )}
 
-            {/* Filial ombori */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h5 className="font-semibold text-gray-700 text-sm flex items-center gap-1.5">
-                  <Warehouse size={15} className="text-blue-600" /> Filial ombori
-                </h5>
-                <span className="text-xs text-gray-400">Qiymati: <b className="text-blue-700">{fmt(stockData?.total_value)} so'm</b></span>
+            {/* Filial mahsulotlari va ombori */}
+            {isOwner() && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h5 className="font-semibold text-gray-700 text-sm flex items-center gap-1.5">
+                    <Warehouse size={15} className="text-blue-600" /> Filial mahsulotlari va ombori
+                    <span className="text-xs font-normal text-gray-400">({branchProductsData?.count || 0} ta)</span>
+                  </h5>
+                  <span className="text-xs text-gray-400">Qiymati: <b className="text-blue-700">{fmt(branchProductsData?.total_value)} so'm</b></span>
+                </div>
+                <div className="border border-gray-100 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+                  <table className="table text-sm">
+                    <thead><tr><th>Mahsulot</th><th>Rang</th><th className="text-right">Qoldiq</th><th className="text-right">Narx</th></tr></thead>
+                    <tbody>
+                      {!(branchProductsData?.products || []).length ? (
+                        <tr><td colSpan={4} className="text-center py-6 text-gray-400">
+                          Filialda hali mahsulot yo'q — yuqoridagi "Zavod mahsulotlarini nusxalash" tugmasini bosing
+                        </td></tr>
+                      ) : branchProductsData.products.map((s) => (
+                        <tr key={s.id}>
+                          <td className="font-medium">{s.name}</td>
+                          <td>{rangLabel(s.rang)}</td>
+                          <td className="text-right font-bold text-blue-700">{fmt(s.stock_quantity)} {s.unit || 'dona'}</td>
+                          <td className="text-right text-gray-500">{fmt(s.price)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <div className="border border-gray-100 rounded-xl overflow-hidden">
-                <table className="table text-sm">
-                  <thead><tr><th>Mahsulot</th><th>Rang</th><th className="text-right">Qoldiq</th><th className="text-right">Narx</th></tr></thead>
-                  <tbody>
-                    {!(stockData?.stock || []).length ? (
-                      <tr><td colSpan={4} className="text-center py-6 text-gray-400">Filial ombori bo'sh</td></tr>
-                    ) : stockData.stock.map((s, i) => (
-                      <tr key={i}>
-                        <td className="font-medium">{s.product_name}</td>
-                        <td>{rangLabel(s.rang)}</td>
-                        <td className="text-right font-bold text-blue-700">{fmt(s.quantity)} {s.unit || 'dona'}</td>
-                        <td className="text-right text-gray-500">{fmt(s.price)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Ko'chirish tarixi */}
-            <div>
-              <h5 className="font-semibold text-gray-700 text-sm flex items-center gap-1.5 mb-2">
-                <History size={15} className="text-gray-500" /> Ko'chirish tarixi
-              </h5>
-              <div className="border border-gray-100 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
-                <table className="table text-sm">
-                  <thead><tr><th>Sana</th><th>Yo'nalish</th><th>Mahsulot</th><th className="text-right">Miqdor</th><th>Kim</th></tr></thead>
-                  <tbody>
-                    {!(transfersData?.transfers || []).length ? (
-                      <tr><td colSpan={5} className="text-center py-6 text-gray-400">Hali ko'chirish yo'q</td></tr>
-                    ) : transfersData.transfers.map(t => (
-                      <tr key={t.id}>
-                        <td className="whitespace-nowrap text-xs">{new Date(String(t.created_at).replace(' ', 'T')).toLocaleDateString('uz-UZ')}</td>
-                        <td>
-                          {t.direction === 'IN'
-                            ? <span className="badge-green">→ Filialga</span>
-                            : <span className="badge-yellow">← Zavodga</span>}
-                        </td>
-                        <td>{t.product_name}{t.rang ? ` · ${t.rang}` : ''}</td>
-                        <td className="text-right font-semibold">{fmt(t.quantity)} {t.unit || 'dona'}</td>
-                        <td className="text-xs text-gray-500">{t.created_by_name || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            )}
           </div>
         )}
       </Modal>

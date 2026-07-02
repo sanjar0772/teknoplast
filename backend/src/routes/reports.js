@@ -12,15 +12,17 @@ router.get('/dashboard', async (req, res, next) => {
   try {
     const today = new Date().toISOString().slice(0, 10);
     const thisMonth = new Date().toISOString().slice(0, 7);
-    // Filial foydalanuvchisi — savdo ko'rsatkichlari faqat o'z filialiniki
-    const bFilter = req.user.branch_id ? ` AND branch_id='${String(req.user.branch_id).replace(/'/g, "''")}'` : '';
+    // FILIAL AJRATISH: filial — faqat o'z filiali; zavod (asosiy) — faqat zavodniki (branch_id IS NULL)
+    const bFilter = req.user.branch_id
+      ? ` AND branch_id='${String(req.user.branch_id).replace(/'/g, "''")}'`
+      : ` AND branch_id IS NULL`;
 
     const [todaySales, monthSales, monthExpenses, employees, lowStock, machines] = await Promise.all([
       query(`SELECT COALESCE(SUM(total_amount),0) as total, COUNT(*) as count FROM sales WHERE strftime('%Y-%m-%d',sale_date)=$1${bFilter}`, [today]),
       query(`SELECT COALESCE(SUM(total_amount),0) as total, COALESCE(SUM(CASE WHEN status='PAID' THEN total_amount ELSE 0 END),0) as paid FROM sales WHERE TO_CHAR(sale_date,'YYYY-MM')=$1${bFilter}`, [thisMonth]),
       query(`SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE TO_CHAR(expense_date,'YYYY-MM')=$1`, [thisMonth]),
       query(`SELECT COUNT(*) as total, COUNT(CASE WHEN is_active=1 THEN 1 END) as active FROM employees`),
-      query(`SELECT COUNT(*) as count FROM products WHERE stock_quantity < 10 AND is_active=1`),
+      query(`SELECT COUNT(*) as count FROM products WHERE stock_quantity < 10 AND is_active=1${bFilter}`),
       query(`SELECT status, COUNT(*) as count FROM machines WHERE is_active=1 GROUP BY status`),
     ]);
 
@@ -36,8 +38,8 @@ router.get('/dashboard', async (req, res, next) => {
       GROUP BY strftime('%Y-%m', sale_date) ORDER BY month
     `, [sixMonthsAgoStr]);
 
-    // Top 5 mahsulot
-    const bFilterS = req.user.branch_id ? bFilter.replace('branch_id', 's.branch_id') : '';
+    // Top 5 mahsulot (join'da branch_id ambiguity bo'lmasligi uchun s. bilan aniqlaymiz)
+    const bFilterS = bFilter.replace('branch_id', 's.branch_id');
     const topProducts = await query(`
       SELECT p.name, SUM(s.quantity) as qty, SUM(s.total_amount) as revenue
       FROM sales s JOIN products p ON s.product_id = p.id
@@ -73,8 +75,9 @@ router.get('/debts', async (req, res, next) => {
     let idx = 1;
     if (date_from) { where += ` AND DATE(s.sale_date) >= $${idx++}`; params.push(date_from); }
     if (date_to)   { where += ` AND DATE(s.sale_date) <= $${idx++}`; params.push(date_to); }
-    // Filial foydalanuvchisi faqat o'z filialining qarzlarini ko'radi
+    // FILIAL AJRATISH: filial faqat o'z qarzlarini; zavod (asosiy) faqat zavodnikini
     if (req.user.branch_id) { where += ` AND s.branch_id = $${idx++}`; params.push(req.user.branch_id); }
+    else { where += ` AND s.branch_id IS NULL`; }
 
     const rows = (await query(`
       SELECT s.id, s.sale_date, s.total_amount, s.payment_amount,
@@ -118,6 +121,10 @@ router.get('/debts', async (req, res, next) => {
 // Mijoz darajasida net balans manfiy bo'lsa = haqdor. credit = -balans.
 router.get('/creditors', async (req, res, next) => {
   try {
+    // FILIAL AJRATISH: filial faqat o'z haqdorlarini; zavod faqat zavodnikini
+    const scope = req.user.branch_id || null;
+    const cond = scope ? 's.branch_id = $1' : 's.branch_id IS NULL';
+    const cParams = scope ? [scope] : [];
     const rows = (await query(`
       SELECT c.id as customer_id, c.name as customer_name, c.phone,
              SUM(s.total_amount - s.payment_amount) as balance,
@@ -125,10 +132,11 @@ router.get('/creditors', async (req, res, next) => {
              MAX(s.sale_date) as last_date
       FROM sales s
       JOIN customers c ON s.customer_id = c.id
+      WHERE ${cond}
       GROUP BY c.id, c.name, c.phone
       HAVING SUM(s.total_amount - s.payment_amount) < -0.01
       ORDER BY balance ASC
-    `)).rows;
+    `, cParams)).rows;
 
     let total = 0;
     const items = rows.map(r => {
@@ -174,12 +182,13 @@ router.post('/debts', requireRole('OWNER', 'ACCOUNTANT', 'SALES_HEAD'), async (r
       productId = ins.rows[0].id;
     }
 
+    // Filial foydalanuvchisi qo'shsa — qarz o'sha filialniki (branch_id); zavod bo'lsa NULL.
     await query(
       `INSERT INTO sales (product_id, customer_id, quantity, unit_price, total_amount,
-        customer_name, customer_phone, sale_date, status, payment_amount, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        customer_name, customer_phone, sale_date, status, payment_amount, notes, created_by, branch_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [productId, customer_id, 1, debt, debt, c.rows[0].name, c.rows[0].phone || null,
-       sale_date || new Date().toISOString().slice(0, 10), 'PENDING', 0, notes || 'Qo\'lda qo\'shilgan qarz', req.user.id]
+       sale_date || new Date().toISOString().slice(0, 10), 'PENDING', 0, notes || 'Qo\'lda qo\'shilgan qarz', req.user.id, req.user.branch_id || null]
     );
 
     res.status(201).json({ success: true });
@@ -219,10 +228,10 @@ router.post('/credit', requireRole('OWNER', 'ACCOUNTANT', 'SALES_HEAD'), async (
     // total_amount=0, payment_amount=credit → qarz = -credit (haqdor)
     await query(
       `INSERT INTO sales (product_id, customer_id, quantity, unit_price, total_amount,
-        customer_name, customer_phone, sale_date, status, payment_amount, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        customer_name, customer_phone, sale_date, status, payment_amount, notes, created_by, branch_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [productId, customer_id, 1, 0, 0, c.rows[0].name, c.rows[0].phone || null,
-       sale_date || new Date().toISOString().slice(0, 10), 'PAID', credit, note, req.user.id]
+       sale_date || new Date().toISOString().slice(0, 10), 'PAID', credit, note, req.user.id, req.user.branch_id || null]
     );
 
     res.status(201).json({ success: true, credit });
@@ -239,8 +248,9 @@ router.get('/debt-payments', async (req, res, next) => {
     let idx = 1;
     if (date_from) { where += ` AND DATE(p.payment_date) >= $${idx++}`; params.push(date_from); }
     if (date_to)   { where += ` AND DATE(p.payment_date) <= $${idx++}`; params.push(date_to); }
-    // Filial foydalanuvchisi faqat o'z filialining to'lovlarini ko'radi
+    // FILIAL AJRATISH: filial faqat o'z to'lovlarini; zavod faqat zavodnikini
     if (req.user.branch_id) { where += ` AND s.branch_id = $${idx++}`; params.push(req.user.branch_id); }
+    else { where += ` AND s.branch_id IS NULL`; }
 
     const rows = (await query(`
       SELECT p.id, p.amount, p.method, p.payment_date, p.notes, p.created_at,
@@ -268,13 +278,17 @@ router.get('/monthly', async (req, res, next) => {
   try {
     const { month } = req.query;
     const period = month || new Date().toISOString().slice(0, 7);
+    // FILIAL AJRATISH (savdo qismi): filial faqat o'z savdosi; zavod faqat zavodniki
+    const bScope = req.user.branch_id
+      ? ` AND branch_id='${String(req.user.branch_id).replace(/'/g, "''")}'`
+      : ` AND branch_id IS NULL`;
 
     const [sales, expenses, production, salaries] = await Promise.all([
       query(`
         SELECT COALESCE(SUM(total_amount),0) as total,
                COALESCE(SUM(CASE WHEN status='PAID' THEN total_amount ELSE 0 END),0) as paid,
                COUNT(*) as count
-        FROM sales WHERE TO_CHAR(sale_date,'YYYY-MM')=$1
+        FROM sales WHERE TO_CHAR(sale_date,'YYYY-MM')=$1${bScope}
       `, [period]),
       query(`
         SELECT category, COALESCE(SUM(amount),0) as total
@@ -365,9 +379,13 @@ router.get('/inventory', requireRole('OWNER', 'ACCOUNTANT', 'SALES_HEAD', 'PRODU
       });
     } else {
       const isProd = type === 'production';
+      // FILIAL AJRATISH: filial faqat o'z mahsulotlari ombori; zavod faqat zavodnikini
+      const bScope = req.user.branch_id
+        ? ` AND branch_id='${String(req.user.branch_id).replace(/'/g, "''")}'`
+        : ` AND branch_id IS NULL`;
       const r = await query(
         `SELECT name, type, unit, stock_quantity, price FROM products
-         WHERE is_active = true AND ${isProd ? "kind = 'KOMPONENT'" : "(kind IS NULL OR kind != 'KOMPONENT')"}
+         WHERE is_active = true AND ${isProd ? "kind = 'KOMPONENT'" : "(kind IS NULL OR kind != 'KOMPONENT')"}${bScope}
          ORDER BY name`
       );
       title = isProd ? 'Ombor — Ishlab chiqarish ombori' : 'Ombor — Tayyor mahsulotlar';
@@ -427,6 +445,9 @@ router.get('/excel/sales', requireRole('OWNER', 'ACCOUNTANT', 'SALES_HEAD'), asy
       params = [period];
       periodLabel = period;
     }
+    // FILIAL AJRATISH: filial faqat o'z savdolari Excel'i; zavod faqat zavodnikini
+    if (req.user.branch_id) { where += ` AND s.branch_id = $${params.length + 1}`; params.push(req.user.branch_id); }
+    else { where += ` AND s.branch_id IS NULL`; }
 
     const salesData = await query(`
       SELECT s.*, p.name as product_name, p.unit, u.full_name as created_by_name

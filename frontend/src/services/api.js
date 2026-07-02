@@ -107,6 +107,8 @@ export const branchesAPI = {
   getTransfers: (id) => api.get(`/branches/${id}/transfers`),
   getSummary: (id, params) => api.get(`/branches/${id}/summary`, { params }),
   getUsers: (id) => api.get(`/branches/${id}/users`),
+  getProducts: (id) => api.get(`/branches/${id}/products`),
+  copyProducts: (id) => api.post(`/branches/${id}/copy-products`),
 };
 
 // Expenses

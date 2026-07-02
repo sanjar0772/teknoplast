@@ -36,22 +36,16 @@ router.get('/', async (req, res, next) => {
     if (type)      { sql += ` AND p.type = $${idx++}`; params.push(type); }
     if (date_from) { sql += ` AND DATE(p.created_at) >= $${idx++}`; params.push(date_from); }
     if (date_to)   { sql += ` AND DATE(p.created_at) <= $${idx++}`; params.push(date_to); }
+    // FILIAL AJRATISH: filial foydalanuvchisi faqat O'Z mahsulotlarini; zavod (asosiy) faqat o'zinikini.
+    if (req.user.branch_id) { sql += ` AND p.branch_id = $${idx++}`; params.push(req.user.branch_id); }
+    else { sql += ` AND p.branch_id IS NULL`; }
     sql += ' ORDER BY p.name';
     const result = await query(sql, params);
-    // Rang bo'yicha ombor — har bir mahsulotga biriktiramiz.
-    // FILIAL foydalanuvchisi uchun — filial ombori (branch_stock), zavod ombori emas:
-    // shunda Savdo qilish / Ombor sahifalari avtomatik filial qoldig'ini ko'rsatadi.
-    const branchId = req.user.branch_id || null;
+    // Rang bo'yicha ombor — har bir mahsulotga biriktiramiz. Filial mahsulotlari ham o'z
+    // product_color_stock'iga ega (nusxa qilinganda 0 dan boshlanadi, filial o'zi kiritadi).
+    // Mahsulotlar ro'yxati allaqachon filial bo'yicha ajratilgani uchun rang buketlari to'g'ri biriktiriladi.
     const byProduct = {};
-    const branchTotals = {};
-    if (branchId) {
-      const bs = await query(
-        'SELECT product_id, rang, quantity FROM branch_stock WHERE branch_id = $1 AND quantity > 0', [branchId]);
-      for (const row of bs.rows) {
-        (byProduct[row.product_id] = byProduct[row.product_id] || []).push({ rang: row.rang || '', quantity: parseFloat(row.quantity) });
-        branchTotals[row.product_id] = (branchTotals[row.product_id] || 0) + parseFloat(row.quantity);
-      }
-    } else {
+    {
       const cs = await query('SELECT product_id, rang, quantity FROM product_color_stock WHERE quantity > 0', []);
       for (const row of cs.rows) {
         (byProduct[row.product_id] = byProduct[row.product_id] || []).push({ rang: row.rang || '', quantity: parseFloat(row.quantity) });
@@ -64,6 +58,9 @@ router.get('/', async (req, res, next) => {
       let pIdx = 1;
       if (start_date) { pSql += ` AND sale_date >= $${pIdx++}`; pParams.push(start_date); }
       if (end_date) { pSql += ` AND sale_date <= $${pIdx++}`; pParams.push(end_date); }
+      // Sotuv statistikasi ham filial bo'yicha ajratiladi
+      if (req.user.branch_id) { pSql += ` AND branch_id = $${pIdx++}`; pParams.push(req.user.branch_id); }
+      else { pSql += ` AND branch_id IS NULL`; }
       pSql += ' GROUP BY product_id';
       const pR = await query(pSql, pParams);
       for (const r of pR.rows) {
@@ -72,8 +69,6 @@ router.get('/', async (req, res, next) => {
     }
     const products = result.rows.map(p => ({
       ...p, color_stock: byProduct[p.id] || [],
-      // Filial foydalanuvchisi uchun umumiy qoldiq ham filialniki
-      ...(branchId ? { stock_quantity: branchTotals[p.id] || 0 } : {}),
       ...(start_date || end_date ? { period: periodStats[p.id] || { sold_qty: 0, sold_amount: 0, sold_count: 0 } } : {}),
     }));
     res.json({ products });
@@ -478,9 +473,11 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
     // Qo'shilgan sana — qo'lda kiritilsa o'sha sana, aks holda bugun
     const createdAt = created_at ? String(created_at).slice(0, 10) : new Date().toISOString();
     const initStock = parseFloat(stock_quantity) || 0;
+    // Filial foydalanuvchisi yaratsa — mahsulot o'sha filialniki (branch_id); zavod bo'lsa NULL.
+    const branchId = req.user.branch_id || null;
     const result = await query(
-      'INSERT INTO products (name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, rang, kind, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
-      [name, type, description, price, daily_production || 0, initStock, raw_material_id || null, unit || 'dona', rang || null, kind === 'KOMPONENT' ? 'KOMPONENT' : 'TAYYOR', createdAt]
+      'INSERT INTO products (name, type, description, price, daily_production, stock_quantity, raw_material_id, unit, rang, kind, created_at, branch_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
+      [name, type, description, price, daily_production || 0, initStock, raw_material_id || null, unit || 'dona', rang || null, kind === 'KOMPONENT' ? 'KOMPONENT' : 'TAYYOR', createdAt, branchId]
     );
     // Boshlang'ich ombor bo'lsa — mahsulotning O'Z rangi buketiga ham yozamiz
     // (aks holda umumiy qoldiq bor, lekin rang bo'yicha sotib bo'lmaydigan "fantom ombor" hosil bo'ladi)
@@ -500,6 +497,8 @@ router.put('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'SALES_HEAD', 'ACCOU
     }
     // Ruxsat etilgan maydonlar (XSS / SQL injectiondan himoya)
     const allowed = ['name', 'base_name', 'razmer', 'rang', 'type', 'description', 'price', 'daily_production', 'stock_quantity', 'unit', 'is_active', 'kind'];
+    // Filial foydalanuvchisi faqat O'Z mahsulotlarini o'zgartira oladi; zavod — faqat zavodnikini.
+    const scope = req.user.branch_id || null;
     const client = await require('../db').getClient();
     const updated = [];
     try {
@@ -517,8 +516,11 @@ router.put('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'SALES_HEAD', 'ACCOU
         if (!fields.length) continue;
         fields.push(`updated_at=NOW()`);
         values.push(u.id);
+        let whereCond = `id=$${idx++}`;
+        if (scope) { values.push(scope); whereCond += ` AND branch_id=$${idx++}`; }
+        else { whereCond += ` AND branch_id IS NULL`; }
         await client.query(
-          `UPDATE products SET ${fields.join(', ')} WHERE id=$${idx}`,
+          `UPDATE products SET ${fields.join(', ')} WHERE ${whereCond}`,
           values
         );
         // UPDATE muvaffaqiyatli — yangilangan qatorni qayta o'qiymiz
@@ -669,9 +671,15 @@ router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'SALES_HEAD'), async 
     const client = await require('../db').getClient();
     try {
       await client.query('BEGIN');
+      // Filial foydalanuvchisi faqat O'Z mahsulotini o'zgartira oladi (zavodnikiga tegmaydi).
+      const scope = req.user.branch_id || null;
+      const updParams = [name, type, description, price, daily_production, newStock, raw_material_id, unit, is_active, rang || null, createdAt, req.params.id];
+      let whereCond = 'id=$12';
+      if (scope) { updParams.push(scope); whereCond += ' AND branch_id=$13'; }
+      else { whereCond += ' AND branch_id IS NULL'; }
       const result = await client.query(
-        'UPDATE products SET name=$1,type=$2,description=$3,price=$4,daily_production=$5,stock_quantity=$6,raw_material_id=$7,unit=$8,is_active=$9,rang=$10,created_at=COALESCE($11, created_at),updated_at=NOW() WHERE id=$12 RETURNING *',
-        [name, type, description, price, daily_production, newStock, raw_material_id, unit, is_active, rang || null, createdAt, req.params.id]
+        `UPDATE products SET name=$1,type=$2,description=$3,price=$4,daily_production=$5,stock_quantity=$6,raw_material_id=$7,unit=$8,is_active=$9,rang=$10,created_at=COALESCE($11, created_at),updated_at=NOW() WHERE ${whereCond} RETURNING *`,
+        updParams
       );
       if (!result.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Mahsulot topilmadi' }); }
 

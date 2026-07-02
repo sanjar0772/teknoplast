@@ -80,17 +80,25 @@ async function ensureBranchSchema() {
     await db.query(DDL_BRANCHES);
     await db.query(DDL_STOCK);
     await db.query(DDL_TRANSFERS);
-    // Mavjud jadvallarga ustun qo'shish — idempotent
+    // Mavjud jadvallarga ustun qo'shish — idempotent.
+    // MUHIM: branch_id NULL = ZAVOD (asosiy tizim). Filial foydalanuvchisida branch_id bo'ladi.
+    // products/customers/sale_returns ham filial bo'yicha to'liq ajratiladi (asosiy tizimga tegmaydi).
     const addCols = USE_PG
       ? [
           `ALTER TABLE users ADD COLUMN IF NOT EXISTS branch_id UUID`,
           `ALTER TABLE sales ADD COLUMN IF NOT EXISTS branch_id UUID`,
           `ALTER TABLE sales ADD COLUMN IF NOT EXISTS delivery_type VARCHAR(12) DEFAULT 'PICKUP'`,
+          `ALTER TABLE products ADD COLUMN IF NOT EXISTS branch_id UUID`,
+          `ALTER TABLE customers ADD COLUMN IF NOT EXISTS branch_id UUID`,
+          `ALTER TABLE sale_returns ADD COLUMN IF NOT EXISTS branch_id UUID`,
         ]
       : [
           `ALTER TABLE users ADD COLUMN branch_id TEXT`,
           `ALTER TABLE sales ADD COLUMN branch_id TEXT`,
           `ALTER TABLE sales ADD COLUMN delivery_type TEXT DEFAULT 'PICKUP'`,
+          `ALTER TABLE products ADD COLUMN branch_id TEXT`,
+          `ALTER TABLE customers ADD COLUMN branch_id TEXT`,
+          `ALTER TABLE sale_returns ADD COLUMN branch_id TEXT`,
         ];
     for (const sql of addCols) {
       try { await db.query(sql); } catch (e) { /* ustun allaqachon mavjud */ }
@@ -137,4 +145,38 @@ async function getBranchStock(q, branchId, productId, rang) {
   return parseFloat(res.rows[0]?.qty || 0);
 }
 
-module.exports = { ensureBranchSchema, addBranchStock, getBranchStock };
+// Zavod (asosiy) mahsulotlar katalogini filialga NUSXALASH.
+// Faqat sotiladigan (TAYYOR) mahsulotlar; qoldiq 0 dan boshlanadi (filial o'zi kiritadi).
+// Idempotent: filialda shu nomli mahsulot bo'lsa — qayta nusxalanmaydi (yangi mahsulotlarni
+// keyin ham qo'shib olish uchun qayta ishga tushirsa bo'ladi). Zavod mahsulotlariga TEGMAYDI.
+async function copyProductsToBranch(q, branchId) {
+  if (!branchId) throw new Error('branchId kerak');
+  const existing = (await q(
+    'SELECT name FROM products WHERE branch_id = $1', [branchId]
+  )).rows;
+  const have = new Set(existing.map(r => String(r.name)));
+  const main = (await q(
+    `SELECT name, base_name, razmer, type, description, price, cost_price, unit, rang, kind
+     FROM products
+     WHERE branch_id IS NULL AND is_active = true AND (kind IS NULL OR kind != 'KOMPONENT')
+       AND (description IS NULL OR description != 'MANUAL_DEBT')
+     ORDER BY name`, []
+  )).rows;
+  let copied = 0;
+  for (const p of main) {
+    if (have.has(String(p.name))) continue;
+    await q(
+      `INSERT INTO products
+         (name, base_name, razmer, type, description, price, cost_price,
+          daily_production, stock_quantity, unit, rang, kind, is_active, branch_id, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())`,
+      [p.name, p.base_name || null, p.razmer || null, p.type || null, p.description || null,
+       p.price || 0, p.cost_price || 0, 0, 0, p.unit || 'dona', p.rang || null,
+       p.kind === 'KOMPONENT' ? 'KOMPONENT' : 'TAYYOR', true, branchId]
+    );
+    copied++;
+  }
+  return { copied, total_main: main.length };
+}
+
+module.exports = { ensureBranchSchema, addBranchStock, getBranchStock, copyProductsToBranch };

@@ -1173,7 +1173,7 @@ function WorkerOutputTab({ canApprove, canEdit }) {
 
 // ─── Asosiy sahifa ────────────────────────────────────────────────────────────
 export default function IntakePage() {
-  const { isOwner, isSalesHead, isKirimchi, isProductionHead, user } = useAuthStore();
+  const { isOwner, isSalesHead, isKirimchi, isProductionHead, user, activeBranch } = useAuthStore();
   const [tab, setTab] = useState('intake');
 
   const canCreate = isOwner() || isKirimchi() || isProductionHead() || isSalesHead();
@@ -1181,8 +1181,8 @@ export default function IntakePage() {
   // Tahrirlash/o'chirish — backend ruxsati bilan bir xil (OWNER/PRODUCTION_HEAD/KIRIMCHI)
   const canEdit = isOwner() || isProductionHead() || isKirimchi();
 
-  // FILIAL foydalanuvchisida "Ishchilar ishi" YO'Q — filialда ishlab chiqarish/ishchi bo'lmaydi
-  const isBranch = !!user?.branch_id;
+  // FILIAL kontekstida "Ishchilar ishi" YO'Q (filial xodimi YOKI EGA filialga kirgan)
+  const isBranch = !!(user?.branch_id || activeBranch);
   const TABS = [
     { key: 'intake',  label: 'Mahsulot kirimi', icon: PackagePlus },
     ...(isBranch ? [] : [{ key: 'workers', label: 'Ishchilar ishi', icon: Users }]),

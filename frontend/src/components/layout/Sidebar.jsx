@@ -74,8 +74,13 @@ export default function Sidebar() {
     navigate('/login');
   };
 
+  // Filial konteksti: filial xodimi (branch_id) YOKI EGA filialga "admin sifatida" kirgan (activeBranch)
+  const inBranchContext = !!(user?.branch_id || activeBranch);
+  // Filialda ishlab chiqarish YO'Q — bu bo'limlar filialdan olib tashlanadi (zavodda qoladi)
+  const HIDE_IN_BRANCH = ['/production', '/components'];
   const visibleItems = NAV_ITEMS.filter(item =>
-    !item.roles || item.roles.includes(user?.role)
+    (!item.roles || item.roles.includes(user?.role)) &&
+    !(inBranchContext && HIDE_IN_BRANCH.includes(item.to))
   );
 
   return (

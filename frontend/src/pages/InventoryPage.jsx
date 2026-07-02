@@ -28,13 +28,14 @@ function Modal({ open, onClose, title, children }) {
 }
 
 export default function InventoryPage() {
-  const { user, isOwner, isTaminotchi, isKirimchi } = useAuthStore();
+  const { user, isOwner, isTaminotchi, isKirimchi, activeBranch } = useAuthStore();
   const navigate = useNavigate();
   const qc = useQueryClient();
   // Ta'minotchi (Owner emas) — faqat Xom ashyo bo'limini ko'radi, Tayyor mahsulot ombori unga ko'rinmaydi
   const taminotchiOnly = user?.role === 'TAMINOTCHI';
-  // FILIAL foydalanuvchisi — faqat O'Z ombori (Tayyor mahsulotlar); ishlab chiqarish/xom ashyo YO'Q
-  const isBranch = !!user?.branch_id;
+  // FILIAL konteksti (filial xodimi YOKI EGA filialga kirgan) — faqat O'Z ombori (Tayyor mahsulotlar);
+  // ishlab chiqarish ombori / xom ashyo / inventarizatsiya YO'Q
+  const isBranch = !!(user?.branch_id || activeBranch);
   const [tab, setTab] = useState(taminotchiOnly ? 'raw' : 'products'); // 'products' | 'raw'
   const [showRmModal, setShowRmModal] = useState(false);
   const [showCompModal, setShowCompModal] = useState(false); // ishlab chiqarish ombori — mahsulot qo'shish

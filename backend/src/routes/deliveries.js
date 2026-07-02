@@ -1,10 +1,9 @@
 /**
  * Dostavka (yetkazib berish) — SHOPIR (haydovchi) uchun.
  * Savdo agenti/sotuvchi "dostavka" belgisi bilan qilgan savdolar (delivery_type='DELIVERY')
- * shu yerga tushadi. Haydovchi mijoz manzili/telefoni/lokatsiyasini ko'rib borib yetkazadi,
- * so'ng "Yetkazildi" deb belgilaydi. Hammasi FILIAL bo'yicha ajratilgan (branch_id).
- *
- * Zakaz = order_ref (bir chek, bir nechta mahsulot). Belgilash order_ref bo'yicha.
+ * shu yerga tushadi. Ikki bosqichli oqim:
+ *   PENDING (yangi) → shopir tovarni oladi → TAKEN (yo'lda) → yetkazadi → DELIVERED.
+ * Hammasi FILIAL bo'yicha ajratilgan (branch_id). Zakaz = order_ref (bir chek, bir nechta mahsulot).
  */
 const express = require('express');
 const { query } = require('../db');
@@ -15,6 +14,9 @@ const { ensureBranchSchema } = require('../services/branchSchema');
 const router = express.Router();
 router.use(authenticate);
 
+const RANK = { PENDING: 0, TAKEN: 1, DELIVERED: 2 };
+const norm = (s) => (RANK[s] !== undefined ? s : 'PENDING');
+
 // Filial scope sharti: filial xodimi → o'z filiali; zavod (branch_id yo'q) → branch_id IS NULL.
 // alias — SELECT'da 's.' (JOIN'lar bor), UPDATE'da '' (SQLite UPDATE'да jadval aliasi yo'q).
 function scopeClause(req, startIdx, alias = 's.') {
@@ -23,7 +25,7 @@ function scopeClause(req, startIdx, alias = 's.') {
   return { cond: ` AND ${alias}branch_id IS NULL`, params: [], branchId: null };
 }
 
-// GET /api/deliveries?status=pending|delivered|all — dostavka zakazlari (order_ref bo'yicha jamlangan)
+// GET /api/deliveries?status=pending|taken|delivered|all — dostavka zakazlari (order_ref bo'yicha jamlangan)
 router.get('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'SHOPIR', 'AGENT'), async (req, res, next) => {
   try {
     await ensureBranchSchema();
@@ -32,7 +34,7 @@ router.get('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'SHOPIR', 'AGEN
     const rows = (await query(
       `SELECT s.id, s.order_ref, s.quantity, s.unit_price, s.total_amount, s.rang,
               s.customer_id, s.customer_name, s.customer_phone, s.sale_date, s.created_at,
-              COALESCE(s.delivery_status, 'PENDING') AS delivery_status, s.delivered_at,
+              COALESCE(s.delivery_status, 'PENDING') AS delivery_status, s.delivered_at, s.taken_at,
               p.name AS product_name, p.unit,
               c.address AS customer_address, c.latitude, c.longitude
        FROM sales s
@@ -44,7 +46,8 @@ router.get('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'SHOPIR', 'AGEN
       params
     )).rows;
 
-    // order_ref bo'yicha jamlash (bir zakaz = bir karta)
+    // order_ref bo'yicha jamlash (bir zakaz = bir karta). Zakaz holati = eng kam ilgarilagan
+    // qatorники (bir qator hali PENDING bo'lsa — butun zakaz PENDING).
     const map = new Map();
     for (const r of rows) {
       const key = r.order_ref || r.id;
@@ -59,7 +62,8 @@ router.get('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'SHOPIR', 'AGEN
           longitude: r.longitude,
           sale_date: r.sale_date,
           created_at: r.created_at,
-          delivery_status: r.delivery_status,
+          delivery_status: norm(r.delivery_status),
+          taken_at: r.taken_at,
           delivered_at: r.delivered_at,
           total: 0,
           items: [],
@@ -71,27 +75,28 @@ router.get('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'SHOPIR', 'AGEN
         product_name: r.product_name, quantity: r.quantity, unit: r.unit,
         rang: r.rang, unit_price: r.unit_price,
       });
-      // Zakaz to'liq yetkazilgan hisoblanadi faqat BARCHA qatorlar DELIVERED bo'lsa
-      if (r.delivery_status !== 'DELIVERED') g.delivery_status = 'PENDING';
+      if (RANK[norm(r.delivery_status)] < RANK[g.delivery_status]) g.delivery_status = norm(r.delivery_status);
     }
 
-    let orders = Array.from(map.values());
-    if (status === 'pending') orders = orders.filter(o => o.delivery_status !== 'DELIVERED');
-    else if (status === 'delivered') orders = orders.filter(o => o.delivery_status === 'DELIVERED');
+    const all = Array.from(map.values());
+    let orders = all;
+    if (status === 'pending') orders = all.filter(o => o.delivery_status === 'PENDING');
+    else if (status === 'taken') orders = all.filter(o => o.delivery_status === 'TAKEN');
+    else if (status === 'delivered') orders = all.filter(o => o.delivery_status === 'DELIVERED');
 
     res.json({
       orders,
       counts: {
-        pending: Array.from(map.values()).filter(o => o.delivery_status !== 'DELIVERED').length,
-        delivered: Array.from(map.values()).filter(o => o.delivery_status === 'DELIVERED').length,
+        pending: all.filter(o => o.delivery_status === 'PENDING').length,
+        taken: all.filter(o => o.delivery_status === 'TAKEN').length,
+        delivered: all.filter(o => o.delivery_status === 'DELIVERED').length,
       },
     });
   } catch (err) { next(err); }
 });
 
 // Zakaz shu filial scope'ida DELIVERY sifatida mavjudmi? (RETURNING'ga tayanmaymiz —
-// SQLite adapter UPDATE...RETURNING'да qatorlarni ishonchli qaytarmaydi, shuning uchun
-// avval SELECT bilan tekshiramiz, keyin UPDATE.)
+// SQLite adapter UPDATE...RETURNING'да qatorlarni ishonchli qaytarmaydi.)
 async function orderExistsInScope(req, orderRef) {
   const { cond, params } = scopeClause(req, 2, '');
   const r = await query(
@@ -101,40 +106,50 @@ async function orderExistsInScope(req, orderRef) {
   return r.rows.length > 0;
 }
 
-// PATCH /api/deliveries/:orderRef/deliver — zakazni "yetkazildi" deb belgilash
-router.patch('/:orderRef/deliver', requireRole('OWNER', 'SALES_HEAD', 'SHOPIR'), async (req, res, next) => {
+// PATCH /api/deliveries/:orderRef/status — zakaz holatini o'zgartirish
+// body: { status: 'PENDING' | 'TAKEN' | 'DELIVERED' }
+//   PENDING   — yangi (bekor qilish / boshiga qaytarish)
+//   TAKEN     — shopir tovarni oldi (yo'lda)
+//   DELIVERED — mijozga yetkazildi
+router.patch('/:orderRef/status', requireRole('OWNER', 'SALES_HEAD', 'SHOPIR'), async (req, res, next) => {
   try {
     await ensureBranchSchema();
+    const status = String(req.body.status || '').toUpperCase();
+    if (!['PENDING', 'TAKEN', 'DELIVERED'].includes(status)) {
+      return res.status(400).json({ error: "Noto'g'ri holat" });
+    }
     // Filial sharti — shopir boshqa filial zakazini belgilay olmaydi
     if (!(await orderExistsInScope(req, req.params.orderRef))) {
       return res.status(404).json({ error: 'Zakaz topilmadi yoki sizning filialingizniki emas' });
     }
-    // $1 = delivered_by, $2 = order_ref, $3 = branch_id (agar filial bo'lsa)
-    const { cond, params } = scopeClause(req, 3, '');
-    await query(
-      `UPDATE sales SET delivery_status = 'DELIVERED', delivered_at = NOW(), delivered_by = $1
-       WHERE order_ref = $2 AND delivery_type = 'DELIVERY'${cond}`,
-      [req.user.id, req.params.orderRef, ...params]
-    );
-    res.json({ success: true, message: 'Yetkazildi deb belgilandi' });
-  } catch (err) { next(err); }
-});
-
-// PATCH /api/deliveries/:orderRef/undeliver — belgilashni bekor qilish (xato bo'lsa)
-router.patch('/:orderRef/undeliver', requireRole('OWNER', 'SALES_HEAD', 'SHOPIR'), async (req, res, next) => {
-  try {
-    await ensureBranchSchema();
-    if (!(await orderExistsInScope(req, req.params.orderRef))) {
-      return res.status(404).json({ error: 'Zakaz topilmadi' });
+    const ref = req.params.orderRef;
+    let sql, args, message;
+    if (status === 'TAKEN') {
+      // $1 = taken_by, $2 = order_ref, [$3 = branch]
+      const { cond, params } = scopeClause(req, 3, '');
+      sql = `UPDATE sales SET delivery_status = 'TAKEN', taken_at = NOW(), taken_by = $1,
+               delivered_at = NULL, delivered_by = NULL
+             WHERE order_ref = $2 AND delivery_type = 'DELIVERY'${cond}`;
+      args = [req.user.id, ref, ...params];
+      message = 'Tovar olindi — yo\'lda';
+    } else if (status === 'DELIVERED') {
+      // $1 = delivered_by, $2 = order_ref, [$3 = branch]
+      const { cond, params } = scopeClause(req, 3, '');
+      sql = `UPDATE sales SET delivery_status = 'DELIVERED', delivered_at = NOW(), delivered_by = $1
+             WHERE order_ref = $2 AND delivery_type = 'DELIVERY'${cond}`;
+      args = [req.user.id, ref, ...params];
+      message = 'Yetkazib berildi';
+    } else {
+      // PENDING — hammasini tozalab boshiga qaytaramiz. $1 = order_ref, [$2 = branch]
+      const { cond, params } = scopeClause(req, 2, '');
+      sql = `UPDATE sales SET delivery_status = 'PENDING', taken_at = NULL, taken_by = NULL,
+               delivered_at = NULL, delivered_by = NULL
+             WHERE order_ref = $1 AND delivery_type = 'DELIVERY'${cond}`;
+      args = [ref, ...params];
+      message = 'Boshiga qaytarildi';
     }
-    // $1 = order_ref, $2 = branch_id (agar filial bo'lsa)
-    const { cond, params } = scopeClause(req, 2, '');
-    await query(
-      `UPDATE sales SET delivery_status = 'PENDING', delivered_at = NULL, delivered_by = NULL
-       WHERE order_ref = $1 AND delivery_type = 'DELIVERY'${cond}`,
-      [req.params.orderRef, ...params]
-    );
-    res.json({ success: true, message: 'Yetkazilmagan holatga qaytarildi' });
+    await query(sql, args);
+    res.json({ success: true, status, message });
   } catch (err) { next(err); }
 });
 

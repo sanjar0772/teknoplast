@@ -124,10 +124,10 @@ export const agentAPI = {
 };
 
 // Dostavka (yetkazib berish) — SHOPIR (haydovchi)
+// Oqim: PENDING (yangi) → TAKEN (tovarni oldi) → DELIVERED (yetkazildi)
 export const deliveriesAPI = {
   getAll: (params) => api.get('/deliveries', { params }),
-  markDelivered: (orderRef) => api.patch(`/deliveries/${orderRef}/deliver`),
-  undeliver: (orderRef) => api.patch(`/deliveries/${orderRef}/undeliver`),
+  setStatus: (orderRef, status) => api.patch(`/deliveries/${orderRef}/status`, { status }),
 };
 
 // Expenses

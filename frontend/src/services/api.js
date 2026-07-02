@@ -106,6 +106,7 @@ export const branchesAPI = {
   transfer: (id, data) => api.post(`/branches/${id}/transfer`, data),
   getTransfers: (id) => api.get(`/branches/${id}/transfers`),
   getSummary: (id, params) => api.get(`/branches/${id}/summary`, { params }),
+  getUsers: (id) => api.get(`/branches/${id}/users`),
 };
 
 // Expenses

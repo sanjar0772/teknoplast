@@ -153,6 +153,18 @@ router.get('/:id/transfers', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/branches/:id/users — shu filialga biriktirilgan foydalanuvchilar (kirish) (faqat OWNER)
+router.get('/:id/users', requireRole('OWNER'), async (req, res, next) => {
+  try {
+    const rows = (await query(
+      `SELECT id, phone, full_name, role, is_active, last_login, created_at
+       FROM users WHERE branch_id = $1 ORDER BY created_at DESC`,
+      [req.params.id]
+    )).rows;
+    res.json({ users: rows });
+  } catch (err) { next(err); }
+});
+
 // GET /api/branches/:id/summary — filial savdo hisobot (davr bo'yicha)
 router.get('/:id/summary', async (req, res, next) => {
   try {

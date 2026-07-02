@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Plus, X, Store, Pencil, Eye, ArrowRight, ArrowLeft, Truck, Warehouse, History, Phone, MapPin } from 'lucide-react';
-import { branchesAPI, productsAPI } from '../services/api';
+import { Plus, X, Store, Pencil, Eye, ArrowRight, ArrowLeft, Truck, Warehouse, History, Phone, MapPin, UserPlus, KeyRound, Copy, Trash2, UserCheck, UserX, LogIn } from 'lucide-react';
+import { branchesAPI, productsAPI, authAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -30,6 +30,8 @@ export default function BranchesPage() {
   const [form, setForm] = useState(null);         // filial qo'shish/tahrirlash
   const [detailId, setDetailId] = useState(null); // filial tafsiloti
   const [transfer, setTransfer] = useState({ product_id: '', rang: '', quantity: '', direction: 'IN' });
+  const [seller, setSeller] = useState(null);     // filialga sotuvchi (kirish) qo'shish: { full_name, phone, password }
+  const [resetResult, setResetResult] = useState(null); // { full_name, phone, temp_password }
 
   const { data, isLoading } = useQuery({
     queryKey: ['branches'],
@@ -60,6 +62,13 @@ export default function BranchesPage() {
     enabled: !!detailId,
   });
 
+  // Filialga biriktirilgan sotuvchilar (kirish uchun loginlar)
+  const { data: usersData } = useQuery({
+    queryKey: ['branch-users', detailId],
+    queryFn: () => branchesAPI.getUsers(detailId).then(r => r.data),
+    enabled: !!detailId && isOwner(),
+  });
+
   const saveMutation = useMutation({
     mutationFn: (d) => d.id ? branchesAPI.update(d.id, d) : branchesAPI.create(d),
     onSuccess: () => {
@@ -83,9 +92,55 @@ export default function BranchesPage() {
     onError: (e) => toast.error(e.response?.data?.error || 'Ko\'chirishda xato'),
   });
 
+  // Filialga sotuvchi (savdo boshlig'i) logini yaratish — mavjud auth/register'dan foydalanadi
+  const createSellerMutation = useMutation({
+    mutationFn: (d) => authAPI.register({ ...d, role: 'SALES_HEAD', branch_id: detailId }),
+    onSuccess: () => {
+      toast.success('Sotuvchi qo\'shildi — endi shu login-parol bilan filialga kira oladi');
+      qc.invalidateQueries({ queryKey: ['branch-users', detailId] });
+      setSeller(null);
+    },
+    onError: (e) => toast.error(e.response?.data?.error || e.response?.data?.errors?.[0]?.msg || 'Xato'),
+  });
+
+  const resetPwdMutation = useMutation({
+    mutationFn: (id) => authAPI.resetPassword(id).then(r => r.data),
+    onSuccess: (data) => setResetResult(data),
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+
+  const toggleUserMutation = useMutation({
+    mutationFn: (id) => authAPI.toggleUser(id),
+    onSuccess: () => {
+      toast.success('Holat o\'zgartirildi');
+      qc.invalidateQueries({ queryKey: ['branch-users', detailId] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: (id) => authAPI.deleteUser(id),
+    onSuccess: (res) => {
+      toast.success(res.data?.message || 'O\'chirildi');
+      qc.invalidateQueries({ queryKey: ['branch-users', detailId] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'O\'chirishda xato'),
+  });
+
   const submitForm = () => {
     if (!form.name?.trim()) return toast.error('Filial nomini kiriting');
     saveMutation.mutate(form);
+  };
+
+  const submitSeller = () => {
+    if (!seller.full_name?.trim()) return toast.error('Sotuvchi ismini kiriting');
+    if (!seller.phone?.trim()) return toast.error('Telefon (login) kiriting');
+    if (!seller.password || seller.password.length < 6) return toast.error('Parol kamida 6 belgi');
+    createSellerMutation.mutate({
+      full_name: seller.full_name.trim(),
+      phone: seller.phone.trim(),
+      password: seller.password,
+    });
   };
 
   const submitTransfer = () => {
@@ -222,6 +277,66 @@ export default function BranchesPage() {
               ))}
             </div>
 
+            {/* Filial sotuvchilari (kirish loginlari) — faqat OWNER */}
+            {isOwner() && (
+              <div className="border border-green-200 bg-green-50/50 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-green-800">
+                    <LogIn size={15} /> Filial sotuvchilari (kirish)
+                  </div>
+                  <button onClick={() => setSeller({ full_name: '', phone: '', password: '' })}
+                    className="btn-primary btn-sm">
+                    <UserPlus size={13} /> Sotuvchi qo'shish
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Bu yerda filialga sotuvchi (savdo boshlig'i) uchun <b>login-parol</b> yarating.
+                  U shu login bilan tizimga kirganda to'g'ridan-to'g'ri <b>{detail.name}</b> ichida,
+                  aynan asosiy tizimdagidek ishlaydi (savdo, mijozlar, qarzlar, ombor — hammasi shu filial bo'yicha).
+                </p>
+                <div className="border border-gray-100 rounded-xl overflow-hidden bg-white">
+                  <table className="table text-sm">
+                    <thead><tr><th>Ism</th><th>Login (telefon)</th><th>Holat</th><th className="text-right">Amal</th></tr></thead>
+                    <tbody>
+                      {!(usersData?.users || []).length ? (
+                        <tr><td colSpan={4} className="text-center py-6 text-gray-400">
+                          Hali sotuvchi yo'q — "Sotuvchi qo'shish" bilan filialga kirish uchun login yarating
+                        </td></tr>
+                      ) : usersData.users.map(u => (
+                        <tr key={u.id}>
+                          <td className="font-medium">{u.full_name}</td>
+                          <td className="whitespace-nowrap">{u.phone}</td>
+                          <td>{u.is_active ? <span className="badge-green">Faol</span> : <span className="badge-gray">Bloklangan</span>}</td>
+                          <td>
+                            <div className="flex gap-1 justify-end">
+                              <button
+                                onClick={() => { if (window.confirm(`${u.full_name} uchun yangi vaqtinchalik parol yaratilsinmi?`)) resetPwdMutation.mutate(u.id); }}
+                                disabled={resetPwdMutation.isPending}
+                                title="Parolni tiklash" className="btn-secondary btn-sm">
+                                <KeyRound size={12} /> Parol
+                              </button>
+                              <button
+                                onClick={() => toggleUserMutation.mutate(u.id)}
+                                className={u.is_active ? 'btn-danger btn-sm' : 'btn-success btn-sm'}>
+                                {u.is_active ? <><UserX size={12} /> Bloklash</> : <><UserCheck size={12} /> Faollash</>}
+                              </button>
+                              <button
+                                onClick={() => { if (window.confirm(`${u.full_name} ni BUTUNLAY o'chirasizmi? Qaytarib bo'lmaydi!`)) deleteUserMutation.mutate(u.id); }}
+                                disabled={deleteUserMutation.isPending}
+                                title="Butunlay o'chirish"
+                                className="btn-sm bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg px-2 flex items-center">
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {/* Tovar ko'chirish — faqat OWNER */}
             {isOwner() && (
               <div className="border border-blue-200 bg-blue-50/50 rounded-xl p-4 space-y-3">
@@ -321,6 +436,63 @@ export default function BranchesPage() {
                 </table>
               </div>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Filialga sotuvchi (kirish) qo'shish */}
+      <Modal open={!!seller} onClose={() => setSeller(null)} title={`Sotuvchi qo'shish — ${detail?.name || ''}`}>
+        {seller && (
+          <div className="space-y-4">
+            <p className="text-xs text-gray-500">
+              Bu sotuvchi <b>savdo boshlig'i</b> sifatida shu login-parol bilan kirib, faqat
+              <b> {detail?.name}</b> filiali bo'yicha ishlaydi.
+            </p>
+            <div>
+              <label className="label">To'liq ism *</label>
+              <input value={seller.full_name} onChange={e => setSeller(s => ({ ...s, full_name: e.target.value }))}
+                className="input" placeholder="Ism Familiya" />
+            </div>
+            <div>
+              <label className="label">Login (telefon) *</label>
+              <input value={seller.phone} onChange={e => setSeller(s => ({ ...s, phone: e.target.value }))}
+                className="input" placeholder="+998..." />
+            </div>
+            <div>
+              <label className="label">Parol * (kamida 6 belgi)</label>
+              <input value={seller.password} onChange={e => setSeller(s => ({ ...s, password: e.target.value }))}
+                className="input" placeholder="Parol"
+                onKeyDown={e => e.key === 'Enter' && submitSeller()} />
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setSeller(null)} className="btn-secondary flex-1">Bekor</button>
+              <button onClick={submitSeller} disabled={createSellerMutation.isPending} className="btn-primary flex-1">
+                {createSellerMutation.isPending ? 'Saqlanmoqda...' : 'Qo\'shish'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Parol tiklash natijasi */}
+      <Modal open={!!resetResult} onClose={() => setResetResult(null)} title="Yangi parol yaratildi">
+        {resetResult && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              <strong>{resetResult.full_name}</strong> uchun yangi vaqtinchalik parol:
+            </p>
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg p-3">
+              <code className="flex-1 text-lg font-bold tracking-wider text-indigo-700">{resetResult.temp_password}</code>
+              <button
+                onClick={() => { navigator.clipboard?.writeText(resetResult.temp_password); toast.success('Nusxa olindi'); }}
+                className="btn-secondary btn-sm" title="Nusxa olish">
+                <Copy size={14} />
+              </button>
+            </div>
+            <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800">
+              ⚠️ Bu parolni sotuvchiga bering ({resetResult.phone}). U kirgach o'z parolini o'zgartirsin. Parol qayta ko'rsatilmaydi.
+            </div>
+            <button onClick={() => setResetResult(null)} className="btn-primary w-full">Tushunarli</button>
           </div>
         )}
       </Modal>

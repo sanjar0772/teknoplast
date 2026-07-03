@@ -2,6 +2,13 @@ import { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { Scale, Truck, Printer, RotateCcw, Package, ArrowDown } from 'lucide-react';
 import { COMPANY } from '../constants/company';
+import { taroziAPI } from '../services/api';
+
+// Toshkent bo'yicha bugungi sana (YYYY-MM-DD) — UTC bug'siz
+const localDate = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 const num = (v) => {
@@ -26,24 +33,30 @@ export default function TaroziPage() {
   const [tara, setTara] = useState('');
   const [haydovchi, setHaydovchi] = useState('');
   const [recent, setRecent] = useState([]);
+  const [serverMaxNo, setServerMaxNo] = useState(0);
 
-  // Oxirgi cheklarni yuklash
+  // Oxirgi cheklarni yuklash + serverdagi eng katta chek raqamini olish
+  // (boshqa qurilmada ham raqam uzluksiz davom etsin)
   useEffect(() => {
     try {
       const r = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
       setRecent(Array.isArray(r) ? r : []);
     } catch { /* yo'q */ }
+    taroziAPI.getAll().then(res => {
+      const mx = parseInt(res.data?.max_no, 10) || 0;
+      if (mx) setServerMaxNo(mx);
+    }).catch(() => { /* server yo'q — localStorage bilan ishlaydi */ });
   }, []);
 
   const bruttoN = num(brutto);
   const taraN = num(tara);
   const netto = Math.max(0, bruttoN - taraN);
 
-  // Keyingi chek raqami (faqat ko'rsatish uchun)
+  // Keyingi chek raqami — localStorage va server maksimumidan kattasi + 1
   const chekNo = useMemo(() => {
     const n = parseInt(localStorage.getItem(COUNTER_KEY) || '0', 10) || 0;
-    return n + 1;
-  }, [recent]);
+    return Math.max(n, serverMaxNo) + 1;
+  }, [recent, serverMaxNo]);
 
   const reset = () => {
     setMashina(''); setMahsulot(''); setBrutto(''); setTara(''); setHaydovchi('');
@@ -70,6 +83,12 @@ export default function TaroziPage() {
     const next = [entry, ...recent].slice(0, 12);
     setRecent(next);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    // Serverga saqlash — admin (ega) cheklarni ko'rishi uchun. Xato bo'lsa ham chek chiqadi.
+    taroziAPI.create({
+      no, mashina: entry.mashina, mahsulot: entry.mahsulot, haydovchi: entry.haydovchi,
+      brutto: bruttoN, tara: taraN, netto, sana: localDate(),
+    }).then(() => setServerMaxNo(m => Math.max(m, no)))
+      .catch(() => toast.error("Chek serverga saqlanmadi (internet?) — chop etildi"));
     // Chop etish — brauzer chek printerni tanlaydi
     setTimeout(() => window.print(), 60);
   };

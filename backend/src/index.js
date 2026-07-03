@@ -59,6 +59,7 @@ app.use('/api/ahmad', require('./routes/ahmad'));
 app.use('/api/branches', require('./routes/branches'));
 app.use('/api/agent', require('./routes/agent'));
 app.use('/api/deliveries', require('./routes/deliveries'));
+app.use('/api/tarozi', require('./routes/tarozi'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString(), env: process.env.NODE_ENV });
@@ -66,7 +67,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'shopir-nakladnoy', commit: 'v108' });
+  res.json({ version: 'tarozi-server-cheklar', commit: 'v109' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)
@@ -160,6 +161,11 @@ require('./services/branchSchema')
 require('./services/agentSchema')
   .ensureAgentSchema()
   .catch(e => console.error('Agent schema init xato:', e.message));
+
+// Tarozi (weighbridge) cheklari jadvalini tayyorlash
+require('./services/taroziSchema')
+  .ensureTaroziSchema()
+  .catch(e => console.error('Tarozi schema init xato:', e.message));
 
 // Inventarizatsiya tarixi jadvalini tayyorlash
 require('./services/inventoryAudit')

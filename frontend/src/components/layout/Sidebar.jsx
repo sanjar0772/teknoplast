@@ -43,8 +43,9 @@ const NAV_ITEMS = [
   { to: '/inventory',  icon: Warehouse,       label: 'Ombor',            roles: ['OWNER','ACCOUNTANT','PRODUCTION_HEAD','KIRIMCHI','OMBORCHI','TAMINOTCHI','SALES_HEAD'] },
   { to: '/machines',   icon: Cog,             label: 'Mashinalar',       roles: ['OWNER','PRODUCTION_HEAD','CYCLE_TIME'] },
   { to: '/branches',   icon: Store,           label: 'Filiallar',        roles: ['OWNER'] },
-  // Tarozi vaqtincha yashirilgan (2026-07-01) — keyin qayta yoqiladi
-  // { to: '/tarozi',     icon: Scale,           label: 'Tarozi',           roles: ['OWNER','KIRIMCHI','OMBORCHI','SALES_HEAD','PRODUCTION_HEAD'] },
+  // Tarozi — asosiy tizimda TAMINOTCHI chek chiqaradi; EGA cheklarni ko'radi
+  { to: '/tarozi',        icon: Scale,        label: 'Tarozi',           roles: ['OWNER','TAMINOTCHI'] },
+  { to: '/tarozi-cheklar', icon: Scale,       label: 'Tarozi cheklari',  roles: ['OWNER'] },
   { to: '/reports',    icon: FileBarChart,    label: 'Hisobotlar',       roles: ['OWNER','ACCOUNTANT'] },
   { to: '/users',      icon: ShieldCheck,     label: 'Foydalanuvchilar', roles: ['OWNER'] },
   { to: '/agent-profile', icon: UserSquare2,  label: 'Mening profilim',  roles: ['AGENT'] },
@@ -81,7 +82,7 @@ export default function Sidebar() {
   // Filial konteksti: filial xodimi (branch_id) YOKI EGA filialga "admin sifatida" kirgan (activeBranch)
   const inBranchContext = !!(user?.branch_id || activeBranch);
   // Filialda ishlab chiqarish YO'Q — bu bo'limlar filialdan olib tashlanadi (zavodda qoladi)
-  const HIDE_IN_BRANCH = ['/production', '/components'];
+  const HIDE_IN_BRANCH = ['/production', '/components', '/tarozi', '/tarozi-cheklar'];
   const visibleItems = NAV_ITEMS.filter(item =>
     (!item.roles || item.roles.includes(user?.role)) &&
     !(inBranchContext && HIDE_IN_BRANCH.includes(item.to))

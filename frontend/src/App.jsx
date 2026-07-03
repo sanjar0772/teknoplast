@@ -31,6 +31,7 @@ import WorkerPage from './pages/WorkerPage';
 import AgentProfilePage from './pages/AgentProfilePage';
 import DeliveriesPage from './pages/DeliveriesPage';
 import AgentLocationsPage from './pages/AgentLocationsPage';
+import TaroziChekPage from './pages/TaroziChekPage';
 
 function PrivateRoute({ children }) {
   const { isAuthenticated } = useAuthStore();
@@ -75,6 +76,7 @@ export default function App() {
           <Route path="machines" element={<MachinesPage />} />
           <Route path="branches" element={<BranchesPage />} />
           <Route path="tarozi" element={<TaroziPage />} />
+          <Route path="tarozi-cheklar" element={<TaroziChekPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="agent-profile" element={<AgentProfilePage />} />
           <Route path="deliveries" element={<DeliveriesPage />} />

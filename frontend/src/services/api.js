@@ -130,6 +130,12 @@ export const deliveriesAPI = {
   setStatus: (orderRef, status) => api.patch(`/deliveries/${orderRef}/status`, { status }),
 };
 
+// Tarozi (weighbridge) cheklari
+export const taroziAPI = {
+  getAll: (params) => api.get('/tarozi', { params }),
+  create: (data) => api.post('/tarozi', data),
+};
+
 // Expenses
 export const expensesAPI = {
   getAll: (params) => api.get('/expenses', { params }),

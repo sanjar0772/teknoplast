@@ -30,6 +30,7 @@ import AIPage from './pages/AIPage';
 import WorkerPage from './pages/WorkerPage';
 import AgentProfilePage from './pages/AgentProfilePage';
 import DeliveriesPage from './pages/DeliveriesPage';
+import AgentLocationsPage from './pages/AgentLocationsPage';
 
 function PrivateRoute({ children }) {
   const { isAuthenticated } = useAuthStore();
@@ -77,6 +78,7 @@ export default function App() {
           <Route path="reports" element={<ReportsPage />} />
           <Route path="agent-profile" element={<AgentProfilePage />} />
           <Route path="deliveries" element={<DeliveriesPage />} />
+          <Route path="agent-locations" element={<AgentLocationsPage />} />
           <Route path="ai" element={<AIPage />} />
           <Route path="worker" element={<WorkerPage />} />
         </Route>

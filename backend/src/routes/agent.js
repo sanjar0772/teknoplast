@@ -83,26 +83,40 @@ router.post('/location', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/agent/locations — barcha agentlarning oxirgi joylashuvi (faqat EGA)
-router.get('/locations', requireRole('OWNER'), async (req, res, next) => {
+// GET /api/agent/locations — agentlarning oxirgi joylashuvi.
+// EGA (admin) — barcha agentlar (yoki filialga kirgan bo'lsa o'sha filial);
+// SAVDO BOSHLIG'I — faqat o'z filiali agentlari.
+router.get('/locations', requireRole('OWNER', 'SALES_HEAD'), async (req, res, next) => {
   try {
     await ensureAgentSchema();
+    const branchId = req.user.branch_id || null; // SALES_HEAD'da doim bor; OWNER acting bo'lsa ham
+    let where = "u.role = 'AGENT'";
+    const params = [];
+    if (branchId) { where += ` AND u.branch_id = $1`; params.push(branchId); }
     const r = await query(
       `SELECT u.id, u.full_name, u.phone, u.last_lat, u.last_lng, u.last_location_at,
               u.is_active, b.name AS branch_name
        FROM users u LEFT JOIN branches b ON u.branch_id = b.id
-       WHERE u.role = 'AGENT'
+       WHERE ${where}
        ORDER BY u.last_location_at DESC`,
-      []
+      params
     );
     res.json({ agents: r.rows });
   } catch (err) { next(err); }
 });
 
-// GET /api/agent/:id/track — bitta agentning bugungi yo'nalishi (faqat EGA)
-router.get('/:id/track', requireRole('OWNER'), async (req, res, next) => {
+// GET /api/agent/:id/track — bitta agentning yo'nalishi (EGA + o'z filiali uchun SAVDO BOSHLIG'I)
+router.get('/:id/track', requireRole('OWNER', 'SALES_HEAD'), async (req, res, next) => {
   try {
     await ensureAgentSchema();
+    // Filial guard — savdo boshlig'i / filialga kirgan ega faqat o'z filiali agentini ko'radi
+    const branchId = req.user.branch_id || null;
+    if (branchId) {
+      const a = await query(`SELECT branch_id FROM users WHERE id = $1 AND role = 'AGENT'`, [req.params.id]);
+      if (!a.rows.length || String(a.rows[0].branch_id || '') !== String(branchId)) {
+        return res.status(403).json({ error: "Bu agent sizning filialingizniki emas" });
+      }
+    }
     const date = req.query.date || null;
     let where = 'user_id = $1';
     const params = [req.params.id];

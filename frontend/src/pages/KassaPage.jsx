@@ -47,7 +47,19 @@ export default function KassaPage() {
 
   const t = data?.totals || {};
   const ops = data?.ops || [];
+  const m = data?.methods || {};
   const isToday = date === localToday();
+
+  // To'lov usullari bo'yicha jamlanma (kassa oxirida) — faqat 0 dan katta usullar
+  const METHODS = [
+    { key: 'CASH',     label: 'Naqd',   emoji: '💵' },
+    { key: 'CARD',     label: 'Karta',  emoji: '💳' },
+    { key: 'TRANSFER', label: 'Bank',   emoji: '🏦' },
+    { key: 'PAYME',    label: 'Pay Me', emoji: '📱' },
+    { key: 'CLICK',    label: 'Click',  emoji: '📲' },
+  ];
+  const methodRows = METHODS.map(x => ({ ...x, value: parseFloat(m[x.key]) || 0 }));
+  const methodsTotal = methodRows.reduce((s, x) => s + x.value, 0);
 
   const cards = [
     { label: 'Kassaga kirdi',  value: `${fmt(t.kirim)} so'm`,      sub: `Savdodan: ${fmt(t.savdo_naqd)} · Qarzdan: ${fmt(t.qarz_tolov)}`, cls: 'text-emerald-600', bg: 'bg-emerald-50', Icon: Wallet },
@@ -157,6 +169,27 @@ export default function KassaPage() {
           )}
         </table>
       </div>
+
+      {/* To'lov usullari bo'yicha qisqa jamlanma — eng tagida */}
+      {ops.length > 0 && (
+        <div className="card p-4">
+          <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-1.5">
+            <Wallet size={15} className="text-gray-500" /> To'lov usullari bo'yicha
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            {methodRows.map(x => (
+              <div key={x.key} className={`rounded-xl border p-3 ${x.value > 0 ? 'border-gray-200 bg-gray-50' : 'border-gray-100 bg-white opacity-60'}`}>
+                <p className="text-xs text-gray-500">{x.emoji} {x.label}</p>
+                <p className={`text-base font-bold mt-0.5 ${x.value > 0 ? 'text-gray-900' : 'text-gray-300'}`}>{fmt(x.value)}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+            <span className="text-sm font-medium text-gray-600">Jami (barcha usullar):</span>
+            <span className="text-lg font-bold text-emerald-700">{fmt(methodsTotal)} so'm</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

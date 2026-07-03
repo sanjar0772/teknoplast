@@ -309,7 +309,7 @@ router.get('/kassa', async (req, res, next) => {
 
     // 1) Shu kungi savdolar — chek (order_ref) bo'yicha guruhlanadi: bitta operatsiya = bitta chek
     const sales = (await query(`
-      SELECT s.id, s.order_ref, s.total_amount, s.payment_amount, s.created_at,
+      SELECT s.id, s.order_ref, s.total_amount, s.payment_amount, s.created_at, s.notes,
              COALESCE(c.name, s.customer_name) AS customer_name
       FROM sales s LEFT JOIN customers c ON s.customer_id = c.id
       WHERE DATE(s.sale_date) = $1${sScope}
@@ -342,7 +342,7 @@ router.get('/kassa', async (req, res, next) => {
     for (const s of sales) {
       const key = s.order_ref || s.id;
       if (!groups[key]) {
-        groups[key] = { time: s.created_at, customer: s.customer_name || 'Tasodifiy mijoz', total: 0, paid_now: 0, items: 0 };
+        groups[key] = { time: s.created_at, customer: s.customer_name || 'Tasodifiy mijoz', total: 0, paid_now: 0, items: 0, notes: s.notes || '' };
         order.push(key);
       }
       const g = groups[key];
@@ -410,6 +410,18 @@ router.get('/kassa', async (req, res, next) => {
     const qarz_tolov = sum('QARZ_TOLOV', 'amount');
     const chiqim = sum('VOZVRAT', 'amount');
 
+    // TO'LOV USULLARI bo'yicha jamlanma (Naqd/Karta/Bank/Pay Me/Click) — kassa oxirida ko'rsatiladi.
+    // Savdo: chek notes'idan ("To'lov: Naqd: X · Karta: Y ..."). Qarz to'lov: payments.method'dan.
+    // Skidka (chegirma) — pul emas, hisobga olinmaydi.
+    const methods = { CASH: 0, CARD: 0, TRANSFER: 0, PAYME: 0, CLICK: 0 };
+    const NOTE_RE = { CASH: /Naqd:\s*([\d.]+)/i, CARD: /Karta:\s*([\d.]+)/i, TRANSFER: /Bank:\s*([\d.]+)/i, PAYME: /Payme:\s*([\d.]+)/i, CLICK: /Click:\s*([\d.]+)/i };
+    for (const key of order) {
+      const notes = groups[key].notes || '';
+      for (const m in NOTE_RE) { const mt = notes.match(NOTE_RE[m]); if (mt) methods[m] += parseFloat(mt[1]) || 0; }
+    }
+    for (const p of pays) { if (methods[p.method] !== undefined) methods[p.method] += parseFloat(p.amount) || 0; }
+    Object.keys(methods).forEach(k => { methods[k] = Math.round(methods[k]); });
+
     res.json({
       date, ops,
       totals: {
@@ -422,6 +434,7 @@ router.get('/kassa', async (req, res, next) => {
         chiqim,                              // vozvrat — naqd qaytarilgan
         sof: savdo_naqd + qarz_tolov - chiqim, // sof kassa
       },
+      methods, // to'lov usullari bo'yicha jamlanma: { CASH, CARD, TRANSFER, PAYME, CLICK }
     });
   } catch (err) { next(err); }
 });

@@ -36,7 +36,9 @@ router.get('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'SHOPIR', 'AGEN
               s.customer_id, s.customer_name, s.customer_phone, s.sale_date, s.created_at,
               COALESCE(s.delivery_status, 'PENDING') AS delivery_status, s.delivered_at, s.taken_at, s.taken_by,
               p.name AS product_name, p.unit,
-              c.address AS customer_address, c.latitude, c.longitude,
+              COALESCE(s.delivery_address, c.address) AS customer_address,
+              COALESCE(s.delivery_lat, c.latitude) AS latitude,
+              COALESCE(s.delivery_lng, c.longitude) AS longitude,
               du.full_name AS shopir_name, du.last_lat AS shopir_lat, du.last_lng AS shopir_lng,
               du.last_location_at AS shopir_location_at
        FROM sales s

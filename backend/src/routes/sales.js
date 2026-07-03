@@ -327,6 +327,12 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), 
     // Filialga biriktirilgan foydalanuvchi — filial omboridan sotadi
     const branchId = req.user.branch_id || null;
     const deliveryType = delivery_type === 'DELIVERY' ? 'DELIVERY' : 'PICKUP';
+    // Dostavka manzili/lokatsiyasi — faqat DELIVERY bo'lsa saqlanadi (shopir shu manzilga boradi)
+    const dLat = parseFloat(req.body.delivery_lat);
+    const dLng = parseFloat(req.body.delivery_lng);
+    const deliveryAddress = deliveryType === 'DELIVERY' ? ((req.body.delivery_address || '').trim() || null) : null;
+    const deliveryLat = deliveryType === 'DELIVERY' && isFinite(dLat) ? dLat : null;
+    const deliveryLng = deliveryType === 'DELIVERY' && isFinite(dLng) ? dLng : null;
 
     // Mijoz ma'lumotini olish
     let custName = customer_name, custPhone = customer_phone;
@@ -388,10 +394,12 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), 
         }
         const r = await client.query(
           `INSERT INTO sales (product_id, customer_id, quantity, unit_price, total_amount,
-            customer_name, customer_phone, sale_date, status, payment_amount, notes, created_by, order_ref, rang, branch_id, delivery_type)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+            customer_name, customer_phone, sale_date, status, payment_amount, notes, created_by, order_ref, rang, branch_id, delivery_type,
+            delivery_address, delivery_lat, delivery_lng)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
           [it.product_id, customer_id || null, qty, price, total, custName, custPhone,
-           saleDate, saleStatus, itemPaid, notes || null, req.user.id, order_ref, it.rang || null, branchId, deliveryType]
+           saleDate, saleStatus, itemPaid, notes || null, req.user.id, order_ref, it.rang || null, branchId, deliveryType,
+           deliveryAddress, deliveryLat, deliveryLng]
         );
         await client.query(
           'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW() WHERE id = $2',

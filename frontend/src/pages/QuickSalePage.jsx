@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Search, Plus, Trash2, ShoppingCart, X, Package, CheckCircle, Eraser, FileDown, QrCode, FileText, Tag, Truck
+  Search, Plus, Trash2, ShoppingCart, X, Package, CheckCircle, Eraser, FileDown, QrCode, FileText, Tag, Truck, MapPin
 } from 'lucide-react';
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import { productsAPI, customersAPI, salesAPI, fulfillmentAPI } from '../services/api';
@@ -82,6 +82,8 @@ export default function QuickSalePage() {
   const [search, setSearch] = useState('');
   const [lastOrder, setLastOrder] = useState(null);
   const [delivery, setDelivery] = useState(false); // dostavka (yetkazib berish) belgisi
+  const [deliveryAddress, setDeliveryAddress] = useState(''); // dostavka manzili (shopir shu yerga boradi)
+  const [deliveryLoc, setDeliveryLoc] = useState(null); // { lat, lng } — belgilangan lokatsiya
 
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions)); } catch {}
@@ -246,6 +248,8 @@ export default function QuickSalePage() {
       setSessions(ss => ss.map((ses, i) => i === idx ? { ...ses, cart: [], payCash: '', payCard: '', payBank: '', payPayme: '', payClick: '', discount: '' } : ses));
       setSearch('');
       setDelivery(false);
+      setDeliveryAddress('');
+      setDeliveryLoc(null);
     },
   });
 
@@ -263,9 +267,35 @@ export default function QuickSalePage() {
   const debtAmt = Math.max(0, finalTotal - paidTotal);
   const creditAmt = Math.max(0, paidTotal - finalTotal); // oshiqcha to'lov — mijoz haqdor bo'ladi
 
+  // Dostavkani yoqish/o'chirish — yoqilганда mijoz manzili/lokatsiyasidan to'ldiramiz
+  const toggleDelivery = () => {
+    setDelivery(d => {
+      const next = !d;
+      if (next) {
+        if (!deliveryAddress.trim() && selectedCustomer?.address) setDeliveryAddress(selectedCustomer.address);
+        if (!deliveryLoc && selectedCustomer?.latitude != null && selectedCustomer?.longitude != null) {
+          setDeliveryLoc({ lat: selectedCustomer.latitude, lng: selectedCustomer.longitude });
+        }
+      }
+      return next;
+    });
+  };
+
+  // Hozirgi GPS joylashuvni olish (dostavka manzili sifatida)
+  const captureLocation = () => {
+    if (!navigator.geolocation) return toast.error("Qurilma GPS'ni qo'llab-quvvatlamaydi");
+    toast.loading('Joylashuv olinmoqda...', { id: 'geo' });
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { setDeliveryLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }); toast.success('Joylashuv belgilandi ✓', { id: 'geo' }); },
+      () => toast.error("Joylashuvga ruxsat berilmadi", { id: 'geo' }),
+      { enableHighAccuracy: true, timeout: 15000 }
+    );
+  };
+
   const checkout = () => {
     if (!s.cart.length) return toast.error('Savat bo\'sh');
     if (!s.customerId) return toast.error('Mijozni tanlang');
+    if (delivery && !deliveryAddress.trim()) return toast.error('Dostavka manzilini kiriting');
     for (const x of s.cart) {
       if (!x.qty || x.qty < 1) return toast.error(`"${x.name}" miqdori noto'g'ri`);
       if (!(x.color_stock || []).length) return toast.error(`"${x.name}" omborda yo'q`);
@@ -312,6 +342,9 @@ export default function QuickSalePage() {
       notes: `To'lov: ${noteParts.join(' · ')}`,
       items: itemsOut,
       delivery_type: delivery ? 'DELIVERY' : 'PICKUP',
+      delivery_address: delivery ? deliveryAddress.trim() : undefined,
+      delivery_lat: delivery ? deliveryLoc?.lat : undefined,
+      delivery_lng: delivery ? deliveryLoc?.lng : undefined,
     });
   };
 
@@ -775,7 +808,7 @@ export default function QuickSalePage() {
                 {discountAmt > 0 && <span className="text-[11px] text-rose-600 font-medium">−{fmt(discountAmt)} so'm</span>}
               </div>
               {/* Dostavka (yetkazib berish) belgisi */}
-              <button type="button" onClick={() => setDelivery(d => !d)}
+              <button type="button" onClick={toggleDelivery}
                 className={`w-full flex items-center justify-center gap-1.5 rounded-lg border py-1.5 text-xs font-medium transition-colors ${
                   delivery
                     ? 'bg-amber-500 text-white border-amber-500'
@@ -783,6 +816,38 @@ export default function QuickSalePage() {
                 }`}>
                 <Truck size={13} /> {delivery ? 'Dostavka orqali ✓' : 'Dostavka orqali'}
               </button>
+              {/* Dostavka yoqilганда — manzil so'raladi (shopir shu yerga boradi) */}
+              {delivery && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-2.5 space-y-2">
+                  <label className="text-[11px] font-semibold text-amber-800 flex items-center gap-1">
+                    <MapPin size={12} /> Dostavka manzili *
+                  </label>
+                  <textarea
+                    value={deliveryAddress}
+                    onChange={e => setDeliveryAddress(e.target.value)}
+                    rows={2}
+                    placeholder="Mijoz manzili — ko'cha, uy, mo'ljal..."
+                    className={`w-full text-xs rounded-lg border px-2 py-1.5 resize-none focus:outline-none focus:ring-1 ${
+                      deliveryAddress.trim() ? 'border-gray-200 focus:ring-amber-400' : 'border-red-300 focus:ring-red-400'
+                    }`}
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <button type="button" onClick={captureLocation}
+                      className="flex items-center gap-1 text-[11px] font-medium text-amber-700 hover:text-amber-800">
+                      <MapPin size={12} /> Hozirgi joyni olish
+                    </button>
+                    {deliveryLoc ? (
+                      <a href={`https://maps.google.com/?q=${deliveryLoc.lat},${deliveryLoc.lng}`}
+                        target="_blank" rel="noreferrer"
+                        className="text-[11px] font-medium text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
+                        <CheckCircle size={11} /> Joylashuv belgilandi
+                      </a>
+                    ) : (
+                      <span className="text-[10px] text-gray-400">Lokatsiya ixtiyoriy</span>
+                    )}
+                  </div>
+                </div>
+              )}
               {/* Yakuniy summa + Sotish */}
               <div className="flex items-center justify-between">
                 <div>

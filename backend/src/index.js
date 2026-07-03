@@ -70,6 +70,44 @@ app.get('/api/version', (req, res) => {
   res.json({ version: 'vozvrat-karta-google-maps', commit: 'v119' });
 });
 
+// VAQTINCHA DIAGNOSTIKA (faqat-o'qish) — mijoz + barcha savdo/to'lovlari. JWT_SECRET bilan himoyalangan.
+// Oshiqcha to'lov (haqdor) qidirish uchun. Tekshiruvdan keyin OLIB TASHLANADI.
+app.get('/api/_diag', async (req, res) => {
+  try {
+    if (req.query.k !== process.env.JWT_SECRET) return res.status(404).json({ error: 'not found' });
+    const dbx = require('./db');
+    const q = String(req.query.q || '').toLowerCase();
+    const custs = (await dbx.query(
+      `SELECT id, name, phone, branch_id, total_debt FROM customers WHERE lower(name) LIKE $1`,
+      [`%${q}%`]
+    )).rows;
+    const out = [];
+    for (const c of custs) {
+      const sales = (await dbx.query(
+        `SELECT id, order_ref, sale_date, total_amount, payment_amount, status,
+                (payment_amount - total_amount) AS bal
+         FROM sales WHERE customer_id = $1 ORDER BY created_at`, [c.id]
+      )).rows;
+      let pays = [];
+      try {
+        pays = (await dbx.query(
+          `SELECT p.sale_id, p.amount, p.method, p.payment_date, p.created_at
+           FROM payments p JOIN sales s ON p.sale_id = s.id
+           WHERE s.customer_id = $1 ORDER BY p.created_at`, [c.id]
+        )).rows;
+      } catch (e) { /* payments jadvali bo'lmasligi mumkin */ }
+      const totalAmt = sales.reduce((s, x) => s + parseFloat(x.total_amount || 0), 0);
+      const totalPaid = sales.reduce((s, x) => s + parseFloat(x.payment_amount || 0), 0);
+      out.push({
+        customer: { id: c.id, name: c.name, phone: c.phone, branch_id: c.branch_id, total_debt: c.total_debt },
+        summary: { sales_count: sales.length, total_amount: totalAmt, total_paid: totalPaid, net_balance: totalPaid - totalAmt },
+        sales, payments: pays,
+      });
+    }
+    res.json({ found: out.length, data: out });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Frontend static files (Railway uchun - Nginx yo'q)
 const frontendDist = path.join(__dirname, '../../frontend/dist');
 // Hashli fayllar (assets/) abadiy keshlanadi, index.html esa HECH QACHON keshlanmaydi

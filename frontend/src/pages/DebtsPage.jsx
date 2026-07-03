@@ -607,7 +607,11 @@ export default function DebtsPage() {
 
   const submitPay = () => {
     if (settled <= 0) return toast.error('Kamida bitta usulda summa yoki skidka kiriting');
-    // Ortiqcha pul endi ruxsat — qarzdan oshgani haqdor bo'lib qoladi (skidka qarzdan oshmaydi)
+    // Chegirma qarzdan OSHIB ketolmaydi — tizim ruxsat bermaydi (jimgina kesmaydi).
+    // Pul chegirma emas: mijoz pul bergan bo'lsa "Naqd/Karta"ga yozilishi kerak.
+    if (skidka > debtTotal + 0.01)
+      return toast.error(`Chegirma qarzdan (${fmt(debtTotal)} so'm) oshmasligi kerak. Pul bo'lsa "Naqd"ga yozing`);
+    // Ortiqcha PUL (naqd/karta) ruxsat — qarzdan oshgani haqdor bo'lib qoladi (faqat skidka oshmaydi)
     payMutation.mutate({ items: payFor.items, naqd, karta, bank, payme, click, skidka, customer: payFor.customer, totalDebt: payFor.totalDebt });
   };
 

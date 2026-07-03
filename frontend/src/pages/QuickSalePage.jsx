@@ -302,6 +302,9 @@ export default function QuickSalePage() {
     if (!s.cart.length) return toast.error('Savat bo\'sh');
     if (!s.customerId) return toast.error('Mijozni tanlang');
     if (delivery && !deliveryAddress.trim()) return toast.error('Dostavka manzilini kiriting');
+    // Chegirma savdo summasidan OSHIB ketolmaydi — tizim ruxsat bermaydi (jimgina kesmaydi)
+    if (Math.round(discountRaw) > grandTotal + 0.01)
+      return toast.error(`Chegirma savdo summasidan (${fmt(grandTotal)} so'm) oshmasligi kerak`);
     for (const x of s.cart) {
       if (!x.qty || x.qty < 1) return toast.error(`"${x.name}" miqdori noto'g'ri`);
       if (!(x.color_stock || []).length) return toast.error(`"${x.name}" omborda yo'q`);

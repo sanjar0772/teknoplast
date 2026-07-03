@@ -70,6 +70,29 @@ app.get('/api/version', (req, res) => {
   res.json({ version: 'vozvrat-karta-google-maps', commit: 'v119' });
 });
 
+// VAQTINCHA DIAGNOSTIKA #2 (faqat-o'qish) — mijozning to'lov audit loglari. JWT_SECRET himoyalangan.
+// Chegirma/naqd aslida qancha yuborilganini isbotlash uchun. Keyin OLIB TASHLANADI.
+app.get('/api/_diag2', async (req, res) => {
+  try {
+    if (req.query.k !== process.env.JWT_SECRET) return res.status(404).json({ error: 'not found' });
+    const dbx = require('./db');
+    const q = String(req.query.q || '').toLowerCase();
+    const c = (await dbx.query(`SELECT id, name FROM customers WHERE lower(name) LIKE $1 LIMIT 1`, [`%${q}%`])).rows[0];
+    if (!c) return res.json({ error: 'mijoz topilmadi' });
+    const saleIds = (await dbx.query(`SELECT id FROM sales WHERE customer_id = $1`, [c.id])).rows.map(r => r.id);
+    if (!saleIds.length) return res.json({ customer: c.name, audit: [] });
+    const placeholders = saleIds.map((_, i) => `$${i + 1}`).join(',');
+    let audit = [];
+    try {
+      audit = (await dbx.query(
+        `SELECT action, record_id, new_values, created_at FROM audit_logs
+         WHERE record_id IN (${placeholders}) ORDER BY created_at`, saleIds
+      )).rows;
+    } catch (e) { audit = [{ error: e.message }]; }
+    res.json({ customer: c.name, audit_count: audit.length, audit });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Frontend static files (Railway uchun - Nginx yo'q)
 const frontendDist = path.join(__dirname, '../../frontend/dist');
 // Hashli fayllar (assets/) abadiy keshlanadi, index.html esa HECH QACHON keshlanmaydi

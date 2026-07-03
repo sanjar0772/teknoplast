@@ -737,6 +737,10 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGE
     //   (berilmasa — eski xatti-harakat: ortiqcha to'lov bo'lsa avtomatik refund)
     const settlement = req.body.settlement === 'REFUND' ? 'REFUND'
       : req.body.settlement === 'BALANCE' ? 'BALANCE' : null;
+    // Vozvrat qilingan tovar lokatsiyasi (IXTIYORIY) — shopir borib olishi uchun kartada ko'rinadi
+    const retLat = (req.body.return_lat != null && req.body.return_lat !== '') ? parseFloat(req.body.return_lat) : null;
+    const retLng = (req.body.return_lng != null && req.body.return_lng !== '') ? parseFloat(req.body.return_lng) : null;
+    const retAddr = (req.body.return_address || '').trim() || null;
     if (!qty || qty < 1) return res.status(400).json({ error: 'Qaytariladigan miqdor noto\'g\'ri' });
     if (!reason) return res.status(400).json({ error: 'Vozvrat sababini kiriting (majburiy)' });
 
@@ -825,9 +829,9 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGE
 
       // Vozvrat yozuvi (holati + ziyon + qarzdan ayirilgani bilan)
       const retR = await client.query(
-        `INSERT INTO sale_returns (sale_id, product_id, customer_id, quantity, unit_price, amount, refund_amount, rang, reason, return_date, created_by, condition, loss_amount, settlement, debt_deducted, branch_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
-        [sale.id, sale.product_id, sale.customer_id || null, qty, unitPrice, amount, refund, sale.rang || null, reason, todayUZB(), req.user.id, condition, lossAmount, settlement || 'BALANCE', debtDeducted, sale.branch_id || null]
+        `INSERT INTO sale_returns (sale_id, product_id, customer_id, quantity, unit_price, amount, refund_amount, rang, reason, return_date, created_by, condition, loss_amount, settlement, debt_deducted, branch_id, return_lat, return_lng, return_address)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+        [sale.id, sale.product_id, sale.customer_id || null, qty, unitPrice, amount, refund, sale.rang || null, reason, todayUZB(), req.user.id, condition, lossAmount, settlement || 'BALANCE', debtDeducted, sale.branch_id || null, retLat, retLng, retAddr]
       );
 
       await client.query('COMMIT');

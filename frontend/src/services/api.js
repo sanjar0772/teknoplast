@@ -129,6 +129,9 @@ export const deliveriesAPI = {
   getAll: (params) => api.get('/deliveries', { params }),
   setStatus: (orderRef, status) => api.patch(`/deliveries/${orderRef}/status`, { status }),
   toPickup: (orderRef) => api.patch(`/deliveries/${orderRef}/to-pickup`),
+  // Vozvrat kartasi (shopir) — lokatsiyali vozvratlar + "yig'ib oldim"
+  getReturnPickups: () => api.get('/deliveries/return-pickups'),
+  collectReturn: (id) => api.patch(`/deliveries/return-pickups/${id}/collected`),
 };
 
 // Tarozi (weighbridge) cheklari

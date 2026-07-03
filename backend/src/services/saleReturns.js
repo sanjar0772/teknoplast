@@ -55,12 +55,24 @@ async function ensureReturnsSchema() {
           `ALTER TABLE sale_returns ADD COLUMN IF NOT EXISTS loss_amount NUMERIC(18,2) DEFAULT 0`,
           `ALTER TABLE sale_returns ADD COLUMN IF NOT EXISTS settlement VARCHAR(20) DEFAULT 'BALANCE'`,
           `ALTER TABLE sale_returns ADD COLUMN IF NOT EXISTS debt_deducted NUMERIC(18,2) DEFAULT 0`,
+          // Vozvrat qilingan tovar LOKATSIYASI (ixtiyoriy) — shopir borib olishi uchun.
+          `ALTER TABLE sale_returns ADD COLUMN IF NOT EXISTS return_lat NUMERIC(10,6)`,
+          `ALTER TABLE sale_returns ADD COLUMN IF NOT EXISTS return_lng NUMERIC(10,6)`,
+          `ALTER TABLE sale_returns ADD COLUMN IF NOT EXISTS return_address TEXT`,
+          // Shopir tovarni yig'ib oldi (kartadan yo'qoladi)
+          `ALTER TABLE sale_returns ADD COLUMN IF NOT EXISTS collected_at TIMESTAMP`,
+          `ALTER TABLE sale_returns ADD COLUMN IF NOT EXISTS collected_by UUID`,
         ]
       : [
           `ALTER TABLE sale_returns ADD COLUMN condition TEXT DEFAULT 'GOOD'`,
           `ALTER TABLE sale_returns ADD COLUMN loss_amount REAL DEFAULT 0`,
           `ALTER TABLE sale_returns ADD COLUMN settlement TEXT DEFAULT 'BALANCE'`,
           `ALTER TABLE sale_returns ADD COLUMN debt_deducted REAL DEFAULT 0`,
+          `ALTER TABLE sale_returns ADD COLUMN return_lat REAL`,
+          `ALTER TABLE sale_returns ADD COLUMN return_lng REAL`,
+          `ALTER TABLE sale_returns ADD COLUMN return_address TEXT`,
+          `ALTER TABLE sale_returns ADD COLUMN collected_at TEXT`,
+          `ALTER TABLE sale_returns ADD COLUMN collected_by TEXT`,
         ];
     for (const sql of addCols) {
       try { await db.query(sql); } catch (e) { /* ustun allaqachon mavjud — o'tkazamiz */ }

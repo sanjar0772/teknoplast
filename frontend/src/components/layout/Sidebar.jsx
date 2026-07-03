@@ -30,6 +30,7 @@ const NAV_ITEMS = [
   { to: '/debts',      icon: Wallet,          label: 'Qarzlar',          roles: ['OWNER','ACCOUNTANT','SALES_HEAD'] },
   { to: '/vozvrat',    icon: RotateCcw,       label: 'Vozvratlar',       roles: ['OWNER','ACCOUNTANT','SALES_HEAD','AGENT'] },
   { to: '/deliveries', icon: Truck,           label: 'Yetkazib berish',  roles: ['OWNER','SALES_HEAD','SHOPIR'] },
+  { to: '/vozvrat-karta', icon: RotateCcw,    label: 'Vozvrat kartasi',  roles: ['OWNER','SALES_HEAD','SHOPIR'] },
   { to: '/agent-locations', icon: MapPin,     label: 'Xodimlar joyi',    roles: ['OWNER','SALES_HEAD'] },
   { to: '/expenses',   icon: Receipt,         label: 'Xarajatlar',       roles: ['OWNER','ACCOUNTANT','TAMINOTCHI'] },
   { to: '/employees',  icon: Users,           label: 'Xodimlar',         roles: ['OWNER','ACCOUNTANT','PRODUCTION_HEAD','KIRIMCHI'] },
@@ -85,7 +86,7 @@ export default function Sidebar() {
   const HIDE_IN_BRANCH = ['/production', '/components', '/tarozi', '/tarozi-cheklar'];
   // Faqat FILIALDA ko'rinadi (asosiy tizim/zavodda YO'Q):
   // xodimlar joyi (GPS kuzatuv) va yetkazib berish (dostavka/shopir) — bular filial tizimi.
-  const ONLY_IN_BRANCH = ['/agent-locations', '/deliveries'];
+  const ONLY_IN_BRANCH = ['/agent-locations', '/deliveries', '/vozvrat-karta'];
   const visibleItems = NAV_ITEMS.filter(item =>
     (!item.roles || item.roles.includes(user?.role)) &&
     !(inBranchContext && HIDE_IN_BRANCH.includes(item.to)) &&

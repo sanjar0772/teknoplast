@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { RotateCcw, Warehouse, AlertTriangle, Coins, X, Search, Printer, Plus, Package, User, ArrowLeft, Check, FileText } from 'lucide-react';
+import { RotateCcw, Warehouse, AlertTriangle, Coins, X, Search, Printer, Plus, Package, User, ArrowLeft, Check, FileText, MapPin } from 'lucide-react';
 import { salesAPI } from '../services/api';
 import VozvratFakturaModal from '../components/VozvratFakturaModal';
+import MapPickerModal from '../components/MapPickerModal';
+import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
@@ -25,6 +27,9 @@ function Modal({ open, onClose, title, children, wide }) {
 
 export default function VozvratlarPage() {
   const qc = useQueryClient();
+  const { user, activeBranch } = useAuthStore();
+  // Filial konteksti — vozvrat lokatsiyasini belgilash faqat filialda ko'rinadi
+  const inBranch = !!(user?.branch_id || activeBranch);
   const [dateFilter, setDateFilter] = useState({ date_from: '', date_to: '' });
   const [datePreset, setDatePreset] = useState('all');
   const [search, setSearch] = useState('');
@@ -38,6 +43,10 @@ export default function VozvratlarPage() {
   const [selectedItems, setSelectedItems] = useState({});         // { [saleId]: { quantity, condition } }
   const [bulkReason, setBulkReason] = useState('');
   const [bulkSettlement, setBulkSettlement] = useState('DEBT'); // DEBT | REFUND | CREDIT — summani qanday yopish
+  // Vozvrat qilingan tovar LOKATSIYASI (ixtiyoriy, faqat filialda) — shopir borib olishi uchun
+  const [pickupLoc, setPickupLoc] = useState(null);   // { lat, lng } yoki null
+  const [pickupAddr, setPickupAddr] = useState('');   // mo'ljal / manzil izohi (ixtiyoriy)
+  const [mapOpen, setMapOpen] = useState(false);
 
   const applyPreset = (preset) => {
     setDatePreset(preset);
@@ -106,11 +115,13 @@ export default function VozvratlarPage() {
   }, [selectedCustomer, pickerSearch]);
 
   const bulkMutation = useMutation({
-    mutationFn: async ({ items, reason, settlement }) => {
+    mutationFn: async ({ items, reason, settlement, pickup, pickupAddress }) => {
       const results = [];
-      // Ketma-ket yuboramiz — har bir sotuv alohida vozvrat qilinadi
+      // Ketma-ket yuboramiz — har bir sotuv alohida vozvrat qilinadi.
+      // Lokatsiya belgilangan bo'lsa (ixtiyoriy) — barcha tanlangan tovarlarga yoziladi.
+      const loc = pickup ? { return_lat: pickup.lat, return_lng: pickup.lng, return_address: pickupAddress || '' } : {};
       for (const it of items) {
-        const res = await salesAPI.returnSale(it.id, { quantity: it.quantity, reason, condition: it.condition, settlement });
+        const res = await salesAPI.returnSale(it.id, { quantity: it.quantity, reason, condition: it.condition, settlement, ...loc });
         results.push(res.data);
       }
       return results;
@@ -145,6 +156,8 @@ export default function VozvratlarPage() {
     setSelectedItems({});
     setBulkReason('');
     setBulkSettlement('DEBT');
+    setPickupLoc(null);
+    setPickupAddr('');
     setPicker(true);
   };
   const closePicker = () => {
@@ -154,6 +167,8 @@ export default function VozvratlarPage() {
     setSelectedItems({});
     setBulkReason('');
     setBulkSettlement('DEBT');
+    setPickupLoc(null);
+    setPickupAddr('');
     setPickerSearch('');
   };
 
@@ -206,7 +221,7 @@ export default function VozvratlarPage() {
       items.push({ id, quantity: q, condition: it.condition });
     }
     const settlement = bulkSettlement === 'REFUND' ? 'REFUND' : 'BALANCE';
-    bulkMutation.mutate({ items, reason: bulkReason.trim(), settlement });
+    bulkMutation.mutate({ items, reason: bulkReason.trim(), settlement, pickup: pickupLoc, pickupAddress: pickupAddr.trim() });
   };
 
   const summary = data?.summary || {};
@@ -495,6 +510,35 @@ export default function VozvratlarPage() {
               onChange={e => setBulkReason(e.target.value)} />
           </div>
 
+          {/* Vozvrat tovar LOKATSIYASI — ixtiyoriy, faqat filialda. Shopir borib olishi uchun. */}
+          {inBranch && (
+            <div className="rounded-xl border border-gray-200 p-3 space-y-2.5">
+              <div className="flex items-center gap-1.5 text-sm font-medium text-gray-800">
+                <MapPin size={15} className="text-emerald-500" /> Tovar lokatsiyasi
+                <span className="text-[11px] font-normal text-gray-400">(ixtiyoriy — shopir borib oladi)</span>
+              </div>
+              {pickupLoc ? (
+                <div className="flex items-center justify-between gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
+                  <span className="text-sm text-emerald-700 flex items-center gap-1.5 min-w-0">
+                    <MapPin size={14} className="flex-shrink-0" />
+                    <span className="truncate">Belgilangan: {pickupLoc.lat}, {pickupLoc.lng}</span>
+                  </span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button type="button" onClick={() => setMapOpen(true)} className="text-xs font-medium text-blue-600 hover:text-blue-700">O'zgartirish</button>
+                    <button type="button" onClick={() => setPickupLoc(null)} className="text-gray-400 hover:text-red-500"><X size={14} /></button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setMapOpen(true)}
+                  className="w-full rounded-lg border border-dashed border-gray-300 py-2 text-sm text-gray-600 hover:border-emerald-400 hover:text-emerald-600 flex items-center justify-center gap-1.5">
+                  <MapPin size={15} /> Xaritadan lokatsiyani belgilash
+                </button>
+              )}
+              <input className="input text-sm" placeholder="Mo'ljal / manzil izohi (ixtiyoriy)"
+                value={pickupAddr} onChange={e => setPickupAddr(e.target.value)} />
+            </div>
+          )}
+
           <div className="flex gap-3 pt-1">
             <button onClick={closePicker} className="btn-secondary flex-1">Bekor</button>
             <button onClick={submitBulk} disabled={bulkMutation.isPending || !pickedCount} className="btn-primary flex-1">
@@ -507,6 +551,14 @@ export default function VozvratlarPage() {
 
       {/* Vozvrat schyot-fakturasi */}
       {receiptFor && <VozvratFakturaModal ret={receiptFor} onClose={() => setReceiptFor(null)} />}
+
+      {/* Vozvrat tovar lokatsiyasini xaritadan belgilash */}
+      <MapPickerModal
+        open={mapOpen}
+        initial={pickupLoc}
+        onClose={() => setMapOpen(false)}
+        onPick={(loc) => setPickupLoc(loc)}
+      />
     </div>
   );
 }

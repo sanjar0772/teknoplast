@@ -105,7 +105,62 @@ router.get('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'SHOPIR', 'AGEN
   } catch (err) { next(err); }
 });
 
-// Zakaz shu filial scope'ida DELIVERY sifatida mavjudmi? (RETURNING'ga tayanmaymiz —
+// ─────────────────────────────────────────────────────────────────────────────
+// VOZVRAT KARTASI (shopir) — vozvrat qilingan tovar lokatsiyasi belgilangan bo'lsa,
+// shopir kartada ko'radi va borib "yig'ib oldim" deb belgilaydi (kartadan yo'qoladi).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/deliveries/return-pickups — lokatsiyasi bor va hali yig'ilmagan vozvratlar
+router.get('/return-pickups', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'SHOPIR', 'AGENT'), async (req, res, next) => {
+  try {
+    const { cond, params } = scopeClause(req, 1, 'sr.');
+    const rows = (await query(
+      `SELECT sr.id, sr.quantity, sr.rang, sr.reason, sr.condition, sr.created_at,
+              sr.return_lat AS latitude, sr.return_lng AS longitude,
+              COALESCE(sr.return_address, c.address) AS address,
+              p.name AS product_name, p.unit,
+              COALESCE(c.name, s.customer_name) AS customer_name,
+              s.customer_phone
+       FROM sale_returns sr
+       LEFT JOIN products p ON sr.product_id = p.id
+       LEFT JOIN customers c ON sr.customer_id = c.id
+       LEFT JOIN sales s ON sr.sale_id = s.id
+       WHERE sr.return_lat IS NOT NULL AND sr.return_lng IS NOT NULL
+         AND sr.collected_at IS NULL${cond}
+       ORDER BY sr.created_at DESC
+       LIMIT 500`,
+      params
+    )).rows;
+    res.json({ pickups: rows });
+  } catch (err) { next(err); }
+});
+
+// Vozvrat shu filial scope'ida, lokatsiyali va yig'ilmaganmi? (RETURNING'ga tayanmaymiz)
+async function returnPickupInScope(req, id) {
+  const { cond, params } = scopeClause(req, 2, '');
+  const r = await query(
+    `SELECT id FROM sale_returns WHERE id = $1 AND return_lat IS NOT NULL${cond}`,
+    [id, ...params]
+  );
+  return r.rows.length > 0;
+}
+
+// PATCH /api/deliveries/return-pickups/:id/collected — shopir tovarni yig'ib oldi
+router.patch('/return-pickups/:id/collected', requireRole('OWNER', 'SALES_HEAD', 'SHOPIR'), async (req, res, next) => {
+  try {
+    if (!(await returnPickupInScope(req, req.params.id))) {
+      return res.status(404).json({ error: 'Vozvrat topilmadi yoki sizning filialingizniki emas' });
+    }
+    const { cond, params } = scopeClause(req, 3, '');
+    await query(
+      `UPDATE sale_returns SET collected_at = NOW(), collected_by = $1 WHERE id = $2${cond}`,
+      [req.user.id, req.params.id, ...params]
+    );
+    res.json({ success: true, message: "Yig'ib olindi ✅" });
+  } catch (err) { next(err); }
+});
+
+// Zakaz shu filial scope'ида DELIVERY sifatida mavjudmi? (RETURNING'ga tayanmaymiz —
 // SQLite adapter UPDATE...RETURNING'да qatorlarni ishonchli qaytarmaydi.)
 async function orderExistsInScope(req, orderRef) {
   const { cond, params } = scopeClause(req, 2, '');

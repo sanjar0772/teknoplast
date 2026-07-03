@@ -163,4 +163,25 @@ router.patch('/:orderRef/status', requireRole('OWNER', 'SALES_HEAD', 'SHOPIR'), 
   } catch (err) { next(err); }
 });
 
+// PATCH /api/deliveries/:orderRef/to-pickup — adashib "dostavka" belgilangan savdoni
+// oddiy savdoga (PICKUP) qaytaradi → Yetkazib berish ro'yxatidan chiqadi, savdo tarixida qoladi.
+// Faqat EGA / SAVDO BOSHLIG'I (tuzatish amali).
+router.patch('/:orderRef/to-pickup', requireRole('OWNER', 'SALES_HEAD'), async (req, res, next) => {
+  try {
+    await ensureBranchSchema();
+    if (!(await orderExistsInScope(req, req.params.orderRef))) {
+      return res.status(404).json({ error: 'Zakaz topilmadi yoki sizning filialingizniki emas' });
+    }
+    // $1 = order_ref, [$2 = branch]
+    const { cond, params } = scopeClause(req, 2, '');
+    await query(
+      `UPDATE sales SET delivery_type = 'PICKUP', delivery_status = 'PENDING',
+         taken_at = NULL, taken_by = NULL, delivered_at = NULL, delivered_by = NULL
+       WHERE order_ref = $1 AND delivery_type = 'DELIVERY'${cond}`,
+      [req.params.orderRef, ...params]
+    );
+    res.json({ success: true, message: "Oddiy savdoga o'tkazildi (dostavka bekor qilindi)" });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

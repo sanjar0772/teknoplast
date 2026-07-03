@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Truck, MapPin, Phone, User, Package, CheckCircle2, Clock, RotateCcw, PackageCheck, Hand, FileText,
+  Truck, MapPin, Phone, User, Package, CheckCircle2, Clock, RotateCcw, PackageCheck, Hand, FileText, X,
 } from 'lucide-react';
 import { deliveriesAPI, fulfillmentAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
@@ -65,6 +65,13 @@ export default function DeliveriesPage() {
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
   const setStatus = (ref, status) => statusMutation.mutate({ ref, status });
+
+  // Adashib "dostavka" belgilangan savdoni oddiy savdoga qaytarish (EGA / SAVDO BOSHLIG'I)
+  const toPickupMutation = useMutation({
+    mutationFn: (ref) => deliveriesAPI.toPickup(ref),
+    onSuccess: (res) => { toast.success(res.data?.message || 'Oddiy savdoga o\'tkazildi'); qc.invalidateQueries({ queryKey: ['deliveries'] }); },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
 
   // Nakladnoy (yetkazish qog'ozi) PDF — yuklab olish
   const downloadNakladnoy = async (ref) => {
@@ -233,6 +240,16 @@ export default function DeliveriesPage() {
                   className="btn-secondary btn-sm w-full flex items-center justify-center gap-1.5">
                   <FileText size={14} /> Nakladnoy
                 </button>
+
+                {/* Adashib dostavka belgilangan bo'lsa — oddiy savdoga qaytarish (EGA/SAVDO BOSHLIG'I) */}
+                {canTrack && (
+                  <button
+                    onClick={() => { if (window.confirm("Bu savdo dostavka EMAS deb belgilansinmi?\nRo'yxatdan chiqadi, oddiy savdo tarixida qoladi.")) toPickupMutation.mutate(o.order_ref); }}
+                    disabled={toPickupMutation.isPending}
+                    className="w-full flex items-center justify-center gap-1 text-[11px] font-medium text-gray-400 hover:text-red-500 py-0.5">
+                    <X size={12} /> Dostavka emas — oddiy savdoga o'tkazish
+                  </button>
+                )}
               </div>
             );
           })}

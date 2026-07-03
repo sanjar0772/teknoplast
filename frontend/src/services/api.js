@@ -128,6 +128,7 @@ export const agentAPI = {
 export const deliveriesAPI = {
   getAll: (params) => api.get('/deliveries', { params }),
   setStatus: (orderRef, status) => api.patch(`/deliveries/${orderRef}/status`, { status }),
+  toPickup: (orderRef) => api.patch(`/deliveries/${orderRef}/to-pickup`),
 };
 
 // Tarozi (weighbridge) cheklari

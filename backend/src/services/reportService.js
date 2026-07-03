@@ -1750,4 +1750,127 @@ async function generateFulfillmentPDF({ rows, start_date, end_date }) {
   });
 }
 
-module.exports = { generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateProductionRangePDF, generateProductionPendingExcel, generateProductionPendingPDF, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF, generateWorkerWorksExcel, generateWorkerWorksPDF, generateInventoryAuditExcel, generateInventoryAuditPDF, generateInventoryExcel, generateInventoryPDF, generateTurnoverExcel, generateTurnoverPDF, generateFulfillmentExcel, generateFulfillmentPDF };
+// ── Kunlik KASSA — Excel va PDF (jamlanma + operatsiyalar + to'lov usullari) ──
+const _kassaTime = (s) => {
+  if (!s) return '';
+  const d = typeof s === 'string' && !s.includes('T') && !s.includes('Z')
+    ? new Date(s.replace(' ', 'T') + 'Z') : new Date(s);
+  if (isNaN(d)) return '';
+  return d.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tashkent' });
+};
+const _kMoney = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n) || 0));
+const _opLabel = (o) => o.type === 'QARZ_TOLOV' ? "Qarz to'lovi" : o.type === 'VOZVRAT' ? 'Pul qaytarildi' : 'Savdo';
+const _METHOD_LABELS = [['CASH', 'Naqd'], ['CARD', 'Karta'], ['TRANSFER', 'Bank'], ['PAYME', 'Pay Me'], ['CLICK', 'Click']];
+
+async function generateKassaExcel(data, date) {
+  const t = data.totals || {}; const ops = data.ops || []; const m = data.methods || {};
+  const wb = new ExcelJS.Workbook();
+  const sh = wb.addWorksheet('Kassa ' + date);
+  sh.columns = [
+    { key: 'n', width: 6 }, { key: 'time', width: 10 }, { key: 'customer', width: 28 },
+    { key: 'op', width: 22 }, { key: 'amount', width: 18 },
+  ];
+  const title = sh.addRow(['TEKNOPLAST — Kunlik kassa']); title.font = { bold: true, size: 14 };
+  sh.mergeCells(`A${title.number}:E${title.number}`);
+  const sub = sh.addRow([`Sana: ${date}`]); sub.font = { size: 11 }; sh.mergeCells(`A${sub.number}:E${sub.number}`);
+  sh.addRow([]);
+  // Jamlanma
+  const sumHdr = sh.addRow(['JAMLANMA', '', '', '', '']); _applyHeaderStyle(sumHdr, 'FF374151');
+  [['Kassaga kirdi (naqd+qarz)', t.kirim], ['Kunlik savdo (cheklar)', t.savdo_jami],
+   ['Qarzga berildi', t.qarzga], ['Chiqim (vozvrat)', t.chiqim], ['SOF KASSA', t.sof]].forEach(([l, v]) => {
+    const r = sh.addRow(['', '', l, '', parseFloat(v) || 0]); r.getCell(5).numFmt = '#,##0';
+    if (l === 'SOF KASSA') r.font = { bold: true };
+  });
+  sh.addRow([]);
+  // Operatsiyalar
+  const opHdr = sh.addRow(['№', 'Vaqt', 'Mijoz', 'Operatsiya', "Summa (so'm)"]); _applyHeaderStyle(opHdr);
+  ops.forEach(o => {
+    const r = sh.addRow({
+      n: o.n, time: _kassaTime(o.time), customer: o.customer || '—', op: _opLabel(o),
+      amount: (o.type === 'VOZVRAT' ? -1 : 1) * (parseFloat(o.amount) || 0),
+    });
+    r.getCell(5).numFmt = '#,##0';
+  });
+  sh.addRow([]);
+  // To'lov usullari
+  const mHdr = sh.addRow(['TO\'LOV USULLARI', '', '', '', '']); _applyHeaderStyle(mHdr, 'FF065F46');
+  let mTotal = 0;
+  _METHOD_LABELS.forEach(([k, label]) => {
+    const v = parseFloat(m[k]) || 0; mTotal += v;
+    const r = sh.addRow(['', '', label, '', v]); r.getCell(5).numFmt = '#,##0';
+  });
+  const mtr = sh.addRow(['', '', 'JAMI (barcha usullar)', '', mTotal]); mtr.font = { bold: true }; mtr.getCell(5).numFmt = '#,##0';
+  return await wb.xlsx.writeBuffer();
+}
+
+async function generateKassaPDF(data, date) {
+  return new Promise((resolve, reject) => {
+    const t = data.totals || {}; const ops = data.ops || []; const m = data.methods || {};
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    registerCyrillicFonts(doc);
+    const chunks = []; doc.on('data', c => chunks.push(c)); doc.on('end', () => resolve(Buffer.concat(chunks))); doc.on('error', reject);
+    const M = 40, right = 555;
+
+    doc.fontSize(18).font('Arial-Bold').text('TEKNOPLAST', { align: 'center' });
+    doc.fontSize(12).font('Arial').text('Kunlik kassa', { align: 'center' });
+    doc.fontSize(9).fillColor('#666').text(`Sana: ${date}   ·   Chop etildi: ${new Date().toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent' })}`, { align: 'center' });
+    doc.fillColor('black').moveDown(0.8);
+
+    // Jamlanma
+    doc.font('Arial-Bold').fontSize(11).text('Jamlanma');
+    doc.font('Arial').fontSize(9.5).moveDown(0.2);
+    const sumLine = (l, v) => { doc.text(l, M + 4, doc.y, { continued: true, width: 300 }); doc.text(_kMoney(v) + " so'm", { align: 'right', width: right - M - 4 }); };
+    sumLine('Kassaga kirdi (naqd + qarz):', t.kirim);
+    sumLine('Kunlik savdo (cheklar):', t.savdo_jami);
+    sumLine('Qarzga berildi:', t.qarzga);
+    if (t.chiqim > 0) sumLine('Chiqim (vozvrat):', -t.chiqim);
+    doc.font('Arial-Bold'); sumLine('SOF KASSA:', t.sof); doc.font('Arial');
+    doc.moveDown(0.6);
+
+    // Operatsiyalar jadvali
+    const col = { n: M, time: M + 26, customer: M + 76, op: M + 250, amount: 430 };
+    const drawOpHdr = (y) => {
+      doc.font('Arial-Bold').fontSize(9).fillColor('black');
+      doc.text('№', col.n, y); doc.text('Vaqt', col.time, y); doc.text('Mijoz', col.customer, y);
+      doc.text('Operatsiya', col.op, y); doc.text("Summa", col.amount, y, { width: right - col.amount, align: 'right' });
+      doc.moveTo(M, y + 13).lineTo(right, y + 13).strokeColor('#999').stroke();
+      return y + 18;
+    };
+    doc.font('Arial-Bold').fontSize(11).text('Operatsiyalar', M, doc.y); doc.moveDown(0.2);
+    let y = drawOpHdr(doc.y);
+    doc.font('Arial').fontSize(8.5);
+    ops.forEach(o => {
+      if (y > 770) { doc.addPage(); y = drawOpHdr(40); doc.font('Arial').fontSize(8.5); }
+      const neg = o.type === 'VOZVRAT';
+      doc.fillColor(neg ? '#dc2626' : 'black');
+      doc.text(String(o.n), col.n, y, { width: 24 });
+      doc.text(_kassaTime(o.time), col.time, y, { width: 48 });
+      doc.text(o.customer || '—', col.customer, y, { width: 170 });
+      doc.text(_opLabel(o), col.op, y, { width: 175 });
+      doc.text((neg ? '−' : '') + _kMoney(o.amount), col.amount, y, { width: right - col.amount, align: 'right' });
+      const h = Math.max(doc.heightOfString(o.customer || '—', { width: 170 }), 11);
+      y += h + 4;
+    });
+    doc.fillColor('black');
+
+    // To'lov usullari
+    if (y > 700) { doc.addPage(); y = 40; }
+    y += 8;
+    doc.moveTo(M, y).lineTo(right, y).strokeColor('#333').stroke(); y += 8;
+    doc.font('Arial-Bold').fontSize(11).text('To\'lov usullari bo\'yicha', M, y); y = doc.y + 4;
+    doc.fontSize(9.5);
+    let mTotal = 0;
+    _METHOD_LABELS.forEach(([k, label]) => {
+      const v = parseFloat(m[k]) || 0; mTotal += v;
+      doc.font('Arial').text(label + ':', M + 4, y, { continued: true, width: 300 });
+      doc.text(_kMoney(v) + " so'm", { align: 'right', width: right - M - 4 });
+      y = doc.y;
+    });
+    doc.font('Arial-Bold').text('JAMI (barcha usullar):', M + 4, y, { continued: true, width: 300 });
+    doc.text(_kMoney(mTotal) + " so'm", { align: 'right', width: right - M - 4 });
+
+    doc.end();
+  });
+}
+
+module.exports = { generateKassaExcel, generateKassaPDF, generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateProductionRangePDF, generateProductionPendingExcel, generateProductionPendingPDF, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF, generateWorkerWorksExcel, generateWorkerWorksPDF, generateInventoryAuditExcel, generateInventoryAuditPDF, generateInventoryExcel, generateInventoryPDF, generateTurnoverExcel, generateTurnoverPDF, generateFulfillmentExcel, generateFulfillmentPDF };

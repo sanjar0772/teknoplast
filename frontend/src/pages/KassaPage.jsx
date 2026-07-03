@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Wallet, ShoppingBag, Coins, RotateCcw, Printer, ChevronLeft, ChevronRight } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { Wallet, ShoppingBag, Coins, RotateCcw, Printer, ChevronLeft, ChevronRight, FileSpreadsheet, FileText } from 'lucide-react';
 import { reportsAPI } from '../services/api';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -43,6 +44,26 @@ export default function KassaPage() {
     const d = new Date(date + 'T12:00:00');
     d.setDate(d.getDate() + delta);
     setDate(d.toISOString().slice(0, 10));
+  };
+
+  // Excel / PDF yuklab olish (boshidan oxirigacha: jamlanma + operatsiyalar + to'lov usullari)
+  const [downloading, setDownloading] = useState('');
+  const download = async (kind) => {
+    setDownloading(kind);
+    try {
+      const res = kind === 'excel'
+        ? await reportsAPI.downloadKassaExcel({ date })
+        : await reportsAPI.downloadKassaPdf({ date });
+      const type = kind === 'excel' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf';
+      const url = URL.createObjectURL(new Blob([res.data], { type }));
+      const a = document.createElement('a');
+      a.href = url; a.download = `kassa-${date}.${kind === 'excel' ? 'xlsx' : 'pdf'}`; a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error(kind === 'excel' ? "Excel yuklab bo'lmadi" : "PDF yuklab bo'lmadi");
+    } finally {
+      setDownloading('');
+    }
   };
 
   const t = data?.totals || {};
@@ -91,6 +112,12 @@ export default function KassaPage() {
           <button onClick={() => setDate(localToday())} className="btn-secondary btn-sm">Bugun</button>
         )}
         <span className="flex-1" />
+        <button onClick={() => download('excel')} disabled={downloading === 'excel'} className="btn-secondary btn-sm">
+          <FileSpreadsheet size={14} /> {downloading === 'excel' ? 'Yuklanmoqda...' : 'Excel'}
+        </button>
+        <button onClick={() => download('pdf')} disabled={downloading === 'pdf'} className="btn-secondary btn-sm">
+          <FileText size={14} /> {downloading === 'pdf' ? 'Yuklanmoqda...' : 'PDF'}
+        </button>
         <button onClick={() => window.print()} className="btn-secondary btn-sm">
           <Printer size={14} /> Chop etish
         </button>

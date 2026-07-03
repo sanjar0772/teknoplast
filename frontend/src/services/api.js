@@ -251,6 +251,8 @@ export const reportsAPI = {
   addCredit: (data) => api.post('/reports/credit', data),
   getDebtPayments: (params) => api.get('/reports/debt-payments', { params }),
   getKassa: (params) => api.get('/reports/kassa', { params }),
+  downloadKassaExcel: (params) => api.get('/reports/kassa/excel', { params, responseType: 'blob' }),
+  downloadKassaPdf: (params) => api.get('/reports/kassa/pdf', { params, responseType: 'blob' }),
   downloadPDF: (month) => api.get('/reports/pdf/monthly', { params: { month }, responseType: 'blob' }),
   downloadSalesExcel: (params) => api.get('/reports/excel/sales', { params: typeof params === 'string' ? { month: params } : params, responseType: 'blob' }),
   downloadSalaryExcel: (month) => api.get('/reports/excel/salaries', { params: { month }, responseType: 'blob' }),

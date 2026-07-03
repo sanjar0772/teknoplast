@@ -300,10 +300,7 @@ router.get('/debt-payments', async (req, res, next) => {
 //   SAVDO      — shu kuni qilingan savdo (chek bo'yicha jamlangan; naqd va qarz qismi ajratilgan)
 //   QARZ_TOLOV — shu kuni to'langan qarz (payment_ref bo'yicha jamlangan)
 //   VOZVRAT    — shu kuni naqd qaytarilgan pul (chiqim)
-router.get('/kassa', async (req, res, next) => {
-  try {
-    const date = (req.query.date && String(req.query.date).slice(0, 10)) || todayUZB();
-    const scope = req.user.branch_id || null;
+async function buildKassa(scope, date) {
     const sScope = scope ? ` AND s.branch_id = $2` : ` AND s.branch_id IS NULL`;
     const params = scope ? [date, scope] : [date];
 
@@ -422,7 +419,7 @@ router.get('/kassa', async (req, res, next) => {
     for (const p of pays) { if (methods[p.method] !== undefined) methods[p.method] += parseFloat(p.amount) || 0; }
     Object.keys(methods).forEach(k => { methods[k] = Math.round(methods[k]); });
 
-    res.json({
+    return {
       date, ops,
       totals: {
         count: ops.length,
@@ -435,7 +432,38 @@ router.get('/kassa', async (req, res, next) => {
         sof: savdo_naqd + qarz_tolov - chiqim, // sof kassa
       },
       methods, // to'lov usullari bo'yicha jamlanma: { CASH, CARD, TRANSFER, PAYME, CLICK }
-    });
+    };
+}
+
+// Kunlik kassa — JSON
+router.get('/kassa', async (req, res, next) => {
+  try {
+    const date = (req.query.date && String(req.query.date).slice(0, 10)) || todayUZB();
+    res.json(await buildKassa(req.user.branch_id || null, date));
+  } catch (err) { next(err); }
+});
+
+// Kunlik kassa — Excel (boshidan oxirigacha: jamlanma + operatsiyalar + to'lov usullari)
+router.get('/kassa/excel', async (req, res, next) => {
+  try {
+    const date = (req.query.date && String(req.query.date).slice(0, 10)) || todayUZB();
+    const data = await buildKassa(req.user.branch_id || null, date);
+    const buffer = await require('../services/reportService').generateKassaExcel(data, date);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="kassa-${date}.xlsx"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) { next(err); }
+});
+
+// Kunlik kassa — PDF (boshidan oxirigacha)
+router.get('/kassa/pdf', async (req, res, next) => {
+  try {
+    const date = (req.query.date && String(req.query.date).slice(0, 10)) || todayUZB();
+    const data = await buildKassa(req.user.branch_id || null, date);
+    const buffer = await require('../services/reportService').generateKassaPDF(data, date);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="kassa-${date}.pdf"`);
+    res.send(Buffer.from(buffer));
   } catch (err) { next(err); }
 });
 

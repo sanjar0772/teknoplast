@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Truck, MapPin, Phone, User, Package, CheckCircle2, Clock, RotateCcw, PackageCheck, Hand,
+  Truck, MapPin, Phone, User, Package, CheckCircle2, Clock, RotateCcw, PackageCheck, Hand, FileText,
 } from 'lucide-react';
-import { deliveriesAPI } from '../services/api';
+import { deliveriesAPI, fulfillmentAPI } from '../services/api';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 const rangLabel = (r) => (r && String(r).trim()) ? r : 'Rangsiz';
@@ -42,6 +42,17 @@ export default function DeliveriesPage() {
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
   const setStatus = (ref, status) => statusMutation.mutate({ ref, status });
+
+  // Nakladnoy (yetkazish qog'ozi) PDF — yuklab olish
+  const downloadNakladnoy = async (ref) => {
+    try {
+      const res = await fulfillmentAPI.nakladnoy(ref);
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = `nakladnoy-${ref}.pdf`; a.click();
+      URL.revokeObjectURL(url);
+    } catch { toast.error("Nakladnoy yuklab bo'lmadi"); }
+  };
 
   const orders = data?.orders || [];
   const counts = data?.counts || { pending: 0, taken: 0, delivered: 0 };
@@ -166,6 +177,12 @@ export default function DeliveriesPage() {
                   </div>
                 )}
                 {/* DELIVERED — yakuniy holat, bekor qilish tugmasi YO'Q (egasi talabi) */}
+
+                {/* Nakladnoy (yetkazish qog'ozi) — har doim yuklab olish mumkin */}
+                <button onClick={() => downloadNakladnoy(o.order_ref)}
+                  className="btn-secondary btn-sm w-full flex items-center justify-center gap-1.5">
+                  <FileText size={14} /> Nakladnoy
+                </button>
               </div>
             );
           })}

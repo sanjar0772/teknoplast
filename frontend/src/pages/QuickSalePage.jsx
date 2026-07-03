@@ -3,12 +3,13 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Search, Plus, Trash2, ShoppingCart, X, Package, CheckCircle, Eraser, FileDown, QrCode, FileText, Tag, Truck, MapPin
+  Search, Plus, Trash2, ShoppingCart, X, Package, CheckCircle, Eraser, FileDown, QrCode, FileText, Tag, Truck, MapPin, Crosshair
 } from 'lucide-react';
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import { productsAPI, customersAPI, salesAPI, fulfillmentAPI } from '../services/api';
 import { RANG_COLORS } from '../constants/colors';
 import { downloadQR } from '../utils/qr';
+import MapPickerModal from '../components/MapPickerModal';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 const balfmt = (n) => (parseFloat(n) > 0 ? '+' : '') + fmt(n); // haqdor uchun +, qarzdor uchun - (fmt o'zi qo'yadi)
@@ -84,6 +85,7 @@ export default function QuickSalePage() {
   const [delivery, setDelivery] = useState(false); // dostavka (yetkazib berish) belgisi
   const [deliveryAddress, setDeliveryAddress] = useState(''); // dostavka manzili (shopir shu yerga boradi)
   const [deliveryLoc, setDeliveryLoc] = useState(null); // { lat, lng } — belgilangan lokatsiya
+  const [mapPickerOpen, setMapPickerOpen] = useState(false); // xaritadan belgilash oynasi
 
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions)); } catch {}
@@ -831,21 +833,25 @@ export default function QuickSalePage() {
                       deliveryAddress.trim() ? 'border-gray-200 focus:ring-amber-400' : 'border-red-300 focus:ring-red-400'
                     }`}
                   />
-                  <div className="flex items-center justify-between gap-2">
-                    <button type="button" onClick={captureLocation}
-                      className="flex items-center gap-1 text-[11px] font-medium text-amber-700 hover:text-amber-800">
-                      <MapPin size={12} /> Hozirgi joyni olish
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setMapPickerOpen(true)}
+                      className="flex items-center justify-center gap-1 rounded-lg border border-amber-300 bg-white py-1.5 text-[11px] font-medium text-amber-700 hover:bg-amber-50">
+                      <MapPin size={12} /> Xaritadan belgilash
                     </button>
-                    {deliveryLoc ? (
-                      <a href={`https://maps.google.com/?q=${deliveryLoc.lat},${deliveryLoc.lng}`}
-                        target="_blank" rel="noreferrer"
-                        className="text-[11px] font-medium text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
-                        <CheckCircle size={11} /> Joylashuv belgilandi
-                      </a>
-                    ) : (
-                      <span className="text-[10px] text-gray-400">Lokatsiya ixtiyoriy</span>
-                    )}
+                    <button type="button" onClick={captureLocation}
+                      className="flex items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white py-1.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50">
+                      <Crosshair size={12} /> Hozirgi joyim
+                    </button>
                   </div>
+                  {deliveryLoc ? (
+                    <a href={`https://maps.google.com/?q=${deliveryLoc.lat},${deliveryLoc.lng}`}
+                      target="_blank" rel="noreferrer"
+                      className="text-[11px] font-medium text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
+                      <CheckCircle size={11} /> Joylashuv belgilandi — xaritada ochish
+                    </a>
+                  ) : (
+                    <span className="text-[10px] text-gray-400">Lokatsiya ixtiyoriy (xaritadan belgilash tavsiya etiladi)</span>
+                  )}
                 </div>
               )}
               {/* Yakuniy summa + Sotish */}
@@ -870,6 +876,14 @@ export default function QuickSalePage() {
           </div>
         </div>
       </div>
+
+      {/* Xaritadan dostavka manzilini belgilash */}
+      <MapPickerModal
+        open={mapPickerOpen}
+        initial={deliveryLoc}
+        onClose={() => setMapPickerOpen(false)}
+        onPick={(loc) => setDeliveryLoc(loc)}
+      />
     </div>
   );
 }

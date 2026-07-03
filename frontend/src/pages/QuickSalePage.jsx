@@ -10,6 +10,7 @@ import { productsAPI, customersAPI, salesAPI, fulfillmentAPI } from '../services
 import { RANG_COLORS } from '../constants/colors';
 import { downloadQR } from '../utils/qr';
 import MapPickerModal from '../components/MapPickerModal';
+import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 const balfmt = (n) => (parseFloat(n) > 0 ? '+' : '') + fmt(n); // haqdor uchun +, qarzdor uchun - (fmt o'zi qo'yadi)
@@ -82,6 +83,9 @@ export default function QuickSalePage() {
   const [activeIdx, setActiveIdx] = useState(loadActiveIdx);
   const [search, setSearch] = useState('');
   const [lastOrder, setLastOrder] = useState(null);
+  const { user, activeBranch } = useAuthStore();
+  // Dostavka (yetkazib berish) FAQAT filialda — asosiy tizimda (zavod) yo'q
+  const inBranch = !!(user?.branch_id || activeBranch);
   const [delivery, setDelivery] = useState(false); // dostavka (yetkazib berish) belgisi
   const [deliveryAddress, setDeliveryAddress] = useState(''); // dostavka manzili (shopir shu yerga boradi)
   const [deliveryLoc, setDeliveryLoc] = useState(null); // { lat, lng } — belgilangan lokatsiya
@@ -809,7 +813,8 @@ export default function QuickSalePage() {
                 </div>
                 {discountAmt > 0 && <span className="text-[11px] text-rose-600 font-medium">−{fmt(discountAmt)} so'm</span>}
               </div>
-              {/* Dostavka (yetkazib berish) belgisi */}
+              {/* Dostavka (yetkazib berish) — FAQAT filialda ko'rinadi (asosiy tizim/zavodda yo'q) */}
+              {inBranch && (<>
               <button type="button" onClick={toggleDelivery}
                 className={`w-full flex items-center justify-center gap-1.5 rounded-lg border py-1.5 text-xs font-medium transition-colors ${
                   delivery
@@ -854,6 +859,7 @@ export default function QuickSalePage() {
                   )}
                 </div>
               )}
+              </>)}
               {/* Yakuniy summa + Sotish */}
               <div className="flex items-center justify-between">
                 <div>

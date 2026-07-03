@@ -83,8 +83,9 @@ export default function Sidebar() {
   const inBranchContext = !!(user?.branch_id || activeBranch);
   // Filialda ishlab chiqarish YO'Q — bu bo'limlar filialdan olib tashlanadi (zavodda qoladi)
   const HIDE_IN_BRANCH = ['/production', '/components', '/tarozi', '/tarozi-cheklar'];
-  // Faqat FILIALDA ko'rinadi (asosiy tizim/zavodda YO'Q) — masalan xodimlar joyi (GPS kuzatuv)
-  const ONLY_IN_BRANCH = ['/agent-locations'];
+  // Faqat FILIALDA ko'rinadi (asosiy tizim/zavodda YO'Q):
+  // xodimlar joyi (GPS kuzatuv) va yetkazib berish (dostavka/shopir) — bular filial tizimi.
+  const ONLY_IN_BRANCH = ['/agent-locations', '/deliveries'];
   const visibleItems = NAV_ITEMS.filter(item =>
     (!item.roles || item.roles.includes(user?.role)) &&
     !(inBranchContext && HIDE_IN_BRANCH.includes(item.to)) &&

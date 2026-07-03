@@ -78,7 +78,7 @@ app.get('/api/_diag', async (req, res) => {
     const dbx = require('./db');
     const q = String(req.query.q || '').toLowerCase();
     const custs = (await dbx.query(
-      `SELECT id, name, phone, branch_id, total_debt FROM customers WHERE lower(name) LIKE $1`,
+      `SELECT id, name, phone, branch_id FROM customers WHERE lower(name) LIKE $1`,
       [`%${q}%`]
     )).rows;
     const out = [];
@@ -99,7 +99,7 @@ app.get('/api/_diag', async (req, res) => {
       const totalAmt = sales.reduce((s, x) => s + parseFloat(x.total_amount || 0), 0);
       const totalPaid = sales.reduce((s, x) => s + parseFloat(x.payment_amount || 0), 0);
       out.push({
-        customer: { id: c.id, name: c.name, phone: c.phone, branch_id: c.branch_id, total_debt: c.total_debt },
+        customer: { id: c.id, name: c.name, phone: c.phone, branch_id: c.branch_id },
         summary: { sales_count: sales.length, total_amount: totalAmt, total_paid: totalPaid, net_balance: totalPaid - totalAmt },
         sales, payments: pays,
       });

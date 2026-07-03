@@ -15,8 +15,13 @@ export default function ProductionPage() {
   const qc = useQueryClient();
   const localDate = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
   const localMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
+  // Kechagi kun — tungi (2-) smena o'tgan kunga hisoblanadi
+  const yesterdayDate = () => { const d = new Date(); d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+  // Ertalab 7:00–10:00 orasi (KIRIMCHI uchun): tungi 2-smena hisoboti kiritiladi →
+  // avtomatik 2-SMENA tanlanadi va sana KECHAGI kun bo'ladi.
+  const morningShift = isKirimchi() && (() => { const h = new Date().getHours(); return h >= 7 && h < 10; })();
   const [month, setMonth] = useState(localMonth);
-  const [date, setDate] = useState(localDate);
+  const [date, setDate] = useState(() => morningShift ? yesterdayDate() : localDate());
   const [showBulk, setShowBulk] = useState(false);
   const [historyEmpId, setHistoryEmpId] = useState('');
   // QR skaner — stanokchi begikini o'qib, kunlik kiritishni ochish
@@ -28,7 +33,7 @@ export default function ProductionPage() {
   const [rangeStart, setRangeStart] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; });
   const [rangeEnd, setRangeEnd] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
   const [selectedEmpIds, setSelectedEmpIds] = useState([]);
-  const [shiftFilter, setShiftFilter] = useState(''); // '' = hammasi, '1-SMENA', '2-SMENA' — faqat Stanokchiga ta'sir qiladi
+  const [shiftFilter, setShiftFilter] = useState(morningShift ? '2-SMENA' : ''); // '' = hammasi, '1-SMENA', '2-SMENA' — faqat Stanokchiga ta'sir qiladi (ertalab 7-10 → avto 2-SMENA)
   const [compactMode, setCompactMode] = useState(false);
   const empIdsInitialized = useRef(false);
 
@@ -730,7 +735,14 @@ export default function ProductionPage() {
               <button onClick={() => setShowBulk(false)}><X size={20} className="text-gray-400" /></button>
             </div>
 
-            <p className="text-sm text-gray-500 mb-4">Sana: <strong>{new Date(date).toLocaleDateString('uz-UZ')}</strong></p>
+            <p className="text-sm text-gray-500 mb-2">Sana: <strong>{new Date(date).toLocaleDateString('uz-UZ')}</strong>
+              {shiftFilter && <span className="ml-2 text-indigo-600 font-medium">· {shiftFilter === '2-SMENA' ? '2-Smena' : '1-Smena'}</span>}
+            </p>
+            {morningShift && (
+              <div className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg p-2 mb-3">
+                🌙 Ertalabki kiritish (7:00–10:00): tungi <b>2-smena</b> hisoboti — sana avtomatik <b>kechagi kun</b> ({new Date(date).toLocaleDateString('uz-UZ')}) qilib olindi. Kerak bo'lsa sana yoki smenani o'zgartirishingiz mumkin.
+              </div>
+            )}
 
             <div className="space-y-2">
               {/* Sarlavha */}

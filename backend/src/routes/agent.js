@@ -83,18 +83,18 @@ router.post('/location', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/agent/locations — agentlarning oxirgi joylashuvi.
-// EGA (admin) — barcha agentlar (yoki filialga kirgan bo'lsa o'sha filial);
-// SAVDO BOSHLIG'I — faqat o'z filiali agentlari.
+// GET /api/agent/locations — BARCHA foydalanuvchilarning oxirgi joylashuvi (agent, shopir va h.k.).
+// EGA (admin) — barcha xodimlar (yoki filialga kirgan bo'lsa o'sha filial);
+// SAVDO BOSHLIG'I — faqat o'z filiali xodimlari.
 router.get('/locations', requireRole('OWNER', 'SALES_HEAD'), async (req, res, next) => {
   try {
     await ensureAgentSchema();
     const branchId = req.user.branch_id || null; // SALES_HEAD'da doim bor; OWNER acting bo'lsa ham
-    let where = "u.role = 'AGENT'";
+    let where = "u.is_active = true";
     const params = [];
     if (branchId) { where += ` AND u.branch_id = $1`; params.push(branchId); }
     const r = await query(
-      `SELECT u.id, u.full_name, u.phone, u.last_lat, u.last_lng, u.last_location_at,
+      `SELECT u.id, u.full_name, u.phone, u.role, u.last_lat, u.last_lng, u.last_location_at,
               u.is_active, b.name AS branch_name
        FROM users u LEFT JOIN branches b ON u.branch_id = b.id
        WHERE ${where}
@@ -105,16 +105,16 @@ router.get('/locations', requireRole('OWNER', 'SALES_HEAD'), async (req, res, ne
   } catch (err) { next(err); }
 });
 
-// GET /api/agent/:id/track — bitta agentning yo'nalishi (EGA + o'z filiali uchun SAVDO BOSHLIG'I)
+// GET /api/agent/:id/track — bitta xodimning yo'nalishi (EGA + o'z filiali uchun SAVDO BOSHLIG'I)
 router.get('/:id/track', requireRole('OWNER', 'SALES_HEAD'), async (req, res, next) => {
   try {
     await ensureAgentSchema();
-    // Filial guard — savdo boshlig'i / filialga kirgan ega faqat o'z filiali agentini ko'radi
+    // Filial guard — savdo boshlig'i / filialga kirgan ega faqat o'z filiali xodimini ko'radi
     const branchId = req.user.branch_id || null;
     if (branchId) {
-      const a = await query(`SELECT branch_id FROM users WHERE id = $1 AND role = 'AGENT'`, [req.params.id]);
+      const a = await query(`SELECT branch_id FROM users WHERE id = $1`, [req.params.id]);
       if (!a.rows.length || String(a.rows[0].branch_id || '') !== String(branchId)) {
-        return res.status(403).json({ error: "Bu agent sizning filialingizniki emas" });
+        return res.status(403).json({ error: "Bu xodim sizning filialingizniki emas" });
       }
     }
     const date = req.query.date || null;

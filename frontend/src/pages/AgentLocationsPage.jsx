@@ -2,6 +2,21 @@ import { useQuery } from '@tanstack/react-query';
 import { MapPin, RefreshCw, User, Phone, Store, Navigation, CircleDot } from 'lucide-react';
 import { agentAPI } from '../services/api';
 
+// Rol nomlari (o'zbekcha) + rang
+const ROLE_INFO = {
+  OWNER:           { label: 'Ega',                cls: 'bg-gray-100 text-gray-700' },
+  ACCOUNTANT:      { label: 'Buxgalter',          cls: 'bg-gray-100 text-gray-700' },
+  SALES_HEAD:      { label: "Savdo boshlig'i",    cls: 'bg-green-100 text-green-700' },
+  PRODUCTION_HEAD: { label: 'Ishlab chiqarish',   cls: 'bg-purple-100 text-purple-700' },
+  KIRIMCHI:        { label: 'Kirimchi',           cls: 'bg-gray-100 text-gray-700' },
+  OMBORCHI:        { label: 'Omborchi',           cls: 'bg-gray-100 text-gray-700' },
+  TAMINOTCHI:      { label: "Ta'minotchi",        cls: 'bg-gray-100 text-gray-700' },
+  CYCLE_TIME:      { label: 'Zikl vaqti',         cls: 'bg-gray-100 text-gray-700' },
+  AGENT:           { label: 'Agent',              cls: 'bg-blue-100 text-blue-700' },
+  SHOPIR:          { label: 'Haydovchi',          cls: 'bg-amber-100 text-amber-700' },
+};
+const roleInfo = (r) => ROLE_INFO[r] || { label: r || '—', cls: 'bg-gray-100 text-gray-600' };
+
 // SQLite UTC vaqtini ('YYYY-MM-DD HH:MM:SS') to'g'ri parse qilish
 const parseUTC = (s) => {
   if (!s) return null;
@@ -34,8 +49,8 @@ const isFresh = (s) => {
   return d ? (Date.now() - d.getTime()) < 10 * 60 * 1000 : false;
 };
 
-// Agentlar joylashuvi — EGA (admin) va SAVDO BOSHLIG'I ko'radi.
-// Har bir agentning oxirgi GPS joyi + xaritada ochish havolasi. 30s'da avto-yangilanadi.
+// Xodimlar joylashuvi — EGA (admin) va SAVDO BOSHLIG'I ko'radi (agent, shopir va boshqalar).
+// Har bir xodimning oxirgi GPS joyi + xaritada ochish havolasi. 30s'da avto-yangilanadi.
 export default function AgentLocationsPage() {
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['agent-locations'],
@@ -50,8 +65,8 @@ export default function AgentLocationsPage() {
     <div className="space-y-5">
       <div className="page-header">
         <div>
-          <h1 className="page-title flex items-center gap-2"><MapPin size={22} /> Agentlar joylashuvi</h1>
-          <p className="text-sm text-gray-500">Har bir agentning oxirgi turgan joyi — xaritada ochib ko'ring</p>
+          <h1 className="page-title flex items-center gap-2"><MapPin size={22} /> Xodimlar joylashuvi</h1>
+          <p className="text-sm text-gray-500">Agent, shopir va boshqa xodimlarning oxirgi turgan joyi — xaritada ochib ko'ring</p>
         </div>
         <button onClick={() => refetch()} className="btn-secondary btn-sm flex items-center gap-1.5">
           <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} /> Yangilash
@@ -63,7 +78,7 @@ export default function AgentLocationsPage() {
       ) : !agents.length ? (
         <div className="text-center py-16 text-gray-400">
           <User size={40} className="mx-auto mb-3 opacity-30" />
-          Hali agent yo'q
+          Hali xodim yo'q
         </div>
       ) : (
         <>
@@ -87,6 +102,9 @@ export default function AgentLocationsPage() {
                       <div className="font-semibold text-gray-900 flex items-center gap-1.5">
                         <User size={15} className="text-gray-400" /> {a.full_name}
                       </div>
+                      <span className={`inline-block mt-0.5 text-[11px] font-medium rounded px-1.5 py-0.5 ${roleInfo(a.role).cls}`}>
+                        {roleInfo(a.role).label}
+                      </span>
                       {a.phone && (
                         <a href={`tel:${a.phone}`} className="text-sm text-blue-600 flex items-center gap-1 mt-0.5">
                           <Phone size={13} /> {a.phone}

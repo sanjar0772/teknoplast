@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 import useAuthStore from '../store/authStore';
 import { agentAPI } from '../services/api';
 
-// AGENT roli uchun: telefon GPS joylashuvini serverga avtomatik yuboradi.
+// BARCHA foydalanuvchilar uchun: telefon GPS joylashuvini serverga avtomatik yuboradi
+// (agent, shopir va boshqalar — ega/savdo boshlig'i xaritada ko'radi).
 // Kirganda darhol + har 5 daqiqada. Ruxsat berilmasa jimgina o'tadi (ilova ishlashda davom etadi).
 const INTERVAL_MS = 5 * 60 * 1000;
 
@@ -11,7 +12,7 @@ export default function useAgentLocation() {
   const timerRef = useRef(null);
 
   useEffect(() => {
-    if (user?.role !== 'AGENT' || !navigator.geolocation) return;
+    if (!user?.id || !navigator.geolocation) return;
 
     const send = () => {
       navigator.geolocation.getCurrentPosition(
@@ -30,5 +31,5 @@ export default function useAgentLocation() {
     send();
     timerRef.current = setInterval(send, INTERVAL_MS);
     return () => clearInterval(timerRef.current);
-  }, [user?.role]);
+  }, [user?.id]);
 }

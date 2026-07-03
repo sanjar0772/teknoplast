@@ -30,7 +30,7 @@ const NAV_ITEMS = [
   { to: '/debts',      icon: Wallet,          label: 'Qarzlar',          roles: ['OWNER','ACCOUNTANT','SALES_HEAD'] },
   { to: '/vozvrat',    icon: RotateCcw,       label: 'Vozvratlar',       roles: ['OWNER','ACCOUNTANT','SALES_HEAD','AGENT'] },
   { to: '/deliveries', icon: Truck,           label: 'Yetkazib berish',  roles: ['OWNER','SALES_HEAD','SHOPIR'] },
-  { to: '/agent-locations', icon: MapPin,     label: 'Agentlar joyi',    roles: ['OWNER','SALES_HEAD'] },
+  { to: '/agent-locations', icon: MapPin,     label: 'Xodimlar joyi',    roles: ['OWNER','SALES_HEAD'] },
   { to: '/expenses',   icon: Receipt,         label: 'Xarajatlar',       roles: ['OWNER','ACCOUNTANT','TAMINOTCHI'] },
   { to: '/employees',  icon: Users,           label: 'Xodimlar',         roles: ['OWNER','ACCOUNTANT','PRODUCTION_HEAD','KIRIMCHI'] },
   { to: '/production', icon: Factory,         label: 'Ishlab Chiqarish', roles: ['OWNER','PRODUCTION_HEAD','KIRIMCHI'] },

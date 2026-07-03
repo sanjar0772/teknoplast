@@ -156,8 +156,8 @@ export default function DeliveriesPage() {
                 {st === 'TAKEN' && (
                   <div className="flex gap-2">
                     <button onClick={() => setStatus(o.order_ref, 'PENDING')} disabled={statusMutation.isPending}
-                      className="btn-secondary btn-sm flex items-center justify-center gap-1" title="Boshiga qaytarish">
-                      <RotateCcw size={14} />
+                      className="btn-secondary btn-sm flex items-center justify-center gap-1.5" title="Boshiga qaytarish">
+                      <RotateCcw size={14} /> Bekor qilish
                     </button>
                     <button onClick={() => setStatus(o.order_ref, 'DELIVERED')} disabled={statusMutation.isPending}
                       className="btn-success flex-1 flex items-center justify-center gap-2 py-2.5 font-semibold">
@@ -165,13 +165,7 @@ export default function DeliveriesPage() {
                     </button>
                   </div>
                 )}
-                {st === 'DELIVERED' && (
-                  <button onClick={() => { if (window.confirm('Yo\'lda holatiga qaytarilsinmi?')) setStatus(o.order_ref, 'TAKEN'); }}
-                    disabled={statusMutation.isPending}
-                    className="btn-secondary btn-sm w-full flex items-center justify-center gap-1.5">
-                    <RotateCcw size={14} /> Bekor qilish
-                  </button>
-                )}
+                {/* DELIVERED — yakuniy holat, bekor qilish tugmasi YO'Q (egasi talabi) */}
               </div>
             );
           })}

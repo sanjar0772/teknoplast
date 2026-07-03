@@ -213,6 +213,10 @@ function DebtFakturaModal({ group, onClose }) {
     amount: -(parseFloat(p.amount) || 0),
   }));
   ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
+  // Mijozning ortiqcha to'lovi (boshqa savdolardagi haqdorlik) — qarzni kamaytiradi
+  if ((group.credit || 0) > 0.01) {
+    ledger.push({ date: new Date().toISOString(), label: "Ortiqcha to'lov (haqdorlik)", amount: -group.credit });
+  }
   let bal = 0;
   ledger.forEach(e => { bal += e.amount; e.balance = bal; });
 
@@ -308,6 +312,14 @@ function DebtFakturaModal({ group, onClose }) {
                   <td className="py-1 text-center text-gray-500">{it.days_old}</td>
                 </tr>
               ))}
+              {(group.credit || 0) > 0.01 && (
+                <tr className="border-b border-gray-100 text-green-700">
+                  <td className="py-1"></td>
+                  <td className="py-1" colSpan={3}>Ortiqcha to'lov (haqdorlik) — boshqa savdolardan</td>
+                  <td className="py-1 text-right font-semibold">−{fmt(group.credit)}</td>
+                  <td className="py-1"></td>
+                </tr>
+              )}
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-gray-300 font-bold">
@@ -624,7 +636,18 @@ export default function DebtsPage() {
   const allItems = data?.items || [];
   const q = search.trim().toLowerCase();
 
-  // Mijoz bo'yicha guruhlash — bir mijozning barcha qarzlari 1 qatorda
+  // Mijozning ortiqcha to'lovi (haqdorlik krediti) — qarzni netlashtirish uchun.
+  const creditMap = useMemo(() => {
+    const m = new Map();
+    (data?.credits || []).forEach(c => {
+      const key = c.customer_id ? `id:${c.customer_id}` : `name:${c.customer}`;
+      m.set(key, (m.get(key) || 0) + (parseFloat(c.credit) || 0));
+    });
+    return m;
+  }, [data]);
+
+  // Mijoz bo'yicha guruhlash — bir mijozning barcha qarzlari 1 qatorda.
+  // Qarz = savdolar qarzi − mijozning ortiqcha to'lovi (haqdorlik krediti) → haqiqiy balans.
   const customerGroups = useMemo(() => {
     const map = new Map();
     allItems.forEach(item => {
@@ -635,15 +658,20 @@ export default function DebtsPage() {
       map.get(key).items.push(item);
     });
     return Array.from(map.values()).map(g => {
-      const totalDebt   = g.items.reduce((s, x) => s + x.debt, 0);
+      const grossDebt   = g.items.reduce((s, x) => s + x.debt, 0);
       const totalAmount = g.items.reduce((s, x) => s + x.total_amount, 0);
       const totalPaid   = g.items.reduce((s, x) => s + x.paid, 0);
+      const credit      = creditMap.get(g.key) || 0;              // haqdorlik krediti
+      const totalDebt   = Math.max(0, grossDebt - credit);        // haqiqiy (net) qarz
       const maxDays     = Math.max(...g.items.map(x => x.days_old));
       const worstBucket = BUCKET_ORDER.find(b => g.items.some(x => x.bucket === b)) || '0-30';
       const sortedItems = [...g.items].sort((a, b) => new Date(a.sale_date) - new Date(b.sale_date));
-      return { ...g, items: sortedItems, totalDebt, totalAmount, totalPaid, maxDays, worstBucket, multi: g.items.length > 1 };
+      return { ...g, items: sortedItems, grossDebt, credit, totalDebt, totalAmount, totalPaid, maxDays, worstBucket, multi: g.items.length > 1 };
     }).sort((a, b) => b.totalDebt - a.totalDebt);
-  }, [allItems]);
+  }, [allItems, creditMap]);
+
+  // Umumiy qarz — netlangan (haqdorlik hisobga olingan) guruhlardan
+  const netTotalDebt = useMemo(() => customerGroups.reduce((s, g) => s + g.totalDebt, 0), [customerGroups]);
 
   const filteredGroups = useMemo(() => {
     if (!q) return customerGroups;
@@ -699,7 +727,7 @@ export default function DebtsPage() {
             {view === 'active' ? (
               <>
                 <p className="text-xs text-gray-500">Umumiy qarz</p>
-                <p className="text-2xl font-bold text-red-600">{fmt(data?.total_debt)} so'm</p>
+                <p className="text-2xl font-bold text-red-600">{fmt(netTotalDebt)} so'm</p>
               </>
             ) : view === 'credit' ? (
               <>

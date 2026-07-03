@@ -114,7 +114,27 @@ router.get('/debts', async (req, res, next) => {
       };
     });
 
-    res.json({ total_debt: total, count: items.length, buckets, items });
+    // Har mijozning ORTIQCHA TO'LOVI (haqdorlik krediti) — (payment_amount - total_amount) > 0
+    // bo'lgan savdolar (ortiqcha to'langan yoki qo'lda haqdor). Qarzni netlashtirish uchun:
+    // getDebts faqat qarzi>0 savdolarni oladi — ortiqcha to'langan savdolardagi kredit
+    // tushib qolardi, shu bois mijoz qarzi haqiqiy balansdan (netdan) katta ko'rinardi.
+    // Kredit sana filtri bilan cheklanmaydi — bu mijozning umumiy balansi.
+    let creditWhere = `(s.payment_amount - s.total_amount) > 0.01`;
+    const creditParams = [];
+    let ci = 1;
+    if (req.user.branch_id) { creditWhere += ` AND s.branch_id = $${ci++}`; creditParams.push(req.user.branch_id); }
+    else { creditWhere += ` AND s.branch_id IS NULL`; }
+    const credits = (await query(`
+      SELECT s.customer_id, COALESCE(c.name, s.customer_name) as customer,
+             SUM(s.payment_amount - s.total_amount) as credit
+      FROM sales s LEFT JOIN customers c ON s.customer_id = c.id
+      WHERE ${creditWhere}
+      GROUP BY s.customer_id, COALESCE(c.name, s.customer_name)
+    `, creditParams)).rows
+      .map(r => ({ customer_id: r.customer_id || null, customer: r.customer, credit: parseFloat(r.credit) || 0 }))
+      .filter(r => r.credit > 0.01);
+
+    res.json({ total_debt: total, count: items.length, buckets, items, credits });
   } catch (err) { next(err); }
 });
 

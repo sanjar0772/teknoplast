@@ -5,17 +5,37 @@ import {
   Truck, MapPin, Phone, User, Package, CheckCircle2, Clock, RotateCcw, PackageCheck, Hand, FileText,
 } from 'lucide-react';
 import { deliveriesAPI, fulfillmentAPI } from '../services/api';
+import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 const rangLabel = (r) => (r && String(r).trim()) ? r : 'Rangsiz';
 
-// SQLite created_at UTC ('YYYY-MM-DD HH:MM:SS') — Z qo'shib mahalliy vaqtga aylantiramiz
-const timeLabel = (s) => {
-  if (!s) return '';
+// SQLite UTC ('YYYY-MM-DD HH:MM:SS') → mahalliy Date
+const parseUTC = (s) => {
+  if (!s) return null;
   const d = typeof s === 'string' && !s.includes('T') && !s.includes('Z')
     ? new Date(s.replace(' ', 'T') + 'Z') : new Date(s);
-  if (isNaN(d)) return '';
-  return d.toLocaleString('uz-UZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return isNaN(d) ? null : d;
+};
+const timeLabel = (s) => {
+  const d = parseUTC(s);
+  return d ? d.toLocaleString('uz-UZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+};
+// "5 daqiqa oldin" — shopir joylashuvi qachonligi
+const agoLabel = (s) => {
+  const d = parseUTC(s);
+  if (!d) return null;
+  const sec = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (sec < 60) return 'hozirgina';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} daqiqa oldin`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} soat oldin`;
+  return `${Math.floor(h / 24)} kun oldin`;
+};
+const isFresh = (s) => {
+  const d = parseUTC(s);
+  return d ? (Date.now() - d.getTime()) < 10 * 60 * 1000 : false;
 };
 
 const TABS = [
@@ -28,6 +48,9 @@ const TABS = [
 // Oqim: PENDING (yangi) → shopir "Tovarni oldim" → TAKEN (yo'lda) → "Yetkazib berildi" → DELIVERED.
 export default function DeliveriesPage() {
   const [tab, setTab] = useState('pending');
+  const { user } = useAuthStore();
+  // Shopirni "yo'lda" kuzatish faqat EGA va SAVDO BOSHLIG'I uchun (shopirning o'ziga emas)
+  const canTrack = ['OWNER', 'SALES_HEAD'].includes(user?.role);
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -156,6 +179,33 @@ export default function DeliveriesPage() {
                   </span>
                   <span className="font-bold text-blue-700">{fmt(o.total)} so'm</span>
                 </div>
+
+                {/* Yo'lda — shopirni xaritada kuzatish (faqat EGA / SAVDO BOSHLIG'I) */}
+                {st === 'TAKEN' && canTrack && (
+                  <div className="rounded-lg bg-blue-50 border border-blue-100 p-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-blue-800 flex items-center gap-1">
+                          <Truck size={13} /> Shopir: {o.shopir_name || '—'}
+                        </div>
+                        {o.shopir_location_at && (
+                          <div className={`text-[11px] mt-0.5 ${isFresh(o.shopir_location_at) ? 'text-green-600' : 'text-gray-400'}`}>
+                            {isFresh(o.shopir_location_at) ? '🟢 Onlayn' : '⚪ Oflayn'} · {agoLabel(o.shopir_location_at)}
+                          </div>
+                        )}
+                      </div>
+                      {o.shopir_lat != null && o.shopir_lng != null ? (
+                        <a href={`https://maps.google.com/?q=${o.shopir_lat},${o.shopir_lng}`}
+                          target="_blank" rel="noreferrer"
+                          className="btn-primary btn-sm flex items-center gap-1 whitespace-nowrap">
+                          <MapPin size={13} /> Kuzatish
+                        </a>
+                      ) : (
+                        <span className="text-[11px] text-gray-400 whitespace-nowrap">Joylashuv yo'q</span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Amal — holatga qarab tugma */}
                 {st === 'PENDING' && (

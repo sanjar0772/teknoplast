@@ -34,12 +34,15 @@ router.get('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'SHOPIR', 'AGEN
     const rows = (await query(
       `SELECT s.id, s.order_ref, s.quantity, s.unit_price, s.total_amount, s.rang,
               s.customer_id, s.customer_name, s.customer_phone, s.sale_date, s.created_at,
-              COALESCE(s.delivery_status, 'PENDING') AS delivery_status, s.delivered_at, s.taken_at,
+              COALESCE(s.delivery_status, 'PENDING') AS delivery_status, s.delivered_at, s.taken_at, s.taken_by,
               p.name AS product_name, p.unit,
-              c.address AS customer_address, c.latitude, c.longitude
+              c.address AS customer_address, c.latitude, c.longitude,
+              du.full_name AS shopir_name, du.last_lat AS shopir_lat, du.last_lng AS shopir_lng,
+              du.last_location_at AS shopir_location_at
        FROM sales s
        LEFT JOIN products p ON s.product_id = p.id
        LEFT JOIN customers c ON s.customer_id = c.id
+       LEFT JOIN users du ON s.taken_by = du.id
        WHERE s.delivery_type = 'DELIVERY'${cond}
        ORDER BY s.created_at DESC
        LIMIT 500`,
@@ -65,6 +68,11 @@ router.get('/', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'SHOPIR', 'AGEN
           delivery_status: norm(r.delivery_status),
           taken_at: r.taken_at,
           delivered_at: r.delivered_at,
+          // Zakazni olgan shopir + uning oxirgi joylashuvi (yo'lda kuzatish uchun)
+          shopir_name: r.shopir_name,
+          shopir_lat: r.shopir_lat,
+          shopir_lng: r.shopir_lng,
+          shopir_location_at: r.shopir_location_at,
           total: 0,
           items: [],
         });

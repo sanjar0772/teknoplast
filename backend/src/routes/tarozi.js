@@ -21,7 +21,7 @@ const TAROZI_ROLES = ['OWNER', 'TAMINOTCHI', 'KIRIMCHI', 'OMBORCHI', 'PRODUCTION
 router.post('/', requireRole(...TAROZI_ROLES), async (req, res, next) => {
   try {
     await ensureTaroziSchema();
-    const { mashina, mahsulot, haydovchi, brutto, tara, netto, sana } = req.body;
+    const { mashina, mashina_turi, mahsulot, haydovchi, brutto, tara, netto, sana } = req.body;
     const b = parseFloat(brutto) || 0;
     const t = parseFloat(tara) || 0;
     const n = netto !== undefined ? (parseFloat(netto) || 0) : Math.max(0, b - t);
@@ -36,9 +36,9 @@ router.post('/', requireRole(...TAROZI_ROLES), async (req, res, next) => {
       no = (parseInt(mx.mx, 10) || 0) + 1;
     }
     await query(
-      `INSERT INTO tarozi_receipts (receipt_no, mashina, mahsulot, haydovchi, brutto, tara, netto, sana, created_by, branch_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [no, String(mashina).trim(), (mahsulot || '').trim() || null, (haydovchi || '').trim() || null,
+      `INSERT INTO tarozi_receipts (receipt_no, mashina, mashina_turi, mahsulot, haydovchi, brutto, tara, netto, sana, created_by, branch_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [no, String(mashina).trim(), (mashina_turi || '').trim() || null, (mahsulot || '').trim() || null, (haydovchi || '').trim() || null,
        b, t, n, sana || todayUZB(), req.user.id, branchId]
     );
     res.status(201).json({ success: true, receipt_no: no });
@@ -55,7 +55,7 @@ router.get('/', requireRole('OWNER', 'TAMINOTCHI'), async (req, res, next) => {
     const scope = branchId ? ` AND branch_id = $2` : ` AND branch_id IS NULL`;
     const params = branchId ? [date, branchId] : [date];
     const rows = (await query(
-      `SELECT id, receipt_no, mashina, mahsulot, haydovchi, brutto, tara, netto, sana, created_at
+      `SELECT id, receipt_no, mashina, mashina_turi, mahsulot, haydovchi, brutto, tara, netto, sana, created_at
        FROM tarozi_receipts
        WHERE sana = $1${scope}
        ORDER BY receipt_no DESC, created_at DESC`,

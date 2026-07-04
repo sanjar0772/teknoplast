@@ -37,12 +37,19 @@ const DDL = USE_PG
       created_at TEXT DEFAULT (datetime('now'))
     )`;
 
+// Mashina turi (Damas, Labo, ...) — mavjud jadvalga ustun qo'shish (idempotent)
+const ALTER_MASHINA_TURI = USE_PG
+  ? `ALTER TABLE tarozi_receipts ADD COLUMN IF NOT EXISTS mashina_turi VARCHAR(40)`
+  : `ALTER TABLE tarozi_receipts ADD COLUMN mashina_turi TEXT`;
+
 let _ready = false;
 
 async function ensureTaroziSchema() {
   if (_ready) return;
   try {
     await db.query(DDL);
+    // Ustun allaqachon mavjud bo'lsa — SQLite xato beradi, e'tiborsiz qoldiramiz
+    try { await db.query(ALTER_MASHINA_TURI); } catch (e) { /* ustun bor */ }
     _ready = true;
     console.log('✅ Tarozi sxemasi tayyor');
   } catch (e) {

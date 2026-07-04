@@ -19,6 +19,9 @@ const num = (v) => {
 const STORAGE_KEY = 'tarozi_recent_v1';
 const COUNTER_KEY = 'tarozi_chek_no_v1';
 
+// Tarozida tortiladigan mashina turlari (transport)
+const MASHINA_TURLARI = ['Damas', 'Labo', 'Labo-Kia', 'Isuzi', 'Gaz-53', 'Zil', 'Howo'];
+
 // Sana/vaqtni mahalliy (UTC+5) ko'rinishda — toISOString ishlatmaymiz (timezone bug).
 const nowLabel = () => {
   const d = new Date();
@@ -28,6 +31,7 @@ const nowLabel = () => {
 
 export default function TaroziPage() {
   const [mashina, setMashina] = useState('');
+  const [mashinaTuri, setMashinaTuri] = useState('');
   const [mahsulot, setMahsulot] = useState('');
   const [brutto, setBrutto] = useState('');
   const [tara, setTara] = useState('');
@@ -59,7 +63,7 @@ export default function TaroziPage() {
   }, [recent, serverMaxNo]);
 
   const reset = () => {
-    setMashina(''); setMahsulot(''); setBrutto(''); setTara(''); setHaydovchi('');
+    setMashina(''); setMashinaTuri(''); setMahsulot(''); setBrutto(''); setTara(''); setHaydovchi('');
   };
 
   const validate = () => {
@@ -76,7 +80,7 @@ export default function TaroziPage() {
     const no = chekNo;
     localStorage.setItem(COUNTER_KEY, String(no));
     const entry = {
-      no, mashina: mashina.trim(), mahsulot: mahsulot.trim(),
+      no, mashina: mashina.trim(), mashina_turi: mashinaTuri, mahsulot: mahsulot.trim(),
       haydovchi: haydovchi.trim(), brutto: bruttoN, tara: taraN, netto,
       vaqt: nowLabel(),
     };
@@ -85,7 +89,7 @@ export default function TaroziPage() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     // Serverga saqlash — admin (ega) cheklarni ko'rishi uchun. Xato bo'lsa ham chek chiqadi.
     taroziAPI.create({
-      no, mashina: entry.mashina, mahsulot: entry.mahsulot, haydovchi: entry.haydovchi,
+      no, mashina: entry.mashina, mashina_turi: mashinaTuri, mahsulot: entry.mahsulot, haydovchi: entry.haydovchi,
       brutto: bruttoN, tara: taraN, netto, sana: localDate(),
     }).then(() => setServerMaxNo(m => Math.max(m, no)))
       .catch(() => toast.error("Chek serverga saqlanmadi (internet?) — chop etildi"));
@@ -113,6 +117,16 @@ export default function TaroziPage() {
         {/* CHAP — kiritish */}
         <div className="lg:col-span-2 space-y-4">
           <div className="card space-y-4">
+            <div>
+              <label className="label flex items-center gap-1.5"><Truck size={14} /> Mashina turi</label>
+              <select value={mashinaTuri} onChange={e => setMashinaTuri(e.target.value)}
+                className="select text-base font-medium">
+                <option value="">— Tanlang —</option>
+                {MASHINA_TURLARI.map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
             <div>
               <label className="label flex items-center gap-1.5"><Truck size={14} /> Mashina raqami</label>
               <input value={mashina} onChange={e => setMashina(e.target.value.toUpperCase())}
@@ -167,7 +181,8 @@ export default function TaroziPage() {
             <div className="mt-5 pt-4 border-t border-white/20 space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-blue-100">Yuk bilan (Brutto)</span><span className="font-semibold">{fmt(bruttoN)} kg</span></div>
               <div className="flex justify-between"><span className="text-blue-100">Tara (bo'sh)</span><span className="font-semibold">− {fmt(taraN)} kg</span></div>
-              <div className="flex justify-between border-t border-white/20 pt-2"><span className="text-blue-100">Mashina</span><span className="font-semibold">{mashina || '—'}</span></div>
+              <div className="flex justify-between border-t border-white/20 pt-2"><span className="text-blue-100">Mashina turi</span><span className="font-semibold">{mashinaTuri || '—'}</span></div>
+              <div className="flex justify-between"><span className="text-blue-100">Mashina raqami</span><span className="font-semibold">{mashina || '—'}</span></div>
             </div>
           </div>
           <div className="card-sm text-center text-xs text-gray-400">
@@ -187,6 +202,7 @@ export default function TaroziPage() {
                   <th className="text-left py-1.5">№</th>
                   <th className="text-left py-1.5">Vaqt</th>
                   <th className="text-left py-1.5">Mashina</th>
+                  <th className="text-left py-1.5">Turi</th>
                   <th className="text-left py-1.5">Mahsulot</th>
                   <th className="text-right py-1.5">Brutto</th>
                   <th className="text-right py-1.5">Tara</th>
@@ -199,6 +215,7 @@ export default function TaroziPage() {
                     <td className="py-1.5 text-gray-400">{String(r.no).padStart(4, '0')}</td>
                     <td className="py-1.5 text-gray-500 whitespace-nowrap">{r.vaqt}</td>
                     <td className="py-1.5 font-medium">{r.mashina}</td>
+                    <td className="py-1.5 text-gray-600">{r.mashina_turi || '—'}</td>
                     <td className="py-1.5 text-gray-600">{r.mahsulot || '—'}</td>
                     <td className="py-1.5 text-right">{fmt(r.brutto)}</td>
                     <td className="py-1.5 text-right text-gray-500">{fmt(r.tara)}</td>
@@ -229,6 +246,7 @@ export default function TaroziPage() {
 
         <table className="w-full text-[12px]">
           <tbody>
+            {mashinaTuri && <tr><td className="py-0.5">Машина тури</td><td className="py-0.5 text-right font-semibold">{mashinaTuri}</td></tr>}
             <tr><td className="py-0.5">Машина рақами</td><td className="py-0.5 text-right font-bold">{mashina}</td></tr>
             {mahsulot && <tr><td className="py-0.5">Маҳсулот</td><td className="py-0.5 text-right">{mahsulot}</td></tr>}
             {haydovchi && <tr><td className="py-0.5">Ҳайдовчи</td><td className="py-0.5 text-right">{haydovchi}</td></tr>}

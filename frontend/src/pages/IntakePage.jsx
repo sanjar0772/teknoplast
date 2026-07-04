@@ -113,10 +113,11 @@ function ProductIntakeTab({ canCreate, canApprove }) {
     },
   });
 
-  // cart row: { rowId, product_id, name, stock, rang, qty }
-  // Har safar yangi qator — bitta mahsulotni bir necha rangda kiritish mumkin
+  // cart row: { rowId, product_id, name, stock, rang, qty, narx }
+  // narx = birlik narxi (so'm/dona); qator qiymati = qty * narx. Har safar yangi qator —
+  // bitta mahsulotni bir necha rangda kiritish mumkin.
   const addToCart = (p) => {
-    setCart(c => [...c, { rowId: newRowId(), product_id: p.id, name: p.name, stock: p.stock_quantity, rang: '', qty: 1 }]);
+    setCart(c => [...c, { rowId: newRowId(), product_id: p.id, name: p.name, stock: p.stock_quantity, rang: '', qty: 1, narx: '' }]);
     // setSearch ni tozalamaymiz — foydalanuvchi ketma-ket bir nechta mahsulot qo'sha olsin
   };
   const updateRow = (rowId, field, value) => {
@@ -124,13 +125,19 @@ function ProductIntakeTab({ canCreate, canApprove }) {
   };
   const removeRow = (rowId) => setCart(c => c.filter(r => r.rowId !== rowId));
 
+  // Kirimning umumiy qiymati (barcha qatorlar: dona × narx)
+  const totalValue = cart.reduce((s, r) => s + (parseInt(r.qty) || 0) * (parseFloat(r.narx) || 0), 0);
+
   const submit = () => {
     if (!cart.length) return toast.error('Mahsulot qo\'shing');
     for (const r of cart) {
       // rang bo'sh bo'lsa "Rangsiz" sifatida saqlanadi — majburiy emas
       if (!r.qty || parseInt(r.qty) < 1) return toast.error(`"${r.name}" miqdori noto'g'ri`);
     }
-    createMutation.mutate({ items: cart.map(r => ({ product_id: r.product_id, quantity: parseInt(r.qty), rang: r.rang })), notes });
+    createMutation.mutate({
+      items: cart.map(r => ({ product_id: r.product_id, quantity: parseInt(r.qty), rang: r.rang, unit_price: parseFloat(r.narx) || 0 })),
+      notes,
+    });
   };
 
   return (
@@ -164,13 +171,13 @@ function ProductIntakeTab({ canCreate, canApprove }) {
       <div className="table-container">
         <table className="table">
           <thead>
-            <tr><th>Sana</th><th>Kirituvchi</th><th>Mahsulotlar</th><th>Jami</th><th>Status</th><th>Amal</th></tr>
+            <tr><th>Sana</th><th>Kirituvchi</th><th>Mahsulotlar</th><th>Jami</th><th>Qiymat</th><th>Status</th><th>Amal</th></tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={6} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
+              <tr><td colSpan={7} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
             ) : !data?.intakes?.length ? (
-              <tr><td colSpan={6} className="text-center py-8 text-gray-400">Kirim yo'q</td></tr>
+              <tr><td colSpan={7} className="text-center py-8 text-gray-400">Kirim yo'q</td></tr>
             ) : data.intakes.map(i => {
               const st = STATUS[i.status] || STATUS.PENDING;
               return (
@@ -183,6 +190,7 @@ function ProductIntakeTab({ canCreate, canApprove }) {
                       : <span className="text-gray-400 text-sm">{i.item_count} xil</span>}
                   </td>
                   <td className="font-semibold whitespace-nowrap">{fmt(i.total_qty)} dona</td>
+                  <td className="whitespace-nowrap">{parseFloat(i.total_value) > 0 ? `${fmt(i.total_value)} so'm` : '—'}</td>
                   <td><span className={st.cls}>{st.label}</span></td>
                   <td>
                     <div className="flex gap-1">
@@ -233,15 +241,19 @@ function ProductIntakeTab({ canCreate, canApprove }) {
               <thead>
                 <tr>
                   <th>Mahsulot</th>
-                  <th className="w-36">Rang</th>
-                  <th className="w-28">Miqdor</th>
-                  <th className="w-16"></th>
+                  <th className="w-32">Rang</th>
+                  <th className="w-20">Miqdor</th>
+                  <th className="w-28">Narx (dona)</th>
+                  <th className="w-28 text-right">Qiymat</th>
+                  <th className="w-12"></th>
                 </tr>
               </thead>
               <tbody>
                 {!cart.length ? (
-                  <tr><td colSpan={4} className="text-center py-6 text-gray-400">Mahsulot qo'shing</td></tr>
-                ) : cart.map((x) => (
+                  <tr><td colSpan={6} className="text-center py-6 text-gray-400">Mahsulot qo'shing</td></tr>
+                ) : cart.map((x) => {
+                  const lineValue = (parseInt(x.qty) || 0) * (parseFloat(x.narx) || 0);
+                  return (
                   <tr key={x.rowId}>
                     <td>
                       <div className="font-medium text-gray-900">{x.name}</div>
@@ -252,7 +264,7 @@ function ProductIntakeTab({ canCreate, canApprove }) {
                         <select
                           value={x.rang}
                           onChange={e => updateRow(x.rowId, 'rang', e.target.value)}
-                          className="select py-1 px-2 text-sm w-32"
+                          className="select py-1 px-2 text-sm w-28"
                         >
                           <option value="">Rangsiz</option>
                           {RANGLAR.map(r => (
@@ -266,7 +278,16 @@ function ProductIntakeTab({ canCreate, canApprove }) {
                       <input type="number" min="1" value={x.qty}
                         onChange={e => updateRow(x.rowId, 'qty', e.target.value)}
                         onFocus={e => e.target.select()}
+                        className="input py-1 px-2 w-20" />
+                    </td>
+                    <td>
+                      <input type="number" min="0" placeholder="so'm/dona" value={x.narx}
+                        onChange={e => updateRow(x.rowId, 'narx', e.target.value)}
+                        onFocus={e => e.target.select()}
                         className="input py-1 px-2 w-24" />
+                    </td>
+                    <td className="text-right font-medium text-gray-800 whitespace-nowrap">
+                      {lineValue > 0 ? `${fmt(lineValue)} so'm` : '—'}
                     </td>
                     <td>
                       <button onClick={() => removeRow(x.rowId)} className="text-gray-300 hover:text-red-500">
@@ -274,10 +295,18 @@ function ProductIntakeTab({ canCreate, canApprove }) {
                       </button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
+          {/* Kirimning umumiy qiymati */}
+          {totalValue > 0 && (
+            <div className="flex justify-between items-center p-3 bg-blue-50 border border-blue-100 rounded-xl">
+              <span className="text-sm text-gray-600">Kirim umumiy qiymati:</span>
+              <span className="font-bold text-blue-700 text-lg">{fmt(totalValue)} so'm</span>
+            </div>
+          )}
           <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Izoh (ixtiyoriy)" className="input" />
           <div className="flex gap-3">
             <button onClick={() => setShowForm(false)} className="btn-secondary flex-1">Bekor</button>
@@ -300,9 +329,11 @@ function ProductIntakeTab({ canCreate, canApprove }) {
             {detail.intake.notes && <p className="text-sm text-gray-600">Izoh: {detail.intake.notes}</p>}
             <div className="border border-gray-100 rounded-xl overflow-hidden">
               <table className="table text-sm">
-                <thead><tr><th>Mahsulot</th><th>Rang</th><th>Kirim miqdori</th><th>Hozirgi ombor</th></tr></thead>
+                <thead><tr><th>Mahsulot</th><th>Rang</th><th>Kirim miqdori</th><th>Narx (dona)</th><th>Qiymat</th><th>Hozirgi ombor</th></tr></thead>
                 <tbody>
-                  {detail.items.map(it => (
+                  {detail.items.map(it => {
+                    const lineValue = (parseFloat(it.quantity) || 0) * (parseFloat(it.unit_price) || 0);
+                    return (
                     <tr key={it.id}>
                       <td>{it.product_name}</td>
                       <td>
@@ -314,9 +345,21 @@ function ProductIntakeTab({ canCreate, canApprove }) {
                         ) : <span className="text-gray-400">Rangsiz</span>}
                       </td>
                       <td className="font-semibold text-green-600">+{fmt(it.quantity)} {it.unit}</td>
+                      <td>{parseFloat(it.unit_price) > 0 ? `${fmt(it.unit_price)} so'm` : '—'}</td>
+                      <td className="font-medium">{lineValue > 0 ? `${fmt(lineValue)} so'm` : '—'}</td>
                       <td>{fmt(it.stock_quantity)} {it.unit}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
+                  {detail.items.some(it => parseFloat(it.unit_price) > 0) && (
+                    <tr className="bg-blue-50 font-bold">
+                      <td colSpan={4} className="text-right pr-2">Kirim umumiy qiymati:</td>
+                      <td className="text-blue-700">
+                        {fmt(detail.items.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (parseFloat(it.unit_price) || 0), 0))} so'm
+                      </td>
+                      <td></td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

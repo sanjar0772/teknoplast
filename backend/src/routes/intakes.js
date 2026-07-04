@@ -16,6 +16,7 @@ router.get('/', async (req, res, next) => {
       SELECT i.*, u.full_name as created_by_name, a.full_name as approved_by_name,
              (SELECT COUNT(*) FROM intake_items WHERE intake_id = i.id) as item_count,
              (SELECT COALESCE(SUM(quantity),0) FROM intake_items WHERE intake_id = i.id) as total_qty,
+             (SELECT COALESCE(SUM(quantity * COALESCE(unit_price,0)),0) FROM intake_items WHERE intake_id = i.id) as total_value,
              (SELECT STRING_AGG(p.name || ' (' || ii.quantity || ' dona)', ', ')
               FROM intake_items ii JOIN products p ON ii.product_id = p.id
               WHERE ii.intake_id = i.id) as product_list
@@ -40,7 +41,9 @@ async function fetchIntakeRows({ status, start_date, end_date, branchId }) {
   let sql = `
     SELECT i.id, i.status, i.notes, i.created_at, i.approved_at,
            u.full_name AS created_by_name, a.full_name AS approved_by_name,
-           it.quantity, COALESCE(it.rang, p.rang) AS rang,
+           it.quantity, COALESCE(it.unit_price, 0) AS unit_price,
+           (it.quantity * COALESCE(it.unit_price, 0)) AS line_value,
+           COALESCE(it.rang, p.rang) AS rang,
            p.name AS product_name, COALESCE(p.unit, 'dona') AS unit
     FROM intake_items it
     JOIN product_intakes i ON it.intake_id = i.id
@@ -131,9 +134,10 @@ router.post('/', requireRole('OWNER', 'KIRIMCHI', 'PRODUCTION_HEAD', 'SALES_HEAD
       );
       const intake = intakeR.rows[0];
       for (const it of items) {
+        const unitPrice = Math.max(0, parseFloat(it.unit_price) || 0);
         await client.query(
-          `INSERT INTO intake_items (intake_id, product_id, quantity, rang) VALUES ($1, $2, $3, $4)`,
-          [intake.id, it.product_id, parseInt(it.quantity), it.rang || null]
+          `INSERT INTO intake_items (intake_id, product_id, quantity, rang, unit_price) VALUES ($1, $2, $3, $4, $5)`,
+          [intake.id, it.product_id, parseInt(it.quantity), it.rang || null, unitPrice]
         );
       }
       await client.query('COMMIT');

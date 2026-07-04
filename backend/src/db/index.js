@@ -918,6 +918,9 @@ if (USE_PG) {
       // Bitta to'lov operatsiyasi (FIFO bilan ko'p savdoga taqsimlangan) — bitta ref bilan
       // belgilanadi, shunda mijoz tarixida bitta qator sifatida jamlanadi.
       `ALTER TABLE payments ADD COLUMN payment_ref TEXT`,
+      // Kirim mahsulotining birlik narxi (so'm/dona) — kirim qiymatini hisoblash uchun.
+      // Jami qiymat = quantity * unit_price.
+      `ALTER TABLE intake_items ADD COLUMN unit_price REAL DEFAULT 0`,
     ];
     for (const m of migrations) {
       try {

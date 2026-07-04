@@ -1093,6 +1093,8 @@ async function generateIntakesExcel(rows, filters = {}) {
     { header: 'Mahsulot', key: 'product', width: 34 },
     { header: 'Rang', key: 'rang', width: 14 },
     { header: 'Miqdor', key: 'qty', width: 12 },
+    { header: "Narx (so'm/dona)", key: 'unit_price', width: 16 },
+    { header: "Qiymat (so'm)", key: 'value', width: 16 },
     { header: 'Kiritdi', key: 'created_by', width: 20 },
     { header: 'Tasdiqladi', key: 'approved_by', width: 20 },
   ];
@@ -1100,23 +1102,31 @@ async function generateIntakesExcel(rows, filters = {}) {
   sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D4ED8' } };
 
   rows.forEach((r, i) => {
-    sheet.addRow({
+    const qty = parseFloat(r.quantity || 0);
+    const unitPrice = parseFloat(r.unit_price || 0);
+    const row = sheet.addRow({
       num: i + 1,
       date: r.created_at ? new Date(r.created_at).toLocaleDateString('uz-UZ') : '',
       status: INTAKE_STATUS_UZ[r.status] || r.status,
       product: r.product_name || '—',
       rang: rangUz(r.rang),
-      qty: parseFloat(r.quantity || 0),
+      qty,
+      unit_price: unitPrice,
+      value: qty * unitPrice,
       created_by: r.created_by_name || '—',
       approved_by: r.approved_by_name || '—',
     });
+    row.getCell('unit_price').numFmt = '#,##0';
+    row.getCell('value').numFmt = '#,##0';
   });
 
   const totalRow = sheet.addRow({
     product: 'JAMI:',
     qty: rows.reduce((a, r) => a + parseFloat(r.quantity || 0), 0),
+    value: rows.reduce((a, r) => a + parseFloat(r.quantity || 0) * parseFloat(r.unit_price || 0), 0),
   });
   totalRow.font = { bold: true };
+  totalRow.getCell('value').numFmt = '#,##0';
 
   const buffer = await workbook.xlsx.writeBuffer();
   return buffer;
@@ -1136,8 +1146,10 @@ async function generateIntakesPDF(rows, filters = {}) {
     doc.fontSize(9).fillColor('#666').text(`Davr: ${periodLabel(filters)}   ·   Yaratildi: ${new Date().toLocaleDateString('uz-UZ')}`, { align: 'center' });
     doc.fillColor('black').moveDown(0.8);
 
+    const money = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n) || 0));
+
     // Ustun x-koordinatalari (A4, margin 40 → 40..555)
-    const col = { num: 40, date: 70, product: 140, rang: 330, qty: 405, status: 470 };
+    const col = { num: 40, date: 62, product: 116, rang: 250, qty: 300, narx: 340, value: 400, status: 490 };
     const right = 555;
 
     const drawHeader = (y) => {
@@ -1147,6 +1159,8 @@ async function generateIntakesPDF(rows, filters = {}) {
       doc.text('Mahsulot', col.product, y);
       doc.text('Rang', col.rang, y);
       doc.text('Miqdor', col.qty, y);
+      doc.text('Narx', col.narx, y);
+      doc.text('Qiymat', col.value, y);
       doc.text('Holat', col.status, y);
       doc.moveTo(40, y + 13).lineTo(right, y + 13).strokeColor('#999').stroke();
       return y + 18;
@@ -1154,21 +1168,25 @@ async function generateIntakesPDF(rows, filters = {}) {
 
     let y = drawHeader(doc.y);
     doc.font('Arial').fontSize(8.5);
-    let totalQty = 0;
+    let totalQty = 0, totalValue = 0;
 
     rows.forEach((r, i) => {
       if (y > 780) { doc.addPage(); y = drawHeader(40); doc.font('Arial').fontSize(8.5); }
       const qty = parseFloat(r.quantity || 0);
-      totalQty += qty;
+      const unitPrice = parseFloat(r.unit_price || 0);
+      const lineValue = qty * unitPrice;
+      totalQty += qty; totalValue += lineValue;
       doc.fillColor('black');
-      doc.text(String(i + 1), col.num, y, { width: 25 });
-      doc.text(r.created_at ? new Date(r.created_at).toLocaleDateString('uz-UZ') : '', col.date, y, { width: 65 });
-      doc.text(r.product_name || '—', col.product, y, { width: 185 });
-      doc.text(rangUz(r.rang), col.rang, y, { width: 70 });
-      doc.text(`${qty}`, col.qty, y, { width: 55 });
-      doc.text(INTAKE_STATUS_UZ[r.status] || r.status, col.status, y, { width: 85 });
+      doc.text(String(i + 1), col.num, y, { width: 20 });
+      doc.text(r.created_at ? new Date(r.created_at).toLocaleDateString('uz-UZ') : '', col.date, y, { width: 52 });
+      doc.text(r.product_name || '—', col.product, y, { width: 132 });
+      doc.text(rangUz(r.rang), col.rang, y, { width: 48 });
+      doc.text(`${qty}`, col.qty, y, { width: 38 });
+      doc.text(unitPrice ? money(unitPrice) : '—', col.narx, y, { width: 58 });
+      doc.text(lineValue ? money(lineValue) : '—', col.value, y, { width: 88 });
+      doc.text(INTAKE_STATUS_UZ[r.status] || r.status, col.status, y, { width: 63 });
       const h = Math.max(
-        doc.heightOfString(r.product_name || '—', { width: 185 }),
+        doc.heightOfString(r.product_name || '—', { width: 132 }),
         12
       );
       y += h + 4;
@@ -1177,7 +1195,7 @@ async function generateIntakesPDF(rows, filters = {}) {
     doc.moveTo(40, y).lineTo(right, y).strokeColor('#999').stroke();
     y += 6;
     doc.font('Arial-Bold').fontSize(10).fillColor('black');
-    doc.text(`JAMI: ${rows.length} ta yozuv · ${totalQty} dona`, 40, y, { width: right - 40, align: 'right' });
+    doc.text(`JAMI: ${rows.length} ta yozuv · ${totalQty} dona · ${money(totalValue)} so'm`, 40, y, { width: right - 40, align: 'right' });
 
     doc.end();
   });

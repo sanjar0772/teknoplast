@@ -250,6 +250,7 @@ export default function QuickSalePage() {
         pay_click: checkoutRef.current.payClick || 0,
         discount: checkoutRef.current.discount || 0,
         credit: checkoutRef.current.credit || 0,
+        orig_total: checkoutRef.current.origTotal, // chegirmadan OLDINGI tovar summasi (chekdagi "Oraliq")
       });
       setSessions(ss => ss.map((ses, i) => i === idx ? { ...ses, cart: [], payCash: '', payCard: '', payBank: '', payPayme: '', payClick: '', discount: '' } : ses));
       setSearch('');
@@ -265,13 +266,15 @@ export default function QuickSalePage() {
   const paymeAmt = parseFloat(s.payPayme) || 0;
   const clickAmt = parseFloat(s.payClick) || 0;
   const paidTotal = cashAmt + cardAmt + bankAmt + paymeAmt + clickAmt;
-  // Chegirma (skidka) — so'm yoki foiz; jami summadan oshmaydi
+  // Chegirma (skidka) — so'm yoki foiz. Savdo summasigacha bo'lgan qismi narxlarga
+  // taqsimlanadi; savdodan OSHGAN qismi mijozga HAQDOR (kredit) bo'lib yoziladi.
   const discountInput = parseFloat(s.discount) || 0;
   const discountRaw = s.discountMode === 'pct' ? grandTotal * discountInput / 100 : discountInput;
   const discountAmt = Math.min(Math.max(0, Math.round(discountRaw)), grandTotal);
+  const discountExcess = Math.max(0, Math.round(discountRaw) - grandTotal); // savdodan oshgan chegirma → haqdor
   const finalTotal = grandTotal - discountAmt; // chegirmadan keyingi yakuniy summa
   const debtAmt = Math.max(0, finalTotal - paidTotal);
-  const creditAmt = Math.max(0, paidTotal - finalTotal); // oshiqcha to'lov — mijoz haqdor bo'ladi
+  const creditAmt = Math.max(0, paidTotal - finalTotal) + discountExcess; // oshiqcha to'lov + oshgan chegirma — mijoz haqdor bo'ladi
 
   // Dostavkani yoqish/o'chirish — yoqilганда mijoz manzili/lokatsiyasidan to'ldiramiz
   const toggleDelivery = () => {
@@ -302,9 +305,12 @@ export default function QuickSalePage() {
     if (!s.cart.length) return toast.error('Savat bo\'sh');
     if (!s.customerId) return toast.error('Mijozni tanlang');
     if (delivery && !deliveryAddress.trim()) return toast.error('Dostavka manzilini kiriting');
-    // Chegirma savdo summasidan OSHIB ketolmaydi — tizim ruxsat bermaydi (jimgina kesmaydi)
-    if (Math.round(discountRaw) > grandTotal + 0.01)
-      return toast.error(`Chegirma savdo summasidan (${fmt(grandTotal)} so'm) oshmasligi kerak`);
+    // Chegirma savdodan oshsa — bloklanmaydi: oshgan summa mijozga HAQDOR (kredit)
+    // bo'lib yoziladi. Xato bosishdan saqlash uchun avval tasdiqlash so'raladi.
+    if (discountExcess > 0 && !window.confirm(
+      `Chegirma (${fmt(Math.round(discountRaw))} so'm) savdo summasidan (${fmt(grandTotal)} so'm) ${fmt(discountExcess)} so'm OSHIQ.\n\n` +
+      `Oshgan ${fmt(discountExcess)} so'm mijozga HAQDOR (kredit) bo'lib yoziladi. Davom etilsinmi?`
+    )) return;
     for (const x of s.cart) {
       if (!x.qty || x.qty < 1) return toast.error(`"${x.name}" miqdori noto'g'ri`);
       if (!(x.color_stock || []).length) return toast.error(`"${x.name}" omborda yo'q`);
@@ -331,7 +337,7 @@ export default function QuickSalePage() {
       itemsOut = s.cart.map(x => ({ product_id: x.id, quantity: parseInt(x.qty), unit_price: parseFloat(x.price), rang: x.rang }));
     }
 
-    checkoutRef.current = { idx: activeIdx, customerId: s.customerId, payCash: cashAmt, payCard: cardAmt, payBank: bankAmt, payPayme: paymeAmt, payClick: clickAmt, credit: creditAmt, discount: discountAmt };
+    checkoutRef.current = { idx: activeIdx, customerId: s.customerId, payCash: cashAmt, payCard: cardAmt, payBank: bankAmt, payPayme: paymeAmt, payClick: clickAmt, credit: creditAmt, discount: discountAmt + discountExcess, origTotal: grandTotal };
     // Chekда ko'rsatish uchun — chegirma qo'llangan (net) narxlar
     lastCartRef.current = itemsOut.map((it, idx) => ({ name: s.cart[idx].name, qty: it.quantity, price: it.unit_price, unit: s.cart[idx].unit, rang: it.rang }));
     const noteParts = [];
@@ -343,11 +349,12 @@ export default function QuickSalePage() {
     if (debtAmt > 0) noteParts.push(`Qarz: ${debtAmt}`);
     if (creditAmt > 0) noteParts.push(`Haqdor: ${creditAmt}`);
     if (!noteParts.length) noteParts.push('Qarz');
-    if (discountAmt > 0) noteParts.push(`Chegirma: ${discountAmt}`);
+    if (discountAmt + discountExcess > 0) noteParts.push(`Chegirma: ${discountAmt + discountExcess}`);
     saveMutation.mutate({
       customer_id: s.customerId,
       sale_date: s.saleDate,
       payment_amount: paidTotal,
+      discount_credit: discountExcess,
       notes: `To'lov: ${noteParts.join(' · ')}`,
       items: itemsOut,
       delivery_type: delivery ? 'DELIVERY' : 'PICKUP',
@@ -430,7 +437,7 @@ export default function QuickSalePage() {
               {lastOrder.discount > 0 && (
                 <>
                   <div className="flex justify-between text-[12px] text-gray-600 pb-0.5">
-                    <span>Oraliq:</span><span>{fmt(lastOrder.grand_total + lastOrder.discount)} so'm</span>
+                    <span>Oraliq:</span><span>{fmt(lastOrder.orig_total != null ? lastOrder.orig_total : lastOrder.grand_total + lastOrder.discount)} so'm</span>
                   </div>
                   <div className="flex justify-between text-[12px] text-rose-600 pb-1">
                     <span>Chegirma:</span><span className="font-bold">−{fmt(lastOrder.discount)} so'm</span>
@@ -815,6 +822,7 @@ export default function QuickSalePage() {
                     className={`px-2 py-1 text-[11px] font-medium ${s.discountMode === 'pct' ? 'bg-rose-500 text-white' : 'bg-white text-gray-500'}`}>%</button>
                 </div>
                 {discountAmt > 0 && <span className="text-[11px] text-rose-600 font-medium">−{fmt(discountAmt)} so'm</span>}
+                {discountExcess > 0 && <span className="text-[11px] text-blue-600 font-semibold">+{fmt(discountExcess)} so'm mijozga haqdor bo'ladi</span>}
               </div>
               {/* Dostavka (yetkazib berish) — FAQAT filialda ko'rinadi (asosiy tizim/zavodda yo'q) */}
               {inBranch && (<>

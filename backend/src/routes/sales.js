@@ -357,6 +357,9 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), 
     }
 
     const saleDate = sale_date || todayUZB();
+    // Chegirma savdo summasidan OSHGAN qismi — mijozga HAQDOR (kredit) bo'lib yoziladi.
+    // Pul emas: DISCOUNT to'lov yozuvi sifatida saqlanadi, kassada pul deb sanalmaydi.
+    const discountCredit = Math.max(0, parseFloat(req.body.discount_credit) || 0);
     // To'lov summasi: agar reqPayment kelsa — undan foydalaniladi (jami summadan
     // OSHIB ketishi mumkin — oshiqcha pul mijozning haqdorligi sifatida saqlanadi).
     const preGrand = items.reduce((s, it) => s + (parseInt(it.quantity) * parseFloat(it.unit_price)), 0);
@@ -408,12 +411,33 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), 
         await addColorStock(client.query, it.product_id, it.rang, -qty);
         created.push(r.rows[0]);
       }
+      // Oshgan chegirma (haqdor): oxirgi qatorning payment_amount'iga qo'shiladi —
+      // mijoz balansi SUM(payment - total) orqali haqdor bo'ladi. Bir vaqtda DISCOUNT
+      // to'lov yozuvi ham kiritiladi — kassa (paid_now = payment_amount − payments)
+      // bu summani PUL deb sanamasligi uchun.
+      if (discountCredit > 0 && created.length) {
+        const last = created[created.length - 1];
+        const newPaid = (parseFloat(last.payment_amount) || 0) + discountCredit;
+        const newStatus = newPaid >= parseFloat(last.total_amount) - 0.01 ? 'PAID' : 'PARTIALLY_PAID';
+        await client.query(
+          'UPDATE sales SET payment_amount=$1, status=$2, updated_at=NOW() WHERE id=$3',
+          [newPaid, newStatus, last.id]
+        );
+        await client.query(
+          `INSERT INTO payments (sale_id, amount, method, payment_date, notes, created_by, payment_ref)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [last.id, discountCredit, 'DISCOUNT', saleDate, 'Chegirma savdodan oshgan qismi — mijoz haqdor', req.user.id, order_ref]
+        );
+        last.payment_amount = newPaid;
+        last.status = newStatus;
+      }
       await client.query('COMMIT');
       logAudit(req, {
         action: 'SALE_BULK_CREATE', table: 'sales', recordId: order_ref,
         newValues: { count: created.length, grand_total: grandTotal, customer_id: customer_id || null, order_ref },
       });
-      const finalPaid = paidAmount !== null ? paidAmount : (saleStatus === 'PAID' ? grandTotal : 0);
+      // finalPaid'ga oshgan chegirma (haqdor) ham kiradi — balans hisobida payment_amount'da turibdi
+      const finalPaid = (paidAmount !== null ? paidAmount : (saleStatus === 'PAID' ? grandTotal : 0)) + discountCredit;
 
       // Mijozning umumiy balansi (eski qarzlar bilan): SUM(to'lov - summa).
       // Manfiy = qarzdor, musbat = haqdor. Savdodan oldingi/keyingi balansni qaytaramiz.

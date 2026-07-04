@@ -117,7 +117,9 @@ function ProductIntakeTab({ canCreate, canApprove }) {
   // narx = birlik narxi (so'm/dona); qator qiymati = qty * narx. Har safar yangi qator —
   // bitta mahsulotni bir necha rangda kiritish mumkin.
   const addToCart = (p) => {
-    setCart(c => [...c, { rowId: newRowId(), product_id: p.id, name: p.name, stock: p.stock_quantity, rang: '', qty: 1, narx: '' }]);
+    // Narx avtomatik mahsulot narxidan to'ladi — kerak bo'lsa foydalanuvchi tahrirlaydi
+    const defaultNarx = parseFloat(p.price) > 0 ? String(Math.round(p.price)) : '';
+    setCart(c => [...c, { rowId: newRowId(), product_id: p.id, name: p.name, stock: p.stock_quantity, rang: '', qty: 1, narx: defaultNarx }]);
     // setSearch ni tozalamaymiz — foydalanuvchi ketma-ket bir nechta mahsulot qo'sha olsin
   };
   const updateRow = (rowId, field, value) => {

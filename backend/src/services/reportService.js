@@ -1873,4 +1873,182 @@ async function generateKassaPDF(data, date) {
   });
 }
 
-module.exports = { generateKassaExcel, generateKassaPDF, generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateProductionRangePDF, generateProductionPendingExcel, generateProductionPendingPDF, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF, generateWorkerWorksExcel, generateWorkerWorksPDF, generateInventoryAuditExcel, generateInventoryAuditPDF, generateInventoryExcel, generateInventoryPDF, generateTurnoverExcel, generateTurnoverPDF, generateFulfillmentExcel, generateFulfillmentPDF };
+// ── Stanok (mashina) ishlab chiqarish statistikasi ────────────────────────
+// Har stanok o'z operatori (stanokchi) orqali bog'lanadi: stanok chiqargan mahsulot
+// = shu stanok operatorining chiqargan mahsuloti. summary = stanok jamlanmasi,
+// detail = stanok × mahsulot darajasidagi tafsilot.
+const _MACHINE_TYPE = { STANOK: 'Stanok', MASHINA: 'Mashina' };
+const _MACHINE_STATUS = { WORKING: 'Ishlayapti', SERVICE: "Ta'mirda", BROKEN: 'Buzilgan' };
+
+async function generateMachineStatsExcel(summary, detail, startDate, endDate) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Teknoplast';
+
+  // 1-varaq: stanoklar jamlanmasi
+  const sh = wb.addWorksheet('Stanoklar');
+  sh.columns = [
+    { header: '№', key: 'num', width: 5 },
+    { header: 'Stanok', key: 'machine', width: 22 },
+    { header: 'Turi', key: 'type', width: 10 },
+    { header: 'Operator', key: 'operator', width: 20 },
+    { header: 'Joyi', key: 'location', width: 14 },
+    { header: 'Holat', key: 'status', width: 12 },
+    { header: 'Ish kunlari', key: 'work_days', width: 11 },
+    { header: 'Mahsulot turlari', key: 'product_count', width: 15 },
+    { header: 'Jami chiqargan (dona)', key: 'total_produced', width: 20 },
+  ];
+  _applyHeaderStyle(sh.getRow(1), 'FF065F46');
+  summary.forEach((r, i) => {
+    sh.addRow({
+      num: i + 1,
+      machine: r.machine_name,
+      type: _MACHINE_TYPE[r.machine_type] || r.machine_type || '—',
+      operator: r.operator_name || '—',
+      location: r.location || '—',
+      status: _MACHINE_STATUS[r.status] || r.status || '—',
+      work_days: parseInt(r.work_days) || 0,
+      product_count: parseInt(r.product_count) || 0,
+      total_produced: parseFloat(r.total_produced || 0),
+    });
+  });
+  const stotal = sh.addRow({
+    num: '', machine: 'JAMI:',
+    work_days: summary.reduce((a, r) => a + (parseInt(r.work_days) || 0), 0),
+    total_produced: summary.reduce((a, r) => a + parseFloat(r.total_produced || 0), 0),
+  });
+  stotal.font = { bold: true };
+
+  // 2-varaq: stanok × mahsulot tafsiloti
+  const dh = wb.addWorksheet('Mahsulotlar');
+  dh.columns = [
+    { header: '№', key: 'num', width: 5 },
+    { header: 'Stanok', key: 'machine', width: 22 },
+    { header: 'Mahsulot', key: 'product', width: 32 },
+    { header: 'Ish kunlari', key: 'work_days', width: 11 },
+    { header: 'Chiqargan (dona)', key: 'total_produced', width: 18 },
+  ];
+  _applyHeaderStyle(dh.getRow(1), 'FF1E40AF');
+  detail.forEach((r, i) => {
+    dh.addRow({
+      num: i + 1,
+      machine: r.machine_name,
+      product: r.product_name || '—',
+      work_days: parseInt(r.work_days) || 0,
+      total_produced: parseFloat(r.total_produced || 0),
+    });
+  });
+  const dtotal = dh.addRow({
+    num: '', machine: 'JAMI:',
+    total_produced: detail.reduce((a, r) => a + parseFloat(r.total_produced || 0), 0),
+  });
+  dtotal.font = { bold: true };
+
+  return await wb.xlsx.writeBuffer();
+}
+
+async function generateMachineStatsPDF(summary, detail, startDate, endDate) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    registerCyrillicFonts(doc);
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const money = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n) || 0));
+    const right = 555;
+
+    doc.fontSize(18).font('Arial-Bold').text('TEKNOPLAST', { align: 'center' });
+    doc.fontSize(12).font('Arial').text('Stanoklar — ishlab chiqarish statistikasi', { align: 'center' });
+    doc.fontSize(9).fillColor('#666').text(`Davr: ${startDate} — ${endDate}   ·   Yaratildi: ${new Date().toLocaleDateString('uz-UZ')}`, { align: 'center' });
+    doc.fillColor('black').moveDown(0.8);
+
+    // 1) Stanoklar jamlanmasi
+    const sc = { num: 40, name: 62, type: 175, operator: 225, days: 355, prods: 400, qty: 470 };
+    const drawSummaryHdr = (y) => {
+      doc.font('Arial-Bold').fontSize(9).fillColor('black');
+      doc.text('№', sc.num, y);
+      doc.text('Stanok', sc.name, y);
+      doc.text('Turi', sc.type, y);
+      doc.text('Operator', sc.operator, y);
+      doc.text('Kun', sc.days, y);
+      doc.text('Mahs.', sc.prods, y);
+      doc.text('Dona', sc.qty, y, { width: right - sc.qty, align: 'right' });
+      doc.moveTo(40, y + 13).lineTo(right, y + 13).strokeColor('#999').stroke();
+      return y + 18;
+    };
+    doc.font('Arial-Bold').fontSize(11).text('Stanoklar jamlanmasi', 40, doc.y); doc.moveDown(0.2);
+    let y = drawSummaryHdr(doc.y);
+    doc.font('Arial').fontSize(8.5);
+    let tDays = 0, tQty = 0;
+    summary.forEach((r, i) => {
+      if (y > 780) { doc.addPage(); y = drawSummaryHdr(40); doc.font('Arial').fontSize(8.5); }
+      const days = parseInt(r.work_days) || 0;
+      const qty = parseFloat(r.total_produced) || 0;
+      tDays += days; tQty += qty;
+      doc.fillColor('black');
+      doc.text(String(i + 1), sc.num, y, { width: 20 });
+      doc.text(r.machine_name || '—', sc.name, y, { width: 110 });
+      doc.text(_MACHINE_TYPE[r.machine_type] || r.machine_type || '—', sc.type, y, { width: 48 });
+      doc.text(r.operator_name || '—', sc.operator, y, { width: 128 });
+      doc.text(String(days), sc.days, y, { width: 42 });
+      doc.text(String(parseInt(r.product_count) || 0), sc.prods, y, { width: 66 });
+      doc.text(money(qty), sc.qty, y, { width: right - sc.qty, align: 'right' });
+      const h = Math.max(
+        doc.heightOfString(r.machine_name || '—', { width: 110 }),
+        doc.heightOfString(r.operator_name || '—', { width: 128 }),
+        12
+      );
+      y += h + 4;
+    });
+    doc.moveTo(40, y).lineTo(right, y).strokeColor('#999').stroke(); y += 6;
+    doc.font('Arial-Bold').fontSize(9).fillColor('black');
+    doc.text('JAMI:', sc.num, y);
+    doc.text(String(tDays), sc.days, y, { width: 42 });
+    doc.text(money(tQty), sc.qty, y, { width: right - sc.qty, align: 'right' });
+    y += 22;
+
+    // 2) Stanok × mahsulot tafsiloti
+    if (y > 720) { doc.addPage(); y = 40; }
+    const dc = { num: 40, name: 62, product: 200, days: 400, qty: 460 };
+    const drawDetailHdr = (yy) => {
+      doc.font('Arial-Bold').fontSize(9).fillColor('black');
+      doc.text('№', dc.num, yy);
+      doc.text('Stanok', dc.name, yy);
+      doc.text('Mahsulot', dc.product, yy);
+      doc.text('Kun', dc.days, yy);
+      doc.text('Dona', dc.qty, yy, { width: right - dc.qty, align: 'right' });
+      doc.moveTo(40, yy + 13).lineTo(right, yy + 13).strokeColor('#999').stroke();
+      return yy + 18;
+    };
+    doc.font('Arial-Bold').fontSize(11).fillColor('black').text('Mahsulotlar bo\'yicha tafsilot', 40, y); y = doc.y + 2;
+    y = drawDetailHdr(y);
+    doc.font('Arial').fontSize(8.5);
+    let dQty = 0;
+    detail.forEach((r, i) => {
+      if (y > 780) { doc.addPage(); y = drawDetailHdr(40); doc.font('Arial').fontSize(8.5); }
+      const qty = parseFloat(r.total_produced) || 0;
+      dQty += qty;
+      doc.fillColor('black');
+      doc.text(String(i + 1), dc.num, y, { width: 20 });
+      doc.text(r.machine_name || '—', dc.name, y, { width: 135 });
+      doc.text(r.product_name || '—', dc.product, y, { width: 195 });
+      doc.text(String(parseInt(r.work_days) || 0), dc.days, y, { width: 55 });
+      doc.text(money(qty), dc.qty, y, { width: right - dc.qty, align: 'right' });
+      const h = Math.max(
+        doc.heightOfString(r.machine_name || '—', { width: 135 }),
+        doc.heightOfString(r.product_name || '—', { width: 195 }),
+        12
+      );
+      y += h + 4;
+    });
+    doc.moveTo(40, y).lineTo(right, y).strokeColor('#999').stroke(); y += 6;
+    doc.font('Arial-Bold').fontSize(9).fillColor('black');
+    doc.text('JAMI:', dc.num, y);
+    doc.text(money(dQty), dc.qty, y, { width: right - dc.qty, align: 'right' });
+
+    doc.end();
+  });
+}
+
+module.exports = { generateMachineStatsExcel, generateMachineStatsPDF, generateKassaExcel, generateKassaPDF, generateMonthlyPDF, generateSalesExcel, generateSalaryExcel, generateProductionRangeExcel, generateProductionRangePDF, generateProductionPendingExcel, generateProductionPendingPDF, generateRawMaterialRangeExcel, generateWaybillPDF, generateInvoicePDF, generateCustomerExcel, generateIntakesExcel, generateIntakesPDF, generateWorkerWorksExcel, generateWorkerWorksPDF, generateInventoryAuditExcel, generateInventoryAuditPDF, generateInventoryExcel, generateInventoryPDF, generateTurnoverExcel, generateTurnoverPDF, generateFulfillmentExcel, generateFulfillmentPDF };

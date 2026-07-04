@@ -2,9 +2,114 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw } from 'lucide-react';
+import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw, BarChart3, FileSpreadsheet, FileText } from 'lucide-react';
 import { machinesAPI, employeesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
+
+const fmtN = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
+
+// Toshkent bo'yicha mahalliy sana (UTC emas)
+const localDay = (d = new Date()) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const monthStart = () => localDay().slice(0, 8) + '01';
+
+// Stanoklar ishlab chiqarish statistikasi — davr tanlab, ekranda ko'rish + Excel/PDF yuklab olish
+function MachineStatsPanel() {
+  const [start, setStart] = useState(monthStart());
+  const [end, setEnd] = useState(localDay());
+  const [downloading, setDownloading] = useState('');
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['machine-stats', start, end],
+    queryFn: () => machinesAPI.getStats({ start_date: start, end_date: end }).then(r => r.data),
+    enabled: !!start && !!end,
+  });
+
+  const download = async (kind) => {
+    if (!start || !end) return toast.error('Sana oralig\'ini tanlang');
+    setDownloading(kind);
+    try {
+      const params = { start_date: start, end_date: end };
+      const res = kind === 'excel' ? await machinesAPI.statsExcel(params) : await machinesAPI.statsPdf(params);
+      const type = kind === 'excel' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf';
+      const url = URL.createObjectURL(new Blob([res.data], { type }));
+      const a = document.createElement('a');
+      a.href = url; a.download = `stanoklar-statistika-${start}_${end}.${kind === 'excel' ? 'xlsx' : 'pdf'}`; a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error(kind === 'excel' ? "Excel yuklab bo'lmadi" : "PDF yuklab bo'lmadi");
+    } finally {
+      setDownloading('');
+    }
+  };
+
+  const summary = data?.summary || [];
+  const producing = summary.filter(r => parseFloat(r.total_produced) > 0);
+  const grandTotal = summary.reduce((a, r) => a + parseFloat(r.total_produced || 0), 0);
+
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 className="text-sm font-semibold flex items-center gap-2 text-emerald-700">
+          <BarChart3 size={16} /> Stanoklar ishlab chiqarish statistikasi
+        </h2>
+        <div className="flex items-center gap-2 flex-wrap">
+          <input type="date" value={start} max={end || undefined}
+            onChange={e => e.target.value && setStart(e.target.value)} className="input text-sm py-1.5 w-40" />
+          <span className="text-gray-400 text-sm">—</span>
+          <input type="date" value={end} min={start || undefined} max={localDay()}
+            onChange={e => e.target.value && setEnd(e.target.value)} className="input text-sm py-1.5 w-40" />
+          <button onClick={() => download('excel')} disabled={downloading === 'excel'} className="btn-secondary btn-sm">
+            <FileSpreadsheet size={14} /> {downloading === 'excel' ? 'Yuklanmoqda...' : 'Excel'}
+          </button>
+          <button onClick={() => download('pdf')} disabled={downloading === 'pdf'} className="btn-secondary btn-sm">
+            <FileText size={14} /> {downloading === 'pdf' ? 'Yuklanmoqda...' : 'PDF'}
+          </button>
+        </div>
+      </div>
+
+      <p className="text-xs text-gray-400 mb-3">
+        Har stanok o'z operatori (stanokchi) chiqargan mahsulot bo'yicha hisoblanadi.
+      </p>
+
+      {isLoading ? (
+        <p className="text-center text-gray-400 py-6 text-sm">Yuklanmoqda...</p>
+      ) : isError ? (
+        <p className="text-center text-red-400 py-6 text-sm">Statistikani yuklab bo'lmadi</p>
+      ) : !producing.length ? (
+        <p className="text-center text-gray-400 py-6 text-sm">Bu davrda stanoklar bo'yicha ishlab chiqarish yo'q</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
+                <th className="py-2 pr-2">Stanok</th>
+                <th className="py-2 px-2">Operator</th>
+                <th className="py-2 px-2 text-center">Ish kunlari</th>
+                <th className="py-2 px-2 text-center">Mahsulot turlari</th>
+                <th className="py-2 pl-2 text-right">Jami chiqargan</th>
+              </tr>
+            </thead>
+            <tbody>
+              {producing.map(r => (
+                <tr key={r.machine_id} className="border-b border-gray-50 last:border-0">
+                  <td className="py-2 pr-2 font-medium text-gray-800">{r.machine_name}</td>
+                  <td className="py-2 px-2 text-gray-600">{r.operator_name || '—'}</td>
+                  <td className="py-2 px-2 text-center text-gray-600">{r.work_days || 0}</td>
+                  <td className="py-2 px-2 text-center text-gray-600">{r.product_count || 0}</td>
+                  <td className="py-2 pl-2 text-right font-semibold text-gray-900">{fmtN(r.total_produced)} dona</td>
+                </tr>
+              ))}
+              <tr className="border-t-2 border-gray-200 font-bold">
+                <td className="py-2 pr-2" colSpan={4}>JAMI:</td>
+                <td className="py-2 pl-2 text-right text-emerald-700">{fmtN(grandTotal)} dona</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const STATUS = {
   WORKING: { label: 'Ishlayapti', cls: 'badge-green', icon: CheckCircle },
@@ -413,6 +518,9 @@ export default function MachinesPage() {
           </div>
         ))}
       </div>
+
+      {/* Stanoklar ishlab chiqarish statistikasi — PDF/Excel */}
+      {canWrite && <MachineStatsPanel />}
 
       {/* Machine cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

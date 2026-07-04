@@ -239,6 +239,9 @@ export const machinesAPI = {
   deleteCycleTime: (id, productId) => api.delete(`/machines/${id}/cycle-times/${productId}`),
   getDowntime: (id) => api.get(`/machines/${id}/downtime`),
   addDowntime: (id, data) => api.post(`/machines/${id}/downtime`, data),
+  getStats: (params) => api.get('/machines/stats', { params }),
+  statsExcel: (params) => api.get('/machines/stats/excel', { params, responseType: 'blob' }),
+  statsPdf: (params) => api.get('/machines/stats/pdf', { params, responseType: 'blob' }),
 };
 
 // Reports

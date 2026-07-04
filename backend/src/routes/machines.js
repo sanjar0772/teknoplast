@@ -22,6 +22,87 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Stanok ishlab chiqarish statistikasi (davr bo'yicha) ──────────────────
+// Har stanok o'z operatori (stanokchi) orqali bog'lanadi: "stanok chiqargan mahsulot"
+// = shu stanok operatorining chiqargan mahsuloti (employee_production.machine_id
+// hozircha kiritilmaydi, shuning uchun operator bog'lanishi ishlatiladi).
+async function fetchMachineStats(user, startDate, endDate) {
+  const branchClause = user.branch_id ? ' AND m.branch_id = $3' : ' AND m.branch_id IS NULL';
+  const branchParams = user.branch_id ? [user.branch_id] : [];
+
+  // Jamlanma — barcha aktiv stanoklar (ishlab chiqarmaganlar ham 0 bilan ko'rinadi)
+  const summary = (await query(`
+    SELECT m.id AS machine_id, m.name AS machine_name, m.type AS machine_type,
+           m.location, m.status, e.name AS operator_name,
+           COUNT(DISTINCT ep.production_date) AS work_days,
+           COUNT(DISTINCT ep.product_id) AS product_count,
+           COALESCE(SUM(ep.quantity_produced), 0) AS total_produced,
+           COALESCE(SUM(ep.calculated_amount), 0) AS total_earned
+    FROM machines m
+    LEFT JOIN employees e ON m.operator_id = e.id
+    LEFT JOIN employee_production ep
+      ON ep.employee_id = m.operator_id AND ep.production_date BETWEEN $1 AND $2
+    WHERE m.is_active = true${branchClause}
+    GROUP BY m.id, m.name, m.type, m.location, m.status, e.name
+    ORDER BY total_produced DESC, m.name
+  `, [startDate, endDate, ...branchParams])).rows;
+
+  // Tafsilot — faqat operatori bor va ishlab chiqarish bo'lgan stanoklar, mahsulot darajasida
+  const detail = (await query(`
+    SELECT m.id AS machine_id, m.name AS machine_name, p.name AS product_name,
+           COUNT(DISTINCT ep.production_date) AS work_days,
+           COALESCE(SUM(ep.quantity_produced), 0) AS total_produced,
+           COALESCE(SUM(ep.calculated_amount), 0) AS total_earned
+    FROM machines m
+    JOIN employee_production ep
+      ON ep.employee_id = m.operator_id AND ep.production_date BETWEEN $1 AND $2
+    LEFT JOIN products p ON ep.product_id = p.id
+    WHERE m.is_active = true AND m.operator_id IS NOT NULL${branchClause}
+    GROUP BY m.id, m.name, p.name
+    ORDER BY m.name, total_produced DESC
+  `, [startDate, endDate, ...branchParams])).rows;
+
+  return { summary, detail };
+}
+
+// GET /api/machines/stats?start_date&end_date — JSON (ekranda ko'rsatish uchun)
+router.get('/stats', async (req, res, next) => {
+  try {
+    const { start_date, end_date } = req.query;
+    if (!start_date || !end_date) return res.status(400).json({ error: 'start_date va end_date kerak' });
+    const { summary, detail } = await fetchMachineStats(req.user, start_date, end_date);
+    res.json({ summary, detail, start_date, end_date });
+  } catch (err) { next(err); }
+});
+
+// GET /api/machines/stats/excel — Excel hisobot
+router.get('/stats/excel', async (req, res, next) => {
+  try {
+    const { start_date, end_date } = req.query;
+    if (!start_date || !end_date) return res.status(400).json({ error: 'start_date va end_date kerak' });
+    const { summary, detail } = await fetchMachineStats(req.user, start_date, end_date);
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateMachineStatsExcel(summary, detail, start_date, end_date);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="stanoklar-statistika-${start_date}_${end_date}.xlsx"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) { next(err); }
+});
+
+// GET /api/machines/stats/pdf — PDF hisobot
+router.get('/stats/pdf', async (req, res, next) => {
+  try {
+    const { start_date, end_date } = req.query;
+    if (!start_date || !end_date) return res.status(400).json({ error: 'start_date va end_date kerak' });
+    const { summary, detail } = await fetchMachineStats(req.user, start_date, end_date);
+    const reportService = require('../services/reportService');
+    const buffer = await reportService.generateMachineStatsPDF(summary, detail, start_date, end_date);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="stanoklar-statistika-${start_date}_${end_date}.pdf"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) { next(err); }
+});
+
 // POST /api/machines
 router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), [
   body('name').notEmpty().trim(),

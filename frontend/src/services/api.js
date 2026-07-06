@@ -214,6 +214,7 @@ export const productsAPI = {
   inventoryAuditExcel: (params) => api.get('/products/inventory-adjust/excel', { params, responseType: 'blob' }),
   inventoryAuditPdf: (params) => api.get('/products/inventory-adjust/pdf', { params, responseType: 'blob' }),
   setPricing: (id, data) => api.put(`/products/${id}/pricing`, data),
+  setColorLocation: (id, data) => api.put(`/products/${id}/color-location`, data),
   getRawMaterials: () => api.get('/products/raw-materials/list'),
   createRawMaterial: (data) => api.post('/products/raw-materials', data),
   updateRawMaterial: (id, data) => api.put(`/products/raw-materials/${id}`, data),

@@ -46,9 +46,9 @@ router.get('/', async (req, res, next) => {
     // Mahsulotlar ro'yxati allaqachon filial bo'yicha ajratilgani uchun rang buketlari to'g'ri biriktiriladi.
     const byProduct = {};
     {
-      const cs = await query('SELECT product_id, rang, quantity FROM product_color_stock WHERE quantity > 0', []);
+      const cs = await query('SELECT product_id, rang, quantity, joy FROM product_color_stock WHERE quantity > 0', []);
       for (const row of cs.rows) {
-        (byProduct[row.product_id] = byProduct[row.product_id] || []).push({ rang: row.rang || '', quantity: parseFloat(row.quantity) });
+        (byProduct[row.product_id] = byProduct[row.product_id] || []).push({ rang: row.rang || '', quantity: parseFloat(row.quantity), joy: row.joy || '' });
       }
     }
     let periodStats = {};
@@ -748,6 +748,23 @@ router.put('/:id/stock', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), 
     } finally {
       client.release();
     }
+  } catch (err) { next(err); }
+});
+
+// PUT /api/products/:id/color-location — rang buketining ombordagi joyini (raf/blok/zona) belgilash
+router.put('/:id/color-location', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT', 'OMBORCHI'), async (req, res, next) => {
+  try {
+    const key = (req.body.rang || '').toString();
+    const loc = (req.body.joy || '').toString().trim() || null;
+    // Buket bor bo'lsa — joyni yangilaymiz; bo'lmasa — 0 qoldiq bilan yaratamiz (faqat joy uchun)
+    const ex = await query('SELECT 1 AS x FROM product_color_stock WHERE product_id=$1 AND rang=$2', [req.params.id, key]);
+    if (ex.rows.length) {
+      await query('UPDATE product_color_stock SET joy=$1 WHERE product_id=$2 AND rang=$3', [loc, req.params.id, key]);
+    } else {
+      await query('INSERT INTO product_color_stock (product_id, rang, quantity, joy) VALUES ($1,$2,0,$3)', [req.params.id, key, loc]);
+    }
+    logAudit(req, { action: 'COLOR_LOCATION_SET', table: 'product_color_stock', recordId: req.params.id, newValues: { rang: key, joy: loc } });
+    res.json({ success: true, rang: key, joy: loc });
   } catch (err) { next(err); }
 });
 

@@ -53,6 +53,7 @@ export default function InventoryPage() {
   // Inventarizatsiya (sanab tekshirish)
   const [auditCounts, setAuditCounts] = useState({}); // { [productId]: 'sanalган son' }
   const [adjModal, setAdjModal] = useState(null);     // { product } — ombor +/- oynasi
+  const [joyInputs, setJoyInputs] = useState({});     // { [rowKey]: 'rang turgan joy' } — tahrirlanayotgan joy
   const [adjForm, setAdjForm] = useState({ qty: '', rang: '', unit: 'dona' });
   const [auditSearch, setAuditSearch] = useState('');
   const [auditCat, setAuditCat] = useState('all'); // 'all' | 'finished' | 'component'
@@ -238,6 +239,24 @@ export default function InventoryPage() {
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
+  // Rang turgan joyni (raf/blok/zona) saqlash
+  const colorLocationMutation = useMutation({
+    mutationFn: ({ product_id, rang, joy }) => productsAPI.setColorLocation(product_id, { rang, joy }).then(r => r.data),
+    onSuccess: () => {
+      toast.success('Joy saqlandi');
+      qc.invalidateQueries({ queryKey: ['inventory-products'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+  // Input'dan chiqqanda (blur) yoki Enter bosilganda — o'zgargan bo'lsa saqlaymiz
+  const saveJoy = (row) => {
+    const val = joyInputs[row.key];
+    if (val === undefined) return;                 // teginilmagan
+    if ((val || '') === (row.joy || '')) return;   // o'zgarmagan
+    colorLocationMutation.mutate({ product_id: row.p.id, rang: row.rang || '', joy: val || '' });
+  };
+
   // Oynani ochish — mahsulotning o'z rangi va birligi bilan to'ldiramiz.
   // presetRang berilса (rang bo'yicha qatordan), o'sha rang tanlab qo'yiladi.
   const openAdj = (product, presetRang) => {
@@ -332,7 +351,7 @@ export default function InventoryPage() {
       return [{ p, rang: null, isColor: false, sys: parseFloat(p.stock_quantity) || 0, key: p.id }];
     }
     return buckets.map(b => ({
-      p, rang: b.rang || '', isColor: true,
+      p, rang: b.rang || '', isColor: true, joy: b.joy || '',
       sys: parseFloat(b.quantity) || 0, key: `${p.id}${RSEP}${b.rang || ''}`,
     }));
   });
@@ -720,7 +739,7 @@ export default function InventoryPage() {
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Mahsulot</th><th>Rang</th>
+                    <th>Mahsulot</th><th>Rang</th><th>Joy (raf/blok)</th>
                     <th className="text-right">Tizimda</th>
                     <th className="text-right">Sanaldi</th>
                     <th className="text-right">Farq</th>
@@ -729,7 +748,7 @@ export default function InventoryPage() {
                 </thead>
                 <tbody>
                   {!auditList.length ? (
-                    <tr><td colSpan={6} className="text-center py-10 text-gray-400">
+                    <tr><td colSpan={7} className="text-center py-10 text-gray-400">
                       <ClipboardList size={26} className="mx-auto mb-2 text-gray-300" />
                       {auditSearch ? `"${auditSearch}" bo'yicha topilmadi` : 'Mahsulot yo\'q'}
                     </td></tr>
@@ -749,6 +768,17 @@ export default function InventoryPage() {
                             )}
                             {rangLabel}
                           </span>
+                        </td>
+                        <td>
+                          {isColor ? (
+                            <input type="text"
+                              value={joyInputs[key] ?? row.joy ?? ''}
+                              onChange={e => setJoyInputs(prev => ({ ...prev, [key]: e.target.value }))}
+                              onBlur={() => saveJoy(row)}
+                              onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                              placeholder="Masalan: A rafi, 2-blok"
+                              className="input py-1 w-36" />
+                          ) : <span className="text-gray-300">—</span>}
                         </td>
                         <td className="text-right font-semibold">{fmt(sys)} {p.unit}</td>
                         <td className="text-right">
@@ -783,7 +813,7 @@ export default function InventoryPage() {
                     );
                   })}
                   {auditList.length > auditShown.length && (
-                    <tr><td colSpan={6} className="text-center py-3 text-xs text-gray-400">
+                    <tr><td colSpan={7} className="text-center py-3 text-xs text-gray-400">
                       Yana {auditList.length - auditShown.length} ta mahsulot — yuqoridagi qidiruv yoki kategoriya bilan toping
                     </td></tr>
                   )}

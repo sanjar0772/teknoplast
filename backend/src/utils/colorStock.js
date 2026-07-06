@@ -39,4 +39,15 @@ async function addColorStock(q, product_id, rang, delta) {
   }
 }
 
-module.exports = { getColorStock, addColorStock };
+// Rang buketiga "joy" (ombordagi joylashuv) ustunini qo'shish — idempotent, ham PG ham SQLite.
+// Startда bir marta chaqiriladi (index.js). Ustun bor bo'lsa xato beriladi — e'tiborsiz qoldiramiz.
+async function ensureColorLocationColumn() {
+  const db = require('../db');
+  const USE_PG = process.env.USE_POSTGRES === 'true';
+  const sql = USE_PG
+    ? `ALTER TABLE product_color_stock ADD COLUMN IF NOT EXISTS joy TEXT`
+    : `ALTER TABLE product_color_stock ADD COLUMN joy TEXT`;
+  try { await db.query(sql); } catch (e) { /* ustun allaqachon bor */ }
+}
+
+module.exports = { getColorStock, addColorStock, ensureColorLocationColumn };

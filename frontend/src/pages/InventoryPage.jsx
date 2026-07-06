@@ -61,7 +61,6 @@ export default function InventoryPage() {
   const [auditFrom, setAuditFrom] = useState('');
   const [auditTo, setAuditTo] = useState('');
   const [auditExporting, setAuditExporting] = useState(null);
-  const [selectedColors, setSelectedColors] = useState(() => new Set()); // belgilangan rang qatorlari (key)
 
   const { data: products } = useQuery({
     queryKey: ['inventory-products'],
@@ -239,13 +238,6 @@ export default function InventoryPage() {
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
-  // Rang qatorini belgilash/bekor qilish (rangga bosilganda)
-  const toggleColorRow = (key) => setSelectedColors(prev => {
-    const n = new Set(prev);
-    n.has(key) ? n.delete(key) : n.add(key);
-    return n;
-  });
-
   // Oynani ochish — mahsulotning o'z rangi va birligi bilan to'ldiramiz.
   // presetRang berilса (rang bo'yicha qatordan), o'sha rang tanlab qo'yiladi.
   const openAdj = (product, presetRang) => {
@@ -723,22 +715,11 @@ export default function InventoryPage() {
             </div>
           </div>
 
-          {isOwner() && selectedColors.size > 0 && (
-            <div className="card p-3 border border-indigo-200 bg-indigo-50/60 flex flex-wrap items-center gap-2 sticky top-2 z-20">
-              <span className="text-sm font-semibold text-gray-800">{selectedColors.size} ta rang belgilandi</span>
-              <button onClick={() => setSelectedColors(new Set())}
-                className="ml-auto btn-sm bg-white border border-gray-200 rounded-lg px-3 text-gray-600 hover:bg-gray-50">
-                Belgilashni tozalash
-              </button>
-            </div>
-          )}
-
           <div className="card overflow-hidden">
             <div className="table-container">
               <table className="table">
                 <thead>
                   <tr>
-                    {isOwner() && <th className="w-8"></th>}
                     <th>Mahsulot</th><th>Rang</th>
                     <th className="text-right">Tizimda</th>
                     <th className="text-right">Sanaldi</th>
@@ -748,7 +729,7 @@ export default function InventoryPage() {
                 </thead>
                 <tbody>
                   {!auditList.length ? (
-                    <tr><td colSpan={isOwner() ? 7 : 6} className="text-center py-10 text-gray-400">
+                    <tr><td colSpan={6} className="text-center py-10 text-gray-400">
                       <ClipboardList size={26} className="mx-auto mb-2 text-gray-300" />
                       {auditSearch ? `"${auditSearch}" bo'yicha topilmadi` : 'Mahsulot yo\'q'}
                     </td></tr>
@@ -759,33 +740,15 @@ export default function InventoryPage() {
                     const diff = counted == null || isNaN(counted) ? null : counted - sys;
                     const rangLabel = isColor ? (rang || 'Rangsiz') : (p.rang || '—');
                     return (
-                      <tr key={key} className={selectedColors.has(key) ? 'bg-red-50/50' : (diff != null && diff !== 0 ? 'bg-yellow-50/60' : '')}>
-                        {isOwner() && (
-                          <td className="text-center">
-                            {isColor && (
-                              <input type="checkbox" className="w-4 h-4 align-middle"
-                                checked={selectedColors.has(key)}
-                                onChange={() => toggleColorRow(key)} />
-                            )}
-                          </td>
-                        )}
+                      <tr key={key} className={diff != null && diff !== 0 ? 'bg-yellow-50/60' : ''}>
                         <td className="font-medium text-gray-900">{p.name}</td>
                         <td className="text-gray-600">
-                          {isColor && isOwner() ? (
-                            <button type="button" onClick={() => toggleColorRow(key)}
-                              className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 border transition-colors ${selectedColors.has(key) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}
-                              title="Belgilash uchun bosing">
+                          <span className="inline-flex items-center gap-1.5">
+                            {isColor && (
                               <span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background: RANG_COLORS[rang] || '#bbb', border:'1px solid #ccc' }} />
-                              {rangLabel}
-                            </button>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5">
-                              {isColor && (
-                                <span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background: RANG_COLORS[rang] || '#bbb', border:'1px solid #ccc' }} />
-                              )}
-                              {rangLabel}
-                            </span>
-                          )}
+                            )}
+                            {rangLabel}
+                          </span>
                         </td>
                         <td className="text-right font-semibold">{fmt(sys)} {p.unit}</td>
                         <td className="text-right">
@@ -820,7 +783,7 @@ export default function InventoryPage() {
                     );
                   })}
                   {auditList.length > auditShown.length && (
-                    <tr><td colSpan={isOwner() ? 7 : 6} className="text-center py-3 text-xs text-gray-400">
+                    <tr><td colSpan={6} className="text-center py-3 text-xs text-gray-400">
                       Yana {auditList.length - auditShown.length} ta mahsulot — yuqoridagi qidiruv yoki kategoriya bilan toping
                     </td></tr>
                   )}

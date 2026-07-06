@@ -54,6 +54,7 @@ export default function InventoryPage() {
   const [auditCounts, setAuditCounts] = useState({}); // { [productId]: 'sanalган son' }
   const [adjModal, setAdjModal] = useState(null);     // { product } — ombor +/- oynasi
   const [adjForm, setAdjForm] = useState({ qty: '', rang: '', unit: 'dona' });
+  const [colorPickRow, setColorPickRow] = useState(null); // { p, rang } — Rangsizga rang tanlash oynasi
   const [auditSearch, setAuditSearch] = useState('');
   const [auditCat, setAuditCat] = useState('all'); // 'all' | 'finished' | 'component'
   const [auditReason, setAuditReason] = useState(''); // sabab (nima uchun)
@@ -238,6 +239,18 @@ export default function InventoryPage() {
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
+  // Rangsiz buketga rang berish (Rangsiz → tanlangan rang). Nishon rang bor bo'lsa birlashadi.
+  const renameColorMutation = useMutation({
+    mutationFn: ({ product_id, from_rang, to_rang }) => productsAPI.renameColor(product_id, { from_rang, to_rang }).then(r => r.data),
+    onSuccess: () => {
+      toast.success('Rang belgilandi');
+      setColorPickRow(null);
+      qc.invalidateQueries({ queryKey: ['inventory-products'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+
   // Oynani ochish — mahsulotning o'z rangi va birligi bilan to'ldiramiz.
   // presetRang berilса (rang bo'yicha qatordan), o'sha rang tanlab qo'yiladi.
   const openAdj = (product, presetRang) => {
@@ -743,12 +756,21 @@ export default function InventoryPage() {
                       <tr key={key} className={diff != null && diff !== 0 ? 'bg-yellow-50/60' : ''}>
                         <td className="font-medium text-gray-900">{p.name}</td>
                         <td className="text-gray-600">
-                          <span className="inline-flex items-center gap-1.5">
-                            {isColor && (
-                              <span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background: RANG_COLORS[rang] || '#bbb', border:'1px solid #ccc' }} />
-                            )}
-                            {rangLabel}
-                          </span>
+                          {isColor && (rang || '') === '' ? (
+                            <button type="button" onClick={() => setColorPickRow({ p, rang: '' })}
+                              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 border border-dashed border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-colors"
+                              title="Rang tanlash uchun bosing">
+                              <span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background:'#bbb', border:'1px solid #ccc' }} />
+                              Rangsiz — rang tanlash
+                            </button>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5">
+                              {isColor && (
+                                <span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background: RANG_COLORS[rang] || '#bbb', border:'1px solid #ccc' }} />
+                              )}
+                              {rangLabel}
+                            </span>
+                          )}
                         </td>
                         <td className="text-right font-semibold">{fmt(sys)} {p.unit}</td>
                         <td className="text-right">
@@ -877,6 +899,33 @@ export default function InventoryPage() {
           )}
         </>
       )}
+
+      {/* Rangsizga rang tanlash oynasi */}
+      <Modal open={!!colorPickRow} onClose={() => setColorPickRow(null)}
+        title={colorPickRow ? `Rang tanlang — ${colorPickRow.p.name}` : ''}>
+        {colorPickRow && (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500">
+              "Rangsiz" qoldiq qaysi rang ekanini tanlang. Tanlangan rang omborда allaqachon bo'lsa —
+              sonlar birlashtiriladi. Umumiy qoldiq o'zgarmaydi.
+            </p>
+            <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto">
+              {RANGLAR.map(r => (
+                <button key={r} type="button"
+                  onClick={() => renameColorMutation.mutate({ product_id: colorPickRow.p.id, from_rang: colorPickRow.rang, to_rang: r })}
+                  disabled={renameColorMutation.isPending}
+                  className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:border-indigo-400 hover:bg-indigo-50 transition-colors disabled:opacity-50">
+                  <span style={{ display:'inline-block', width:12, height:12, borderRadius:'50%', background: RANG_COLORS[r] || '#bbb', border:'1px solid #ccc' }} />
+                  {r}
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-end pt-1">
+              <button onClick={() => setColorPickRow(null)} className="btn-secondary">Bekor</button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Ombor qo'shish/ayirish oynasi (＋ / −) */}
       <Modal open={!!adjModal} onClose={() => setAdjModal(null)} title={adjModal ? `${adjModal.product.name}` : ''}>

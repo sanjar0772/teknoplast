@@ -754,6 +754,30 @@ router.put('/:id/stock', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), 
 // POST /api/products/inventory-adjust — INVENTARIZATSIYA: sanalган (haqiqiy) qoldiqlarni
 // tizimga moslash. items: [{ product_id, counted }]. Har mahsulot uchun stock_quantity
 // sanalган songa o'rnatiladi va o'zgarish mahsulotning rang buketiga ham qo'llanadi.
+// PUT /api/products/:id/color-rename — rang buketining rangini o'zgartirish (masalan Rangsiz → Оқ).
+// Nishon rang buketi allaqachon bor bo'lsa — birlashtiriladi (sonlar qo'shiladi). Umumiy qoldiq o'zgarmaydi.
+router.put('/:id/color-rename', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
+  try {
+    const from = (req.body.from_rang || '').toString();
+    const to = (req.body.to_rang || '').toString();
+    if (to === from) return res.json({ success: true, unchanged: true });
+    const fromRow = await query('SELECT quantity FROM product_color_stock WHERE product_id=$1 AND rang=$2', [req.params.id, from]);
+    if (!fromRow.rows.length) return res.status(404).json({ error: 'Rang topilmadi' });
+    const qty = parseFloat(fromRow.rows[0].quantity) || 0;
+    const toRow = await query('SELECT quantity FROM product_color_stock WHERE product_id=$1 AND rang=$2', [req.params.id, to]);
+    if (toRow.rows.length) {
+      // Nishon rang bor — birlashtiramiz (sonni qo'shib, eski buketni o'chiramiz)
+      const newQ = (parseFloat(toRow.rows[0].quantity) || 0) + qty;
+      await query('UPDATE product_color_stock SET quantity=$1 WHERE product_id=$2 AND rang=$3', [newQ, req.params.id, to]);
+      await query('DELETE FROM product_color_stock WHERE product_id=$1 AND rang=$2', [req.params.id, from]);
+    } else {
+      await query('UPDATE product_color_stock SET rang=$1 WHERE product_id=$2 AND rang=$3', [to, req.params.id, from]);
+    }
+    logAudit(req, { action: 'COLOR_RENAME', table: 'product_color_stock', recordId: req.params.id, newValues: { from, to, qty } });
+    res.json({ success: true, from, to, qty });
+  } catch (err) { next(err); }
+});
+
 router.post('/inventory-adjust', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
   try {
     const { items, reason } = req.body;

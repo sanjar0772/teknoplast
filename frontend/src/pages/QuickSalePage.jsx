@@ -639,6 +639,7 @@ export default function QuickSalePage() {
                   value={s.payCash}
                   onChange={e => setField('payCash', e.target.value)}
                   onFocus={e => e.target.select()}
+                  onWheel={e => e.currentTarget.blur()}
                   placeholder="0"
                   className="input text-xs py-1.5"
                 />
@@ -650,6 +651,7 @@ export default function QuickSalePage() {
                   value={s.payCard}
                   onChange={e => setField('payCard', e.target.value)}
                   onFocus={e => e.target.select()}
+                  onWheel={e => e.currentTarget.blur()}
                   placeholder="0"
                   className="input text-xs py-1.5"
                 />
@@ -661,6 +663,7 @@ export default function QuickSalePage() {
                   value={s.payBank}
                   onChange={e => setField('payBank', e.target.value)}
                   onFocus={e => e.target.select()}
+                  onWheel={e => e.currentTarget.blur()}
                   placeholder="0"
                   className="input text-xs py-1.5"
                 />
@@ -672,6 +675,7 @@ export default function QuickSalePage() {
                   value={s.payPayme}
                   onChange={e => setField('payPayme', e.target.value)}
                   onFocus={e => e.target.select()}
+                  onWheel={e => e.currentTarget.blur()}
                   placeholder="0"
                   className="input text-xs py-1.5 border-cyan-200 focus:ring-cyan-400"
                 />
@@ -683,6 +687,7 @@ export default function QuickSalePage() {
                   value={s.payClick}
                   onChange={e => setField('payClick', e.target.value)}
                   onFocus={e => e.target.select()}
+                  onWheel={e => e.currentTarget.blur()}
                   placeholder="0"
                   className="input text-xs py-1.5 border-indigo-200 focus:ring-indigo-400"
                 />
@@ -777,6 +782,7 @@ export default function QuickSalePage() {
                         type="number" min="0" value={x.price}
                         onChange={e => updateRow(x.key, 'price', e.target.value)}
                         onFocus={e => e.target.select()}
+                        onWheel={e => e.currentTarget.blur()}
                         className="input py-0.5 px-1 text-xs w-20"
                       />
                     </div>
@@ -786,6 +792,7 @@ export default function QuickSalePage() {
                         type="number" min="1" max={rowAvail(x)} value={x.qty}
                         onChange={e => updateRow(x.key, 'qty', e.target.value)}
                         onFocus={e => e.target.select()}
+                        onWheel={e => e.currentTarget.blur()}
                         className={`input py-0.5 px-1 text-xs w-16 ${x.rang && parseFloat(x.qty) > rowAvail(x) ? 'border-red-400 text-red-600' : ''}`}
                       />
                     </div>
@@ -812,6 +819,7 @@ export default function QuickSalePage() {
                   value={s.discount}
                   onChange={e => setField('discount', e.target.value)}
                   onFocus={e => e.target.select()}
+                  onWheel={e => e.currentTarget.blur()}
                   placeholder="0"
                   className="input text-xs py-1 w-24"
                 />

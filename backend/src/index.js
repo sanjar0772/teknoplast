@@ -67,7 +67,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'inventar-rang-dropdown', commit: 'v137' });
+  res.json({ version: 'savdo-scroll-block', commit: 'v138' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

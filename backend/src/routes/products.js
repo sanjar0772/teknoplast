@@ -777,7 +777,37 @@ router.post('/inventory-adjust', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUN
       await client.query('BEGIN');
       for (const it of items) {
         if (!it || !it.product_id) continue;
-        // Ikki xil rejim: counted = sanalган jami (o'rnatiladi) | delta = qo'shish/ayirish (+/−)
+
+        // RANG BO'YICHA SANOQ: counted_color = shu rangда sanalган haqiqiy son (absolyut).
+        // Rang buketi shu songa o'rnatiladi, umumiy qoldiq esa BARCHA rang buketlari
+        // yig'indisiga qayta hisoblanadi — shunda "umumiy = ranglar yig'indisi" har doim mos.
+        const hasColorCount = it.counted_color !== undefined && it.counted_color !== null && !isNaN(parseFloat(it.counted_color));
+        if (hasColorCount) {
+          const useRang = (it.rang !== undefined && it.rang !== null) ? String(it.rang) : '';
+          const cur = await client.query("SELECT name FROM products WHERE id=$1", [it.product_id]);
+          if (!cur.rows.length) continue;
+          const oldBucket = await getColorStock(client.query, it.product_id, useRang);
+          const newBucket = Math.max(0, parseFloat(it.counted_color));
+          const bDelta = newBucket - oldBucket;
+          if (bDelta !== 0) await addColorStock(client.query, it.product_id, useRang, bDelta);
+          // Umumiy qoldiq = barcha rang buketlari yig'indisi
+          const sumR = await client.query('SELECT COALESCE(SUM(quantity),0) AS s FROM product_color_stock WHERE product_id=$1', [it.product_id]);
+          const newTotal = parseFloat(sumR.rows[0]?.s || 0);
+          await client.query('UPDATE products SET stock_quantity=$1, updated_at=NOW() WHERE id=$2', [newTotal, it.product_id]);
+          if (bDelta !== 0) {
+            try {
+              await client.query(
+                `INSERT INTO inventory_audits (product_id, product_name, rang, old_qty, new_qty, delta, reason, created_by)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+                [it.product_id, cur.rows[0].name || '', useRang, oldBucket, newBucket, bDelta, cleanReason, req.user.id]
+              );
+            } catch (e) { console.error('inventory_audits (rang) yozuvida xato:', e.message); }
+            changed++;
+          }
+          continue;
+        }
+
+        // Ikki xil rejim: counted = sanalған jami (o'rnatiladi) | delta = qo'shish/ayirish (+/−)
         const hasDelta = it.delta !== undefined && it.delta !== null && !isNaN(parseFloat(it.delta));
         const counted = parseFloat(it.counted);
         if (!hasDelta && isNaN(counted)) continue;

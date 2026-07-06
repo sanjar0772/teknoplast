@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { Plus, Minus, X, AlertTriangle, Warehouse, Package, Boxes, PackagePlus, Pencil, Trash2, Factory, FileSpreadsheet, FileText, ClipboardList, Save, Search, RefreshCw } from 'lucide-react';
 import { productsAPI, reportsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
-import { RANGLAR } from '../constants/colors';
+import { RANGLAR, RANG_COLORS } from '../constants/colors';
 import clsx from 'clsx';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -238,11 +238,14 @@ export default function InventoryPage() {
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
-  // Oynani ochish — mahsulotning o'z rangi va birligi bilan to'ldiramiz
-  const openAdj = (product) => {
+  // Oynani ochish — mahsulotning o'z rangi va birligi bilan to'ldiramiz.
+  // presetRang berilса (rang bo'yicha qatordan), o'sha rang tanlab qo'yiladi.
+  const openAdj = (product, presetRang) => {
     setAdjForm({
       qty: '',
-      rang: product.rang || (product.color_stock && product.color_stock[0]?.rang) || '',
+      rang: (presetRang !== undefined && presetRang !== null)
+        ? presetRang
+        : (product.rang || (product.color_stock && product.color_stock[0]?.rang) || ''),
       unit: product.unit || 'dona',
     });
     setAdjModal({ product });
@@ -319,10 +322,32 @@ export default function InventoryPage() {
     .filter(p => auditCat === 'all' ? true : auditCat === 'finished' ? p.kind !== 'KOMPONENT' : p.kind === 'KOMPONENT')
     .filter(p => { const q = auditSearch.trim().toLowerCase(); return !q || (p.name || '').toLowerCase().includes(q); });
   const auditShown = auditList.slice(0, 120); // ro'yxat juda uzun bo'lsa — qidiruv bilan topiladi
+
+  // Har mahsulotni rang bo'yicha qatorlarga yoyamiz. Rang buketi bo'lsa — har rang alohida
+  // qator (rang bo'yicha sanaladi); buketi yo'q bo'lsa — bitta umumiy qator (jami sanaladi).
+  const RSEP = '|'; // kalitда product_id va rangни ajratish uchun
+  const auditRowsFlat = auditShown.flatMap(p => {
+    const buckets = p.color_stock || [];
+    if (!buckets.length) {
+      return [{ p, rang: null, isColor: false, sys: parseFloat(p.stock_quantity) || 0, key: p.id }];
+    }
+    return buckets.map(b => ({
+      p, rang: b.rang || '', isColor: true,
+      sys: parseFloat(b.quantity) || 0, key: `${p.id}${RSEP}${b.rang || ''}`,
+    }));
+  });
+
+  // Kiritilган sonlardan saqlash ro'yxati — rang qatori → counted_color, oddiy qator → counted
   const auditItems = Object.entries(auditCounts)
-    .filter(([, v]) => v !== '' && v != null)
-    .map(([product_id, counted]) => ({ product_id, counted: parseFloat(counted) }))
-    .filter(it => !isNaN(it.counted));
+    .filter(([, v]) => v !== '' && v != null && !isNaN(parseFloat(v)))
+    .map(([key, v]) => {
+      const n = parseFloat(v);
+      const sep = key.indexOf(RSEP);
+      if (sep >= 0) {
+        return { product_id: key.slice(0, sep), rang: key.slice(sep + RSEP.length), counted_color: n };
+      }
+      return { product_id: key, counted: n };
+    });
 
   const TABS = [
     { key: 'products',   label: 'Tayyor mahsulotlar',     icon: Package },
@@ -635,6 +660,9 @@ export default function InventoryPage() {
                 qatorlarga tegilmaydi. Yoki <b>Qo'shish / Ayirish</b> ustunidagi son bilan
                 <span className="text-green-600 font-bold"> ＋</span> /
                 <span className="text-red-600 font-bold"> −</span> tugmalarini bosib omborga darrov qo'shing yoki ayiring (tarixga yoziladi).
+                <br />
+                <b>Rangli mahsulotlar</b> har rang uchun alohida qatorда ko'rsatiladi — har rangни alohida sanang.
+                Umumiy qoldiq <b>ranglar yig'indisiga</b> avtomatik to'g'rilanadi (masalan Оқ + Қора).
               </p>
             </div>
 
@@ -705,20 +733,28 @@ export default function InventoryPage() {
                       <ClipboardList size={26} className="mx-auto mb-2 text-gray-300" />
                       {auditSearch ? `"${auditSearch}" bo'yicha topilmadi` : 'Mahsulot yo\'q'}
                     </td></tr>
-                  ) : auditShown.map(p => {
-                    const sys = parseFloat(p.stock_quantity) || 0;
-                    const raw = auditCounts[p.id];
+                  ) : auditRowsFlat.map(row => {
+                    const { p, rang, isColor, sys, key } = row;
+                    const raw = auditCounts[key];
                     const counted = raw === '' || raw == null ? null : parseFloat(raw);
                     const diff = counted == null || isNaN(counted) ? null : counted - sys;
+                    const rangLabel = isColor ? (rang || 'Rangsiz') : (p.rang || '—');
                     return (
-                      <tr key={p.id} className={diff != null && diff !== 0 ? 'bg-yellow-50/60' : ''}>
+                      <tr key={key} className={diff != null && diff !== 0 ? 'bg-yellow-50/60' : ''}>
                         <td className="font-medium text-gray-900">{p.name}</td>
-                        <td className="text-gray-500">{p.rang || '—'}</td>
+                        <td className="text-gray-600">
+                          <span className="inline-flex items-center gap-1.5">
+                            {isColor && (
+                              <span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background: RANG_COLORS[rang] || '#bbb', border:'1px solid #ccc' }} />
+                            )}
+                            {rangLabel}
+                          </span>
+                        </td>
                         <td className="text-right font-semibold">{fmt(sys)} {p.unit}</td>
                         <td className="text-right">
                           <input type="number" min="0" inputMode="numeric"
                             value={raw ?? ''}
-                            onChange={e => setAuditCounts(prev => ({ ...prev, [p.id]: e.target.value }))}
+                            onChange={e => setAuditCounts(prev => ({ ...prev, [key]: e.target.value }))}
                             onFocus={e => e.target.select()}
                             placeholder="—"
                             className="input py-1 w-24 text-right ml-auto" />
@@ -731,12 +767,12 @@ export default function InventoryPage() {
                         </td>
                         <td className="text-right">
                           <div className="flex items-center gap-1 justify-end">
-                            <button onClick={() => openAdj(p)}
+                            <button onClick={() => openAdj(p, isColor ? rang : undefined)}
                               className="px-2 py-1 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 text-xs font-medium flex items-center gap-1"
                               title="Omborga qo'shish">
                               <Plus size={13} /> Qo'shish
                             </button>
-                            <button onClick={() => openAdj(p)}
+                            <button onClick={() => openAdj(p, isColor ? rang : undefined)}
                               className="px-2 py-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 text-xs font-medium flex items-center gap-1"
                               title="Ombordan ayirish">
                               <Minus size={13} /> Ayirish

@@ -67,7 +67,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'rang-joy-belgilash', commit: 'v131' });
+  res.json({ version: 'rang-qatorlarni-belgilash', commit: 'v132' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)
@@ -208,11 +208,6 @@ require('./services/paymentDateFix')
 require('./services/colorStockReconcile')
   .ensureColorStockReconciled()
   .catch(e => console.error('Rang ombori reconcile init xato:', e.message));
-
-// Rang buketiga "joy" (ombordagi joylashuv) ustunini qo'shish — idempotent (PG + SQLite).
-require('./utils/colorStock')
-  .ensureColorLocationColumn()
-  .catch(e => console.error('Rang joy ustuni init xato:', e.message));
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

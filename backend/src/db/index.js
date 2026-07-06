@@ -921,8 +921,6 @@ if (USE_PG) {
       // Kirim mahsulotining birlik narxi (so'm/dona) — kirim qiymatini hisoblash uchun.
       // Jami qiymat = quantity * unit_price.
       `ALTER TABLE intake_items ADD COLUMN unit_price REAL DEFAULT 0`,
-      // Rang buketining ombordagi joyi (raf/blok/zona) — inventarizatsiyada belgilanadi
-      `ALTER TABLE product_color_stock ADD COLUMN joy TEXT`,
     ];
     for (const m of migrations) {
       try {

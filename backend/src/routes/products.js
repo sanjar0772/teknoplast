@@ -46,9 +46,9 @@ router.get('/', async (req, res, next) => {
     // Mahsulotlar ro'yxati allaqachon filial bo'yicha ajratilgani uchun rang buketlari to'g'ri biriktiriladi.
     const byProduct = {};
     {
-      const cs = await query('SELECT product_id, rang, quantity, joy FROM product_color_stock WHERE quantity > 0', []);
+      const cs = await query('SELECT product_id, rang, quantity FROM product_color_stock WHERE quantity > 0', []);
       for (const row of cs.rows) {
-        (byProduct[row.product_id] = byProduct[row.product_id] || []).push({ rang: row.rang || '', quantity: parseFloat(row.quantity), joy: row.joy || '' });
+        (byProduct[row.product_id] = byProduct[row.product_id] || []).push({ rang: row.rang || '', quantity: parseFloat(row.quantity) });
       }
     }
     let periodStats = {};
@@ -751,26 +751,33 @@ router.put('/:id/stock', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), 
   } catch (err) { next(err); }
 });
 
-// PUT /api/products/:id/color-location — rang buketining ombordagi joyini (raf/blok/zona) belgilash
-router.put('/:id/color-location', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT', 'OMBORCHI'), async (req, res, next) => {
-  try {
-    const key = (req.body.rang || '').toString();
-    const loc = (req.body.joy || '').toString().trim() || null;
-    // Buket bor bo'lsa — joyni yangilaymiz; bo'lmasa — 0 qoldiq bilan yaratamiz (faqat joy uchun)
-    const ex = await query('SELECT 1 AS x FROM product_color_stock WHERE product_id=$1 AND rang=$2', [req.params.id, key]);
-    if (ex.rows.length) {
-      await query('UPDATE product_color_stock SET joy=$1 WHERE product_id=$2 AND rang=$3', [loc, req.params.id, key]);
-    } else {
-      await query('INSERT INTO product_color_stock (product_id, rang, quantity, joy) VALUES ($1,$2,0,$3)', [req.params.id, key, loc]);
-    }
-    logAudit(req, { action: 'COLOR_LOCATION_SET', table: 'product_color_stock', recordId: req.params.id, newValues: { rang: key, joy: loc } });
-    res.json({ success: true, rang: key, joy: loc });
-  } catch (err) { next(err); }
-});
-
 // POST /api/products/inventory-adjust — INVENTARIZATSIYA: sanalган (haqiqiy) qoldiqlarni
 // tizimga moslash. items: [{ product_id, counted }]. Har mahsulot uchun stock_quantity
 // sanalган songa o'rnatiladi va o'zgarish mahsulotning rang buketiga ham qo'llanadi.
+// POST /api/products/color-buckets/delete — tanlangan rang buketlarini o'chirish (OWNER).
+// O'chirilgandan keyin har mahsulotning umumiy qoldig'i qolgan ranglar yig'indisiga to'g'irlanadi.
+router.post('/color-buckets/delete', requireRole('OWNER'), async (req, res, next) => {
+  try {
+    const { buckets } = req.body;
+    if (!Array.isArray(buckets) || !buckets.length) return res.status(400).json({ error: 'Ranglar tanlanmagan' });
+    const affected = new Set();
+    for (const b of buckets) {
+      if (!b || !b.product_id) continue;
+      const rang = (b.rang || '').toString();
+      await query('DELETE FROM product_color_stock WHERE product_id=$1 AND rang=$2', [b.product_id, rang]);
+      affected.add(b.product_id);
+    }
+    // Umumiy qoldiq = qolgan rang buketlari yig'indisi (invariant tiklanadi)
+    for (const pid of affected) {
+      const sumR = await query('SELECT COALESCE(SUM(quantity),0) AS s FROM product_color_stock WHERE product_id=$1', [pid]);
+      const total = parseFloat(sumR.rows[0]?.s || 0);
+      await query('UPDATE products SET stock_quantity=$1, updated_at=NOW() WHERE id=$2', [total, pid]);
+    }
+    logAudit(req, { action: 'COLOR_BUCKETS_DELETE', table: 'product_color_stock', recordId: [...affected].join(','), newValues: { count: buckets.length } });
+    res.json({ success: true, deleted: buckets.length, products: affected.size });
+  } catch (err) { next(err); }
+});
+
 router.post('/inventory-adjust', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
   try {
     const { items, reason } = req.body;

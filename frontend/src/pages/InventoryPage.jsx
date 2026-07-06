@@ -53,7 +53,6 @@ export default function InventoryPage() {
   // Inventarizatsiya (sanab tekshirish)
   const [auditCounts, setAuditCounts] = useState({}); // { [productId]: 'sanalган son' }
   const [adjModal, setAdjModal] = useState(null);     // { product } — ombor +/- oynasi
-  const [joyInputs, setJoyInputs] = useState({});     // { [rowKey]: 'rang turgan joy' } — tahrirlanayotgan joy
   const [adjForm, setAdjForm] = useState({ qty: '', rang: '', unit: 'dona' });
   const [auditSearch, setAuditSearch] = useState('');
   const [auditCat, setAuditCat] = useState('all'); // 'all' | 'finished' | 'component'
@@ -62,6 +61,8 @@ export default function InventoryPage() {
   const [auditFrom, setAuditFrom] = useState('');
   const [auditTo, setAuditTo] = useState('');
   const [auditExporting, setAuditExporting] = useState(null);
+  const [selectedColors, setSelectedColors] = useState(() => new Set()); // belgilangan rang qatorlari (key)
+  const [confirmDeleteColors, setConfirmDeleteColors] = useState(false);  // o'chirish tasdig'i
 
   const { data: products } = useQuery({
     queryKey: ['inventory-products'],
@@ -239,23 +240,23 @@ export default function InventoryPage() {
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
-  // Rang turgan joyni (raf/blok/zona) saqlash
-  const colorLocationMutation = useMutation({
-    mutationFn: ({ product_id, rang, joy }) => productsAPI.setColorLocation(product_id, { rang, joy }).then(r => r.data),
-    onSuccess: () => {
-      toast.success('Joy saqlandi');
+  // Belgilangan rang buketlarini o'chirish (OWNER) — umumiy qoldiq qolgan ranglarga to'g'irlanadi
+  const deleteColorsMutation = useMutation({
+    mutationFn: (buckets) => productsAPI.deleteColorBuckets(buckets).then(r => r.data),
+    onSuccess: (d) => {
+      toast.success(`${d.deleted} ta rang o'chirildi`);
+      setSelectedColors(new Set());
+      setConfirmDeleteColors(false);
       qc.invalidateQueries({ queryKey: ['inventory-products'] });
       qc.invalidateQueries({ queryKey: ['products'] });
     },
-    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+    onError: (e) => toast.error(e.response?.data?.error || "O'chirishda xato"),
   });
-  // Input'dan chiqqanda (blur) yoki Enter bosilganda — o'zgargan bo'lsa saqlaymiz
-  const saveJoy = (row) => {
-    const val = joyInputs[row.key];
-    if (val === undefined) return;                 // teginilmagan
-    if ((val || '') === (row.joy || '')) return;   // o'zgarmagan
-    colorLocationMutation.mutate({ product_id: row.p.id, rang: row.rang || '', joy: val || '' });
-  };
+  const toggleColorRow = (key) => setSelectedColors(prev => {
+    const n = new Set(prev);
+    n.has(key) ? n.delete(key) : n.add(key);
+    return n;
+  });
 
   // Oynani ochish — mahsulotning o'z rangi va birligi bilan to'ldiramiz.
   // presetRang berilса (rang bo'yicha qatordan), o'sha rang tanlab qo'yiladi.
@@ -351,7 +352,7 @@ export default function InventoryPage() {
       return [{ p, rang: null, isColor: false, sys: parseFloat(p.stock_quantity) || 0, key: p.id }];
     }
     return buckets.map(b => ({
-      p, rang: b.rang || '', isColor: true, joy: b.joy || '',
+      p, rang: b.rang || '', isColor: true,
       sys: parseFloat(b.quantity) || 0, key: `${p.id}${RSEP}${b.rang || ''}`,
     }));
   });
@@ -734,12 +735,27 @@ export default function InventoryPage() {
             </div>
           </div>
 
+          {isOwner() && selectedColors.size > 0 && (
+            <div className="card p-3 border border-red-200 bg-red-50/60 flex flex-wrap items-center gap-2 sticky top-2 z-20">
+              <span className="text-sm font-semibold text-gray-800">{selectedColors.size} ta rang belgilandi</span>
+              <button onClick={() => setSelectedColors(new Set())}
+                className="btn-sm bg-white border border-gray-200 rounded-lg px-3 text-gray-600 hover:bg-gray-50">
+                Tozalash
+              </button>
+              <button onClick={() => setConfirmDeleteColors(true)} disabled={deleteColorsMutation.isPending}
+                className="ml-auto btn-sm flex items-center gap-1 rounded-lg px-3 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
+                <Trash2 size={14} /> O'chirish ({selectedColors.size})
+              </button>
+            </div>
+          )}
+
           <div className="card overflow-hidden">
             <div className="table-container">
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Mahsulot</th><th>Rang</th><th>Joy (raf/blok)</th>
+                    {isOwner() && <th className="w-8"></th>}
+                    <th>Mahsulot</th><th>Rang</th>
                     <th className="text-right">Tizimda</th>
                     <th className="text-right">Sanaldi</th>
                     <th className="text-right">Farq</th>
@@ -748,7 +764,7 @@ export default function InventoryPage() {
                 </thead>
                 <tbody>
                   {!auditList.length ? (
-                    <tr><td colSpan={7} className="text-center py-10 text-gray-400">
+                    <tr><td colSpan={isOwner() ? 7 : 6} className="text-center py-10 text-gray-400">
                       <ClipboardList size={26} className="mx-auto mb-2 text-gray-300" />
                       {auditSearch ? `"${auditSearch}" bo'yicha topilmadi` : 'Mahsulot yo\'q'}
                     </td></tr>
@@ -759,7 +775,16 @@ export default function InventoryPage() {
                     const diff = counted == null || isNaN(counted) ? null : counted - sys;
                     const rangLabel = isColor ? (rang || 'Rangsiz') : (p.rang || '—');
                     return (
-                      <tr key={key} className={diff != null && diff !== 0 ? 'bg-yellow-50/60' : ''}>
+                      <tr key={key} className={selectedColors.has(key) ? 'bg-red-50/50' : (diff != null && diff !== 0 ? 'bg-yellow-50/60' : '')}>
+                        {isOwner() && (
+                          <td className="text-center">
+                            {isColor && (
+                              <input type="checkbox" className="w-4 h-4 align-middle"
+                                checked={selectedColors.has(key)}
+                                onChange={() => toggleColorRow(key)} />
+                            )}
+                          </td>
+                        )}
                         <td className="font-medium text-gray-900">{p.name}</td>
                         <td className="text-gray-600">
                           <span className="inline-flex items-center gap-1.5">
@@ -768,17 +793,6 @@ export default function InventoryPage() {
                             )}
                             {rangLabel}
                           </span>
-                        </td>
-                        <td>
-                          {isColor ? (
-                            <input type="text"
-                              value={joyInputs[key] ?? row.joy ?? ''}
-                              onChange={e => setJoyInputs(prev => ({ ...prev, [key]: e.target.value }))}
-                              onBlur={() => saveJoy(row)}
-                              onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
-                              placeholder="Masalan: A rafi, 2-blok"
-                              className="input py-1 w-36" />
-                          ) : <span className="text-gray-300">—</span>}
                         </td>
                         <td className="text-right font-semibold">{fmt(sys)} {p.unit}</td>
                         <td className="text-right">
@@ -813,7 +827,7 @@ export default function InventoryPage() {
                     );
                   })}
                   {auditList.length > auditShown.length && (
-                    <tr><td colSpan={7} className="text-center py-3 text-xs text-gray-400">
+                    <tr><td colSpan={isOwner() ? 7 : 6} className="text-center py-3 text-xs text-gray-400">
                       Yana {auditList.length - auditShown.length} ta mahsulot — yuqoridagi qidiruv yoki kategoriya bilan toping
                     </td></tr>
                   )}
@@ -907,6 +921,36 @@ export default function InventoryPage() {
           )}
         </>
       )}
+
+      {/* Belgilangan ranglarni o'chirishni tasdiqlash */}
+      <Modal open={confirmDeleteColors} onClose={() => setConfirmDeleteColors(false)} title="Ranglarni o'chirish">
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-3">
+            <Trash2 size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-gray-700">
+              <p>Belgilangan <strong>{selectedColors.size} ta</strong> rang buketini o'chirmoqchimisiz?</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Rang buketi o'chiriladi va mahsulotning umumiy qoldig'i <strong>qolgan ranglar yig'indisiga</strong> to'g'irlanadi.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={() => setConfirmDeleteColors(false)} className="btn-secondary flex-1">Bekor</button>
+            <button
+              onClick={() => {
+                const buckets = Array.from(selectedColors).map(k => {
+                  const i = k.indexOf('|');
+                  return i >= 0 ? { product_id: k.slice(0, i), rang: k.slice(i + 1) } : { product_id: k, rang: '' };
+                });
+                deleteColorsMutation.mutate(buckets);
+              }}
+              disabled={deleteColorsMutation.isPending}
+              className="btn-sm flex-1 bg-red-600 text-white hover:bg-red-700 rounded-lg px-3 flex items-center gap-1 justify-center disabled:opacity-50">
+              <Trash2 size={14} /> {deleteColorsMutation.isPending ? "O'chirilmoqda..." : "Ha, o'chirish"}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Ombor qo'shish/ayirish oynasi (＋ / −) */}
       <Modal open={!!adjModal} onClose={() => setAdjModal(null)} title={adjModal ? `${adjModal.product.name}` : ''}>

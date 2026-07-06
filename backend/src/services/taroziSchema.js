@@ -42,6 +42,11 @@ const ALTER_MASHINA_TURI = USE_PG
   ? `ALTER TABLE tarozi_receipts ADD COLUMN IF NOT EXISTS mashina_turi VARCHAR(40)`
   : `ALTER TABLE tarozi_receipts ADD COLUMN mashina_turi TEXT`;
 
+// Narx (mashina turiga qarab to'lov, so'm) — mavjud jadvalga ustun qo'shish (idempotent)
+const ALTER_NARX = USE_PG
+  ? `ALTER TABLE tarozi_receipts ADD COLUMN IF NOT EXISTS narx NUMERIC(14,2) NOT NULL DEFAULT 0`
+  : `ALTER TABLE tarozi_receipts ADD COLUMN narx REAL NOT NULL DEFAULT 0`;
+
 let _ready = false;
 
 async function ensureTaroziSchema() {
@@ -50,6 +55,7 @@ async function ensureTaroziSchema() {
     await db.query(DDL);
     // Ustun allaqachon mavjud bo'lsa — SQLite xato beradi, e'tiborsiz qoldiramiz
     try { await db.query(ALTER_MASHINA_TURI); } catch (e) { /* ustun bor */ }
+    try { await db.query(ALTER_NARX); } catch (e) { /* ustun bor */ }
     _ready = true;
     console.log('✅ Tarozi sxemasi tayyor');
   } catch (e) {

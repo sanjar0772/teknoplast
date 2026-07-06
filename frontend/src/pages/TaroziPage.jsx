@@ -19,8 +19,17 @@ const num = (v) => {
 const STORAGE_KEY = 'tarozi_recent_v1';
 const COUNTER_KEY = 'tarozi_chek_no_v1';
 
-// Tarozida tortiladigan mashina turlari (transport)
-const MASHINA_TURLARI = ['Damas', 'Labo', 'Labo-Kia', 'Isuzi', 'Gaz-53', 'Zil', 'Howo'];
+// Tarozida tortiladigan mashina turlari (transport) va har biriga to'lov (so'm)
+const TARIF = {
+  'Damas': 8000,
+  'Labo': 10000,
+  'Labo-Kia': 10000,
+  'Isuzi': 15000,
+  'Gaz-53': 15000,
+  'Zil': 20000,
+  'Howo': 20000,
+};
+const MASHINA_TURLARI = Object.keys(TARIF);
 
 // Sana/vaqtni mahalliy (UTC+5) ko'rinishda — toISOString ishlatmaymiz (timezone bug).
 const nowLabel = () => {
@@ -55,6 +64,8 @@ export default function TaroziPage() {
   const bruttoN = num(brutto);
   const taraN = num(tara);
   const netto = Math.max(0, bruttoN - taraN);
+  // Tanlangan mashina turiga qarab to'lov summasi
+  const narx = TARIF[mashinaTuri] || 0;
 
   // Keyingi chek raqami — localStorage va server maksimumidan kattasi + 1
   const chekNo = useMemo(() => {
@@ -81,7 +92,7 @@ export default function TaroziPage() {
     localStorage.setItem(COUNTER_KEY, String(no));
     const entry = {
       no, mashina: mashina.trim(), mashina_turi: mashinaTuri, mahsulot: mahsulot.trim(),
-      haydovchi: haydovchi.trim(), brutto: bruttoN, tara: taraN, netto,
+      haydovchi: haydovchi.trim(), brutto: bruttoN, tara: taraN, netto, narx,
       vaqt: nowLabel(),
     };
     const next = [entry, ...recent].slice(0, 12);
@@ -90,7 +101,7 @@ export default function TaroziPage() {
     // Serverga saqlash — admin (ega) cheklarni ko'rishi uchun. Xato bo'lsa ham chek chiqadi.
     taroziAPI.create({
       no, mashina: entry.mashina, mashina_turi: mashinaTuri, mahsulot: entry.mahsulot, haydovchi: entry.haydovchi,
-      brutto: bruttoN, tara: taraN, netto, sana: localDate(),
+      brutto: bruttoN, tara: taraN, netto, narx, sana: localDate(),
     }).then(() => setServerMaxNo(m => Math.max(m, no)))
       .catch(() => toast.error("Chek serverga saqlanmadi (internet?) — chop etildi"));
     // Chop etish — brauzer chek printerni tanlaydi
@@ -185,6 +196,12 @@ export default function TaroziPage() {
               <div className="flex justify-between"><span className="text-blue-100">Mashina raqami</span><span className="font-semibold">{mashina || '—'}</span></div>
             </div>
           </div>
+          {/* TO'LOV — mashina turiga qarab */}
+          <div className="card bg-gradient-to-br from-emerald-600 to-emerald-700 text-white border-0 shadow-xl">
+            <p className="text-sm text-emerald-100">To'lov summasi</p>
+            <p className="text-4xl font-extrabold tracking-tight mt-1 leading-none">{fmt(narx)}</p>
+            <p className="text-emerald-100 mt-1 text-base font-medium">so'm{mashinaTuri ? ` — ${mashinaTuri}` : ''}</p>
+          </div>
           <div className="card-sm text-center text-xs text-gray-400">
             Keyingi chek raqami: <span className="font-semibold text-gray-600">№ {String(chekNo).padStart(4, '0')}</span>
           </div>
@@ -207,6 +224,7 @@ export default function TaroziPage() {
                   <th className="text-right py-1.5">Brutto</th>
                   <th className="text-right py-1.5">Tara</th>
                   <th className="text-right py-1.5">Jami (sof)</th>
+                  <th className="text-right py-1.5">To'lov</th>
                 </tr>
               </thead>
               <tbody>
@@ -220,6 +238,7 @@ export default function TaroziPage() {
                     <td className="py-1.5 text-right">{fmt(r.brutto)}</td>
                     <td className="py-1.5 text-right text-gray-500">{fmt(r.tara)}</td>
                     <td className="py-1.5 text-right font-bold text-blue-700">{fmt(r.netto)} kg</td>
+                    <td className="py-1.5 text-right font-bold text-emerald-700">{fmt(r.narx || 0)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -266,6 +285,13 @@ export default function TaroziPage() {
           <span className="font-extrabold text-[18px]">{fmt(netto)} кг</span>
         </div>
         <div className="border-t border-double border-black my-1" />
+
+        {/* ТЎЛОВ — мошина турига қараб, катта кўринади */}
+        <div className="border-2 border-black rounded-md mt-2 py-1.5 px-1.5 text-center">
+          <div className="text-[11px] font-semibold">ТЎЛОВ{mashinaTuri ? ` (${mashinaTuri})` : ''}</div>
+          <div className="font-extrabold text-[26px] leading-none mt-0.5">{fmt(narx)}</div>
+          <div className="text-[11px] font-semibold">сўм</div>
+        </div>
 
         <div className="text-[11px] mt-3 mb-1">Қабул қилди: ____________________</div>
         <div className="text-center text-[11px] font-semibold mt-2">Раҳмат!</div>

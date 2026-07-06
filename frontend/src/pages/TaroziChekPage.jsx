@@ -41,7 +41,7 @@ export default function TaroziChekPage() {
   });
 
   const receipts = data?.receipts || [];
-  const totals = data?.totals || { count: 0, netto: 0, brutto: 0 };
+  const totals = data?.totals || { count: 0, netto: 0, brutto: 0, narx: 0 };
 
   return (
     <div className="space-y-5">
@@ -72,7 +72,7 @@ export default function TaroziChekPage() {
       </div>
 
       {/* Jami kartalar */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="card-sm text-center">
           <p className="text-[11px] text-gray-500">Cheklar soni</p>
           <p className="text-lg font-bold text-gray-900">{totals.count}</p>
@@ -84,6 +84,10 @@ export default function TaroziChekPage() {
         <div className="card-sm text-center">
           <p className="text-[11px] text-gray-500">Jami sof (netto)</p>
           <p className="text-lg font-bold text-blue-700">{fmt(totals.netto)} kg</p>
+        </div>
+        <div className="card-sm text-center">
+          <p className="text-[11px] text-gray-500">Jami to'lov</p>
+          <p className="text-lg font-bold text-emerald-700">{fmt(totals.narx)} so'm</p>
         </div>
       </div>
 
@@ -107,6 +111,7 @@ export default function TaroziChekPage() {
                 <th className="text-right py-2">Brutto</th>
                 <th className="text-right py-2">Tara</th>
                 <th className="text-right py-2">Jami (sof)</th>
+                <th className="text-right py-2">To'lov</th>
               </tr>
             </thead>
             <tbody>
@@ -120,6 +125,7 @@ export default function TaroziChekPage() {
                   <td className="py-2 text-right">{fmt(r.brutto)}</td>
                   <td className="py-2 text-right text-gray-500">{fmt(r.tara)}</td>
                   <td className="py-2 text-right font-bold text-blue-700">{fmt(r.netto)} kg</td>
+                  <td className="py-2 text-right font-bold text-emerald-700">{fmt(r.narx || 0)}</td>
                 </tr>
               ))}
             </tbody>
@@ -129,6 +135,7 @@ export default function TaroziChekPage() {
                 <td className="py-2 text-right text-gray-600">{fmt(totals.brutto)}</td>
                 <td className="py-2 text-right text-gray-400">—</td>
                 <td className="py-2 text-right text-blue-700">{fmt(totals.netto)} kg</td>
+                <td className="py-2 text-right text-emerald-700">{fmt(totals.narx)} so'm</td>
               </tr>
             </tfoot>
           </table>

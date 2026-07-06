@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Package, DollarSign, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory, Calendar, CheckSquare, Square, FileText, FileSpreadsheet } from 'lucide-react';
+import { Plus, X, Package, DollarSign, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory, Calendar, CheckSquare, Square, FileText, FileSpreadsheet, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import { productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
@@ -192,6 +192,7 @@ export default function ProductsPage({ embedded = false }) {
   const [bomModal, setBomModal] = useState(null); // { id, name } — tarkibni boshqarish
   const [bomAddForm, setBomAddForm] = useState({ component_id: '', qty: 1 });
   const [historyProduct, setHistoryProduct] = useState(null); // tarix modal
+  const [deleteTarget, setDeleteTarget] = useState(null); // o'chirish tasdig'i: mahsulot yoki { bulk: true }
   const [search, setSearch] = useState(''); // mahsulot qidiruv
   const [dateFilter, setDateFilter] = useState({ date_from: '', date_to: '' });
   const [datePreset, setDatePreset] = useState('all');
@@ -266,6 +267,18 @@ export default function ProductsPage({ embedded = false }) {
     onError: (e) => toast.error(e.response?.data?.error || 'Narx saqlashda xato'),
   });
 
+  // Mahsulotni o'chirish (faqat OWNER) — sotuvi bori nofaol bo'ladi, boshqasi butunlay o'chadi
+  const deleteMutation = useMutation({
+    mutationFn: (ids) => productsAPI.bulkDelete(ids),
+    onSuccess: () => {
+      toast.success("Mahsulot o'chirildi");
+      qc.invalidateQueries({ queryKey: ['products'] });
+      setDeleteTarget(null);
+      setSelectedIds(new Set());
+    },
+    onError: (e) => toast.error(e.response?.data?.error || "O'chirishda xato"),
+  });
+
 
   // BOM (komponentlar tarkibi)
   const { data: bomData } = useQuery({
@@ -318,6 +331,8 @@ export default function ProductsPage({ embedded = false }) {
   const canPrice = isOwner() || isAccountant() || isProductionHead();
   // KIRIMCHI faqat yangi mahsulot qo'shishi mumkin
   const canAdd = canWrite || isKirimchi();
+  // Mahsulotni o'chirish — faqat ega (rahbar)
+  const canDelete = isOwner();
 
   // Komponent (KOMPONENT) mahsulotlar — BOM (Tarkib) formasi uchun
   const componentProducts = (data?.products || []).filter(p => p.kind === 'KOMPONENT');
@@ -484,6 +499,13 @@ export default function ProductsPage({ embedded = false }) {
               className="btn-sm flex items-center gap-1 rounded-lg px-3 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
               <FileText size={14} /> {exporting === 'pdf' ? 'Yuklanmoqda...' : 'PDF'}
             </button>
+            {canDelete && (
+              <button onClick={() => setDeleteTarget({ bulk: true })}
+                disabled={!selectedIds.size}
+                className="btn-sm flex items-center gap-1 rounded-lg px-3 bg-red-700 text-white hover:bg-red-800 disabled:opacity-50">
+                <Trash2 size={14} /> O'chirish ({selectedIds.size})
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -627,6 +649,12 @@ export default function ProductsPage({ embedded = false }) {
                 <button onClick={() => { setBomModal(p); setBomAddForm({ component_id: '', qty: 1 }); }}
                   className="btn-sm w-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 flex items-center gap-1 justify-center mt-1">
                   <Layers size={13} /> Tarkib (komponentlar)
+                </button>
+              )}
+              {canDelete && (
+                <button onClick={() => setDeleteTarget(p)}
+                  className="btn-sm w-full bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 rounded-lg px-2 flex items-center gap-1 justify-center mt-1">
+                  <Trash2 size={13} /> O'chirish
                 </button>
               )}
             </div>
@@ -850,6 +878,34 @@ export default function ProductsPage({ embedded = false }) {
 
       {/* Mahsulot tarixi modal */}
       <ProductHistoryModal product={historyProduct} onClose={() => setHistoryProduct(null)} />
+
+      {/* O'chirishni tasdiqlash — faqat OWNER */}
+      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Mahsulotni o'chirish">
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-3">
+            <Trash2 size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-gray-700">
+              {deleteTarget?.bulk ? (
+                <p><strong>{selectedIds.size} ta</strong> mahsulotni o'chirmoqchimisiz?</p>
+              ) : (
+                <p>«<strong>{deleteTarget?.name}</strong>» mahsulotini o'chirmoqchimisiz?</p>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                Sotuv tarixi bor mahsulot butunlay o'chmaydi — u <strong>nofaol</strong> qilinadi (hisobotlar saqlanadi). Tarixi yo'q mahsulot butunlay o'chiriladi.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={() => setDeleteTarget(null)} className="btn-secondary flex-1">Bekor</button>
+            <button
+              onClick={() => deleteMutation.mutate(deleteTarget?.bulk ? Array.from(selectedIds) : [deleteTarget.id])}
+              disabled={deleteMutation.isPending || (deleteTarget?.bulk && !selectedIds.size)}
+              className="btn-sm flex-1 bg-red-600 text-white hover:bg-red-700 rounded-lg px-3 flex items-center gap-1 justify-center disabled:opacity-50">
+              <Trash2 size={14} /> {deleteMutation.isPending ? "O'chirilmoqda..." : "Ha, o'chirish"}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Pricing Modal — Bugalter/OWNER uchun */}
       {pricingModal && (

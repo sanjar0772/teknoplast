@@ -559,18 +559,23 @@ router.post('/bulk-delete', requireRole('OWNER'), async (req, res, next) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'IDlar bo\'sh' });
-    let deactivated = 0;
+    let deleted = 0, deactivated = 0;
     for (const id of ids) {
-      // Sotuvi bormi tekshirish — bo'lsa faqat nofaol qilamiz
+      // Sotuvi bormi tekshirish — bo'lsa faqat nofaol qilamiz (hisobot saqlanadi)
       const sales = await query('SELECT COUNT(*) as count FROM sales WHERE product_id=$1', [id]);
       if (parseInt(sales.rows[0].count) > 0) {
         await query('UPDATE products SET is_active=0, updated_at=NOW() WHERE id=$1', [id]);
+        deactivated++;
       } else {
+        // FK bog'lanishlarni tozalab, butunlay o'chiramiz
+        await query('DELETE FROM product_bom WHERE component_id = $1 OR product_id = $1', [id]);
+        await query('DELETE FROM product_color_stock WHERE product_id = $1', [id]);
         await query('DELETE FROM products WHERE id=$1', [id]);
+        deleted++;
       }
-      deactivated++;
     }
-    res.json({ count: deactivated });
+    logAudit(req, { action: 'PRODUCTS_DELETE', table: 'products', recordId: ids.join(','), newValues: { deleted, deactivated } });
+    res.json({ count: deleted + deactivated, deleted, deactivated });
   } catch (err) { next(err); }
 });
 

@@ -754,30 +754,6 @@ router.put('/:id/stock', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), 
 // POST /api/products/inventory-adjust — INVENTARIZATSIYA: sanalган (haqiqiy) qoldiqlarni
 // tizimga moslash. items: [{ product_id, counted }]. Har mahsulot uchun stock_quantity
 // sanalган songa o'rnatiladi va o'zgarish mahsulotning rang buketiga ham qo'llanadi.
-// POST /api/products/color-buckets/delete — tanlangan rang buketlarini o'chirish (OWNER).
-// O'chirilgandan keyin har mahsulotning umumiy qoldig'i qolgan ranglar yig'indisiga to'g'irlanadi.
-router.post('/color-buckets/delete', requireRole('OWNER'), async (req, res, next) => {
-  try {
-    const { buckets } = req.body;
-    if (!Array.isArray(buckets) || !buckets.length) return res.status(400).json({ error: 'Ranglar tanlanmagan' });
-    const affected = new Set();
-    for (const b of buckets) {
-      if (!b || !b.product_id) continue;
-      const rang = (b.rang || '').toString();
-      await query('DELETE FROM product_color_stock WHERE product_id=$1 AND rang=$2', [b.product_id, rang]);
-      affected.add(b.product_id);
-    }
-    // Umumiy qoldiq = qolgan rang buketlari yig'indisi (invariant tiklanadi)
-    for (const pid of affected) {
-      const sumR = await query('SELECT COALESCE(SUM(quantity),0) AS s FROM product_color_stock WHERE product_id=$1', [pid]);
-      const total = parseFloat(sumR.rows[0]?.s || 0);
-      await query('UPDATE products SET stock_quantity=$1, updated_at=NOW() WHERE id=$2', [total, pid]);
-    }
-    logAudit(req, { action: 'COLOR_BUCKETS_DELETE', table: 'product_color_stock', recordId: [...affected].join(','), newValues: { count: buckets.length } });
-    res.json({ success: true, deleted: buckets.length, products: affected.size });
-  } catch (err) { next(err); }
-});
-
 router.post('/inventory-adjust', requireRole('OWNER', 'PRODUCTION_HEAD', 'ACCOUNTANT'), async (req, res, next) => {
   try {
     const { items, reason } = req.body;

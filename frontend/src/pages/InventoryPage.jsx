@@ -62,7 +62,6 @@ export default function InventoryPage() {
   const [auditTo, setAuditTo] = useState('');
   const [auditExporting, setAuditExporting] = useState(null);
   const [selectedColors, setSelectedColors] = useState(() => new Set()); // belgilangan rang qatorlari (key)
-  const [confirmDeleteColors, setConfirmDeleteColors] = useState(false);  // o'chirish tasdig'i
 
   const { data: products } = useQuery({
     queryKey: ['inventory-products'],
@@ -240,18 +239,7 @@ export default function InventoryPage() {
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
-  // Belgilangan rang buketlarini o'chirish (OWNER) — umumiy qoldiq qolgan ranglarga to'g'irlanadi
-  const deleteColorsMutation = useMutation({
-    mutationFn: (buckets) => productsAPI.deleteColorBuckets(buckets).then(r => r.data),
-    onSuccess: (d) => {
-      toast.success(`${d.deleted} ta rang o'chirildi`);
-      setSelectedColors(new Set());
-      setConfirmDeleteColors(false);
-      qc.invalidateQueries({ queryKey: ['inventory-products'] });
-      qc.invalidateQueries({ queryKey: ['products'] });
-    },
-    onError: (e) => toast.error(e.response?.data?.error || "O'chirishda xato"),
-  });
+  // Rang qatorini belgilash/bekor qilish (rangga bosilganda)
   const toggleColorRow = (key) => setSelectedColors(prev => {
     const n = new Set(prev);
     n.has(key) ? n.delete(key) : n.add(key);
@@ -736,15 +724,11 @@ export default function InventoryPage() {
           </div>
 
           {isOwner() && selectedColors.size > 0 && (
-            <div className="card p-3 border border-red-200 bg-red-50/60 flex flex-wrap items-center gap-2 sticky top-2 z-20">
+            <div className="card p-3 border border-indigo-200 bg-indigo-50/60 flex flex-wrap items-center gap-2 sticky top-2 z-20">
               <span className="text-sm font-semibold text-gray-800">{selectedColors.size} ta rang belgilandi</span>
               <button onClick={() => setSelectedColors(new Set())}
-                className="btn-sm bg-white border border-gray-200 rounded-lg px-3 text-gray-600 hover:bg-gray-50">
-                Tozalash
-              </button>
-              <button onClick={() => setConfirmDeleteColors(true)} disabled={deleteColorsMutation.isPending}
-                className="ml-auto btn-sm flex items-center gap-1 rounded-lg px-3 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
-                <Trash2 size={14} /> O'chirish ({selectedColors.size})
+                className="ml-auto btn-sm bg-white border border-gray-200 rounded-lg px-3 text-gray-600 hover:bg-gray-50">
+                Belgilashni tozalash
               </button>
             </div>
           )}
@@ -787,12 +771,21 @@ export default function InventoryPage() {
                         )}
                         <td className="font-medium text-gray-900">{p.name}</td>
                         <td className="text-gray-600">
-                          <span className="inline-flex items-center gap-1.5">
-                            {isColor && (
+                          {isColor && isOwner() ? (
+                            <button type="button" onClick={() => toggleColorRow(key)}
+                              className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 border transition-colors ${selectedColors.has(key) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}
+                              title="Belgilash uchun bosing">
                               <span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background: RANG_COLORS[rang] || '#bbb', border:'1px solid #ccc' }} />
-                            )}
-                            {rangLabel}
-                          </span>
+                              {rangLabel}
+                            </button>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5">
+                              {isColor && (
+                                <span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background: RANG_COLORS[rang] || '#bbb', border:'1px solid #ccc' }} />
+                              )}
+                              {rangLabel}
+                            </span>
+                          )}
                         </td>
                         <td className="text-right font-semibold">{fmt(sys)} {p.unit}</td>
                         <td className="text-right">
@@ -921,36 +914,6 @@ export default function InventoryPage() {
           )}
         </>
       )}
-
-      {/* Belgilangan ranglarni o'chirishni tasdiqlash */}
-      <Modal open={confirmDeleteColors} onClose={() => setConfirmDeleteColors(false)} title="Ranglarni o'chirish">
-        <div className="space-y-4">
-          <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-3">
-            <Trash2 size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-gray-700">
-              <p>Belgilangan <strong>{selectedColors.size} ta</strong> rang buketini o'chirmoqchimisiz?</p>
-              <p className="text-xs text-gray-500 mt-1">
-                Rang buketi o'chiriladi va mahsulotning umumiy qoldig'i <strong>qolgan ranglar yig'indisiga</strong> to'g'irlanadi.
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <button onClick={() => setConfirmDeleteColors(false)} className="btn-secondary flex-1">Bekor</button>
-            <button
-              onClick={() => {
-                const buckets = Array.from(selectedColors).map(k => {
-                  const i = k.indexOf('|');
-                  return i >= 0 ? { product_id: k.slice(0, i), rang: k.slice(i + 1) } : { product_id: k, rang: '' };
-                });
-                deleteColorsMutation.mutate(buckets);
-              }}
-              disabled={deleteColorsMutation.isPending}
-              className="btn-sm flex-1 bg-red-600 text-white hover:bg-red-700 rounded-lg px-3 flex items-center gap-1 justify-center disabled:opacity-50">
-              <Trash2 size={14} /> {deleteColorsMutation.isPending ? "O'chirilmoqda..." : "Ha, o'chirish"}
-            </button>
-          </div>
-        </div>
-      </Modal>
 
       {/* Ombor qo'shish/ayirish oynasi (＋ / −) */}
       <Modal open={!!adjModal} onClose={() => setAdjModal(null)} title={adjModal ? `${adjModal.product.name}` : ''}>

@@ -18,6 +18,10 @@ yarn-error.log*
 # SQLite (local dev)
 teknoplast.sqlite
 teknoplast.sqlite-journal
+*.sqlite
+*.sqlite.backup
+backend/backups/
+frontend/backups/
 
 # Temporary files
 *.tmp

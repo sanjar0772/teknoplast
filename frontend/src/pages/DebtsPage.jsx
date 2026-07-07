@@ -8,7 +8,7 @@ import { buildCustomerLedger } from '../utils/customerLedger';
 import CustomerFakturaModal from '../components/CustomerFakturaModal';
 import { COMPANY } from '../constants/company';
 
-const METHOD_LABEL = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', PAYME: '📱 Pay Me', CLICK: '⚡ Click', DISCOUNT: '🏷️ Skidka', OTHER: 'Boshqa' };
+const METHOD_LABEL = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', PAYME: '📱 Pay Me', CLICK: '⚡ Click', DISCOUNT: '🏷️ Skidka', PURCHASE: '📥 Sexdan tovar', OTHER: 'Boshqa' };
 
 // To'lov tarixi modal — schyot-faktura formatida, chop etish mumkin
 function PaymentHistoryModal({ group, onClose }) {

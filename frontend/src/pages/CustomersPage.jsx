@@ -14,7 +14,7 @@ import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
-const PAY_METHOD = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', PAYME: '📱 Pay Me', CLICK: '⚡ Click', DISCOUNT: '🏷️ Skidka', OTHER: 'Boshqa' };
+const PAY_METHOD = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', PAYME: '📱 Pay Me', CLICK: '⚡ Click', DISCOUNT: '🏷️ Skidka', PURCHASE: '📥 Sexdan tovar', OTHER: 'Boshqa' };
 
 const TYPE_MAP = {
   RETAIL:    { label: 'Chakana',  cls: 'badge-gray',  icon: ShoppingBag },

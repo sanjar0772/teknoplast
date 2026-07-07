@@ -307,7 +307,8 @@ export default function ProductsPage({ embedded = false }) {
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
-  const { register, handleSubmit, reset, setValue } = useForm();
+  const { register, handleSubmit, reset, setValue, watch } = useForm();
+  const isResale = watch('is_resale');
 
   const openEdit = (p) => {
     setEditProduct(p);
@@ -694,6 +695,19 @@ export default function ProductsPage({ embedded = false }) {
               <label className="label">Boshlang'ich ombor</label>
               <input {...register('stock_quantity')} type="number" min="0" defaultValue={0} className="input" />
             </div>
+          </div>
+          <div className="border border-amber-200 bg-amber-50 rounded-xl p-3 space-y-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" {...register('is_resale')} className="w-4 h-4" />
+              <span className="text-sm font-medium text-amber-800">Boshqa sexdan olinadigan tovar (qayta sotish)</span>
+            </label>
+            {isResale && (
+              <div>
+                <label className="label">Kelish narxi (so'm) — biz to'laymiz</label>
+                <input {...register('cost_price', { setValueAs: v => parseFloat(String(v).replace(/\s/g,'').replace(/,/g,'')) || 0 })} type="text" inputMode="decimal" className="input" placeholder="masalan: 10 000" />
+                <p className="text-xs text-amber-700 mt-1">Yuqoridagi "Narxi" — biz sotadigan narx (ustiga qo'yib).</p>
+              </div>
+            )}
           </div>
           <div>
             <label className="label">Xom ashyo</label>

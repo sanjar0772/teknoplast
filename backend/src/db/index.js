@@ -921,6 +921,14 @@ if (USE_PG) {
       // Kirim mahsulotining birlik narxi (so'm/dona) — kirim qiymatini hisoblash uchun.
       // Jami qiymat = quantity * unit_price.
       `ALTER TABLE intake_items ADD COLUMN unit_price REAL DEFAULT 0`,
+      // Boshqa sexdan sotib olinadigan (qayta sotish) tovar belgisi — o'zimiz ishlab
+      // chiqaradigan mahsulotlarga ta'sir qilmaydi (default 0).
+      `ALTER TABLE products ADD COLUMN is_resale INTEGER DEFAULT 0`,
+      // Kirim kimdan olindi (yetkazib beruvchi mijoz) — tasdiqlanganda shu mijoz
+      // balansidan olingan tovar summasi ayiriladi (haqdor bo'ladi).
+      `ALTER TABLE product_intakes ADD COLUMN supplier_customer_id TEXT`,
+      // Kredit ikki marta yozilmasin uchun bayroq.
+      `ALTER TABLE product_intakes ADD COLUMN supplier_credit_applied INTEGER DEFAULT 0`,
     ];
     for (const m of migrations) {
       try {

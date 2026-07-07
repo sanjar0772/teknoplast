@@ -967,7 +967,7 @@ async function generateCustomerExcel(data) {
   const BLUE = 'FF1E40AF';
   const money = '#,##0';
   const statusLabel = (s) => s === 'PAID' ? "To'langan" : s === 'PENDING' ? 'Kutilmoqda' : 'Qisman';
-  const methodLabel = (m) => ({ CASH: 'Naqd', CARD: 'Karta', TRANSFER: 'Bank', PAYME: 'Pay Me', CLICK: 'Click', DISCOUNT: 'Skidka', OTHER: 'Boshqa' }[m] || m || '');
+  const methodLabel = (m) => ({ CASH: 'Naqd', CARD: 'Karta', TRANSFER: 'Bank', PAYME: 'Pay Me', CLICK: 'Click', DISCOUNT: 'Skidka', PURCHASE: 'Sexdan tovar', OTHER: 'Boshqa' }[m] || m || '');
 
   // ---- 1-varaq: Xaridlar ----
   const s1 = workbook.addWorksheet('Xaridlar');

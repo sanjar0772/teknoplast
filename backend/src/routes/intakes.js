@@ -8,6 +8,48 @@ const { addColorStock } = require('../utils/colorStock');
 const router = express.Router();
 router.use(authenticate);
 
+// Boshqa sexdan (mijoz-yetkazib beruvchidan) olingan tovar summasini o'sha mijoz
+// balansidan ayiradi: mijoz haqdorga chiqadi (biz unga qarzdormiz).
+// Mexanizm sotuvdagi "chegirma krediti" bilan bir xil: mijozning oxirgi savdosi
+// payment_amount'iga qo'shiladi + PURCHASE to'lov yozuvi (kassada NAQD sifatida
+// hisoblanmaydi — reports.js kassa PURCHASE'ni chiqarib tashlaydi).
+async function applySupplierCredit(client, { customerId, amount, userId, note, productId }) {
+  if (!customerId || !(amount > 0)) return;
+  const ref = 'purch-' + Date.now();
+  // Mijozning oxirgi savdosini topamiz (unga kreditni ilib qo'yamiz)
+  const last = await client.query(
+    'SELECT id, payment_amount, total_amount FROM sales WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 1',
+    [customerId]
+  );
+  if (last.rows.length) {
+    const s = last.rows[0];
+    const newPaid = (parseFloat(s.payment_amount) || 0) + amount;
+    const newStatus = newPaid >= (parseFloat(s.total_amount) || 0) - 0.01 ? 'PAID' : 'PARTIALLY_PAID';
+    await client.query(
+      'UPDATE sales SET payment_amount=$1, status=$2, updated_at=NOW() WHERE id=$3',
+      [newPaid, newStatus, s.id]
+    );
+    await client.query(
+      `INSERT INTO payments (sale_id, amount, method, payment_date, notes, created_by, payment_ref)
+       VALUES ($1,$2,'PURCHASE',CURRENT_DATE,$3,$4,$5)`,
+      [s.id, amount, note, userId, ref]
+    );
+  } else if (productId) {
+    // Mijozda savdo yo'q — kredit balansini saqlash uchun "0 summali" savdo yaratamiz
+    // (total_amount=0, payment_amount=amount → balans SUM(payment−total)=+amount = haqdor).
+    const saleR = await client.query(
+      `INSERT INTO sales (product_id, customer_id, quantity, unit_price, total_amount, sale_date, status, payment_amount, notes, created_by, order_ref)
+       VALUES ($1,$2,0,0,0,CURRENT_DATE,'PAID',$3,$4,$5,$6) RETURNING id`,
+      [productId, customerId, amount, note, userId, ref]
+    );
+    await client.query(
+      `INSERT INTO payments (sale_id, amount, method, payment_date, notes, created_by, payment_ref)
+       VALUES ($1,$2,'PURCHASE',CURRENT_DATE,$3,$4,$5)`,
+      [saleR.rows[0].id, amount, note, userId, ref]
+    );
+  }
+}
+
 // GET /api/intakes — kirimlar ro'yxati (status bo'yicha filtr)
 router.get('/', async (req, res, next) => {
   try {
@@ -93,10 +135,12 @@ router.get('/pdf', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const intake = await query(`
-      SELECT i.*, u.full_name as created_by_name, a.full_name as approved_by_name
+      SELECT i.*, u.full_name as created_by_name, a.full_name as approved_by_name,
+             c.name as supplier_name
       FROM product_intakes i
       LEFT JOIN users u ON i.created_by = u.id
       LEFT JOIN users a ON i.approved_by = a.id
+      LEFT JOIN customers c ON i.supplier_customer_id = c.id
       WHERE i.id = $1`, [req.params.id]);
     if (!intake.rows.length) return res.status(404).json({ error: 'Kirim topilmadi' });
 
@@ -113,7 +157,7 @@ router.get('/:id', async (req, res, next) => {
 // POST /api/intakes — yangi kirim (KIRIMCHI, OWNER, PRODUCTION_HEAD, SALES_HEAD)
 router.post('/', requireRole('OWNER', 'KIRIMCHI', 'PRODUCTION_HEAD', 'SALES_HEAD'), async (req, res, next) => {
   try {
-    const { items, notes } = req.body;
+    const { items, notes, supplier_customer_id } = req.body;
     if (!Array.isArray(items) || !items.length) {
       return res.status(400).json({ error: 'Kamida bitta mahsulot kerak' });
     }
@@ -129,8 +173,8 @@ router.post('/', requireRole('OWNER', 'KIRIMCHI', 'PRODUCTION_HEAD', 'SALES_HEAD
       await client.query('BEGIN');
       // Filial foydalanuvchisi kirim qilsa — o'sha filialniki (branch_id); zavod bo'lsa NULL.
       const intakeR = await client.query(
-        `INSERT INTO product_intakes (status, notes, created_by, branch_id) VALUES ('PENDING', $1, $2, $3) RETURNING *`,
-        [notes || null, req.user.id, req.user.branch_id || null]
+        `INSERT INTO product_intakes (status, notes, created_by, branch_id, supplier_customer_id) VALUES ('PENDING', $1, $2, $3, $4) RETURNING *`,
+        [notes || null, req.user.id, req.user.branch_id || null, supplier_customer_id || null]
       );
       const intake = intakeR.rows[0];
       for (const it of items) {
@@ -177,9 +221,25 @@ router.put('/:id/approve', requireRole('OWNER', 'SALES_HEAD'), async (req, res, 
         );
         await addColorStock(client.query, it.product_id, it.rang, it.quantity);
       }
+      // Boshqa sexdan (mijozdan) olingan bo'lsa — tovar summasini mijoz balansidan ayiramiz
+      const intake = intakeR.rows[0];
+      let creditApplied = 0;
+      if (intake.supplier_customer_id && !intake.supplier_credit_applied) {
+        const totalCost = items.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (parseFloat(it.unit_price) || 0), 0);
+        if (totalCost > 0) {
+          await applySupplierCredit(client, {
+            customerId: intake.supplier_customer_id,
+            amount: totalCost,
+            userId: req.user.id,
+            note: 'Boshqa sexdan tovar olindi — qarzdan ayirildi',
+            productId: items[0] && items[0].product_id,
+          });
+          creditApplied = 1;
+        }
+      }
       await client.query(
-        `UPDATE product_intakes SET status='APPROVED', approved_by=$1, approved_at=NOW(), updated_at=NOW() WHERE id=$2`,
-        [req.user.id, req.params.id]
+        `UPDATE product_intakes SET status='APPROVED', approved_by=$1, approved_at=NOW(), supplier_credit_applied=$3, updated_at=NOW() WHERE id=$2`,
+        [req.user.id, req.params.id, creditApplied]
       );
       await client.query('COMMIT');
       logAudit(req, {

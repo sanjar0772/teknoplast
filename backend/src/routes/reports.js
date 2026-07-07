@@ -360,15 +360,16 @@ async function buildKassa(scope, date) {
     }
 
     // 2) Shu kungi qarz to'lovlari — payment_ref bo'yicha jamlangan (bitta to'lov = bitta qator).
-    // DISCOUNT (skidka) chiqarib tashlanadi: chegirma PUL emas — kassaga kirmaydi
-    // (aks holda skidka "kassaga kirdi" bo'lib ko'rinib, kunlik pul oshiq chiqadi).
+    // DISCOUNT (skidka) va PURCHASE (boshqa sexdan tovar krediti) chiqarib tashlanadi:
+    // ikkalasi ham PUL emas — kassaga naqd sifatida kirmaydi
+    // (aks holda "kassaga kirdi" bo'lib ko'rinib, kunlik pul oshiq chiqadi).
     const pays = (await query(`
       SELECT pm.id, pm.amount, pm.method, pm.payment_ref, pm.created_at,
              COALESCE(c.name, s.customer_name) AS customer_name
       FROM payments pm
       JOIN sales s ON pm.sale_id = s.id
       LEFT JOIN customers c ON s.customer_id = c.id
-      WHERE DATE(pm.payment_date) = $1${sScope} AND pm.method <> 'DISCOUNT'
+      WHERE DATE(pm.payment_date) = $1${sScope} AND pm.method NOT IN ('DISCOUNT','PURCHASE')
       ORDER BY pm.created_at`, params)).rows;
     const pGroups = {}; const pOrder = [];
     for (const p of pays) {

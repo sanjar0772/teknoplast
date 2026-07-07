@@ -4,7 +4,7 @@
 // xarid − to'lov − vozvrat = qoldiq qarz (stats bilan mos).
 // CustomersPage va DebtsPage (Haqdorlar fakturasi) shu funksiyani ishlatadi.
 
-const PAY_METHOD = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', PAYME: '📱 Pay Me', CLICK: '⚡ Click', DISCOUNT: '🏷️ Skidka', OTHER: 'Boshqa' };
+const PAY_METHOD = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', PAYME: '📱 Pay Me', CLICK: '⚡ Click', DISCOUNT: '🏷️ Skidka', PURCHASE: '📥 Sexdan tovar', OTHER: 'Boshqa' };
 
 export function buildCustomerLedger(detail) {
   if (!detail) return { rows: [], totals: { xarid: 0, tolov: 0, vozvrat: 0, qoldiq: 0 } };

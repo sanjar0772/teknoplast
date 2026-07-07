@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { PackagePlus, X, Search, Plus, Trash2, Check, Ban, Eye, Save, Users, ChevronDown, Clock, FileDown, FileText, Pencil, RotateCcw } from 'lucide-react';
-import { intakesAPI, productsAPI, productionAPI, employeesAPI } from '../services/api';
+import { intakesAPI, productsAPI, productionAPI, employeesAPI, customersAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import clsx from 'clsx';
 import { RANGLAR, RANG_COLORS } from '../constants/colors';
@@ -41,6 +41,7 @@ function ProductIntakeTab({ canCreate, canApprove }) {
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState([]);
   const [notes, setNotes] = useState('');
+  const [supplierId, setSupplierId] = useState(''); // boshqa sexdan olinsa — mijoz (haqdor)
   const [exp, setExp] = useState({ start_date: '', end_date: '' }); // eksport sana oralig'i
   const [downloading, setDownloading] = useState('');
 
@@ -79,6 +80,13 @@ function ProductIntakeTab({ canCreate, canApprove }) {
     queryFn: () => intakesAPI.getById(detailId).then(r => r.data),
     enabled: !!detailId,
   });
+  // Yetkazib beruvchi mijozlar ro'yxati (boshqa sexdan olishда tanlanadi)
+  const { data: customersData } = useQuery({
+    queryKey: ['customers', 'intake-supplier'],
+    queryFn: () => customersAPI.getAll({ is_active: 'all' }).then(r => r.data),
+    enabled: showForm,
+  });
+  const customers = customersData?.customers || [];
 
   const products = productsData?.products || [];
   const filtered = useMemo(() => {
@@ -92,7 +100,7 @@ function ProductIntakeTab({ canCreate, canApprove }) {
     onSuccess: () => {
       toast.success('Kirim yuborildi — tasdiqlash kutilmoqda');
       qc.invalidateQueries({ queryKey: ['intakes'] });
-      setShowForm(false); setCart([]); setNotes(''); setSearch('');
+      setShowForm(false); setCart([]); setNotes(''); setSearch(''); setSupplierId('');
     },
   });
   const approveMutation = useMutation({
@@ -139,6 +147,7 @@ function ProductIntakeTab({ canCreate, canApprove }) {
     createMutation.mutate({
       items: cart.map(r => ({ product_id: r.product_id, quantity: parseInt(r.qty), rang: r.rang, unit_price: parseFloat(r.narx) || 0 })),
       notes,
+      supplier_customer_id: supplierId || null,
     });
   };
 
@@ -164,7 +173,7 @@ function ProductIntakeTab({ canCreate, canApprove }) {
           </button>
         </div>
         {canCreate && (
-          <button onClick={() => { setCart([]); setNotes(''); setShowForm(true); }} className="btn-primary btn-sm">
+          <button onClick={() => { setCart([]); setNotes(''); setSupplierId(''); setShowForm(true); }} className="btn-primary btn-sm">
             <PackagePlus size={14} /> Yangi kirim
           </button>
         )}
@@ -309,6 +318,22 @@ function ProductIntakeTab({ canCreate, canApprove }) {
               <span className="font-bold text-blue-700 text-lg">{fmt(totalValue)} so'm</span>
             </div>
           )}
+          {/* Boshqa sexdan (mijozdan) olinsa — kimdan olindi. Tasdiqlanganда tovar summasi
+              shu mijoz qarzidan ayiriladi (haqdor bo'ladi). Bo'sh qoldirsa — oddiy kirim. */}
+          <div className="border border-amber-200 bg-amber-50 rounded-xl p-3">
+            <label className="label text-amber-800">Kimdan olindi (boshqa sex / mijoz) — ixtiyoriy</label>
+            <select value={supplierId} onChange={e => setSupplierId(e.target.value)} className="select">
+              <option value="">— O'zimizniki (mijoz emas) —</option>
+              {customers.map(c => (
+                <option key={c.id} value={c.id}>{c.name}{c.phone ? ` (${c.phone})` : ''}</option>
+              ))}
+            </select>
+            {supplierId && totalValue > 0 && (
+              <p className="text-xs text-amber-700 mt-1">
+                Tasdiqlanganda <b>{fmt(totalValue)} so'm</b> shu mijoz qarzidan ayiriladi (haqdor bo'ladi).
+              </p>
+            )}
+          </div>
           <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Izoh (ixtiyoriy)" className="input" />
           <div className="flex gap-3">
             <button onClick={() => setShowForm(false)} className="btn-secondary flex-1">Bekor</button>
@@ -328,6 +353,12 @@ function ProductIntakeTab({ canCreate, canApprove }) {
               <span className="text-sm text-gray-500">Kirituvchi: {detail.intake.created_by_name}</span>
               {detail.intake.approved_by_name && <span className="text-sm text-gray-500">· Tasdiqladi: {detail.intake.approved_by_name}</span>}
             </div>
+            {detail.intake.supplier_name && (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                📥 Boshqa sexdan olindi: <b>{detail.intake.supplier_name}</b>
+                {detail.intake.supplier_credit_applied ? ' — summa mijoz qarzidan ayirildi' : ' — tasdiqlanganda summa qarzidan ayiriladi'}
+              </p>
+            )}
             {detail.intake.notes && <p className="text-sm text-gray-600">Izoh: {detail.intake.notes}</p>}
             <div className="border border-gray-100 rounded-xl overflow-hidden">
               <table className="table text-sm">

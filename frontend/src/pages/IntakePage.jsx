@@ -173,9 +173,7 @@ function ProductIntakeTab({ canCreate, canApprove }) {
         `<td style="text-align:right">${lv > 0 ? money(lv) : '—'}</td></tr>`;
     }).join('');
     const statusLabel = STATUS[it.status]?.label || it.status;
-    const win = window.open('', '_blank', 'width=820,height=640');
-    if (!win) { toast.error('Chop etish oynasi ochilmadi (bloklangan)'); return; }
-    win.document.write(
+    const html =
       `<!doctype html><html><head><meta charset="utf-8"><title>Kirim hujjati</title>` +
       `<style>body{font-family:Arial,sans-serif;padding:24px;color:#111}h1{font-size:22px;margin:0;text-align:center}` +
       `.sub{text-align:center;color:#555;font-size:13px;margin:2px 0 14px}.meta{font-size:13px;margin:3px 0}` +
@@ -191,11 +189,30 @@ function ProductIntakeTab({ canCreate, canApprove }) {
       `<table><thead><tr><th>№</th><th>Mahsulot</th><th>Rang</th><th style="text-align:right">Miqdor</th><th style="text-align:right">Narx</th><th style="text-align:right">Qiymat</th></tr></thead><tbody>${rows}</tbody></table>` +
       `<div class="total">Jami: ${money(total)} so'm</div>` +
       `<div class="sign"><span>Topshirdi: ______________</span><span>Qabul qildi: ______________</span></div>` +
-      `</body></html>`
-    );
-    win.document.close();
-    win.focus();
-    setTimeout(() => { try { win.print(); } catch {} }, 250);
+      `</body></html>`;
+    // Yashirin iframe orqali chop etamiz — Electron desktop ilovada window.open bloklanadi.
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+    const cleanup = () => { try { document.body.removeChild(iframe); } catch {} };
+    setTimeout(() => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch (e) {
+        toast.error('Chop etib bo\'lmadi');
+      }
+      setTimeout(cleanup, 2000);
+    }, 300);
   };
 
   return (

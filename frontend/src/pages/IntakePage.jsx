@@ -129,10 +129,13 @@ function ProductIntakeTab({ canCreate, canApprove }) {
     const isResaleP = p.is_resale === 1 || p.is_resale === true;
     const baseNarx = isResaleP && parseFloat(p.cost_price) > 0 ? p.cost_price : p.price;
     const defaultNarx = parseFloat(baseNarx) > 0 ? String(Math.round(baseNarx)) : '';
-    setCart(c => [...c, { rowId: newRowId(), product_id: p.id, name: p.name, stock: p.stock_quantity, rang: '', qty: 1, narx: defaultNarx }]);
+    // Yangi mahsulot ro'yxat TEPASIGA qo'shiladi — oxirgi tanlangan eng yuqorida turadi,
+    // birinchi tanlangan pastga tushadi.
+    setCart(c => [{ rowId: newRowId(), product_id: p.id, name: p.name, stock: p.stock_quantity, rang: '', qty: 1, narx: defaultNarx }, ...c]);
     // Mahsulotга yetkazib beruvchi biriktirilgan bo'lsa — "Kimdan olindi" avtomatik to'ladi
     if (p.supplier_customer_id) setSupplierId(p.supplier_customer_id);
-    // setSearch ni tozalamaymiz — foydalanuvchi ketma-ket bir nechta mahsulot qo'sha olsin
+    // Tanlangandan keyin qidiruvni tozalaymiz — pastdagi ro'yxat yopiladi (tanlangan pastdan olib tashlanadi)
+    setSearch('');
   };
   const updateRow = (rowId, field, value) => {
     setCart(c => c.map(r => r.rowId === rowId ? { ...r, [field]: value } : r));

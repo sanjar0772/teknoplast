@@ -53,9 +53,10 @@ async function applySupplierCredit(client, { customerId, amount, userId, note, p
 // GET /api/intakes — kirimlar ro'yxati (status bo'yicha filtr)
 router.get('/', async (req, res, next) => {
   try {
-    const { status } = req.query;
+    const { status, supplier_only } = req.query;
     let sql = `
       SELECT i.*, u.full_name as created_by_name, a.full_name as approved_by_name,
+             c.name as supplier_name,
              (SELECT COUNT(*) FROM intake_items WHERE intake_id = i.id) as item_count,
              (SELECT COALESCE(SUM(quantity),0) FROM intake_items WHERE intake_id = i.id) as total_qty,
              (SELECT COALESCE(SUM(quantity * COALESCE(unit_price,0)),0) FROM intake_items WHERE intake_id = i.id) as total_value,
@@ -65,10 +66,13 @@ router.get('/', async (req, res, next) => {
       FROM product_intakes i
       LEFT JOIN users u ON i.created_by = u.id
       LEFT JOIN users a ON i.approved_by = a.id
+      LEFT JOIN customers c ON i.supplier_customer_id = c.id
       WHERE 1=1
     `;
     const params = [];
     if (status) { sql += ` AND i.status = $${params.length + 1}`; params.push(status); }
+    // Faqat boshqa sexdan (mijozdan) olingan kirimlar (rad etilganlar chiqarib tashlanadi)
+    if (supplier_only === '1' || supplier_only === 'true') { sql += ` AND i.supplier_customer_id IS NOT NULL AND i.status <> 'REJECTED'`; }
     // FILIAL AJRATISH: filial faqat o'z kirimlarini; zavod faqat zavodnikini
     if (req.user.branch_id) { sql += ` AND i.branch_id = $${params.length + 1}`; params.push(req.user.branch_id); }
     else { sql += ` AND i.branch_id IS NULL`; }
@@ -79,10 +83,11 @@ router.get('/', async (req, res, next) => {
 });
 
 // Kirimlarni (intake_items yassilangan) olish — Excel/PDF eksport uchun
-async function fetchIntakeRows({ status, start_date, end_date, branchId }) {
+async function fetchIntakeRows({ status, start_date, end_date, branchId, supplier_only }) {
   let sql = `
     SELECT i.id, i.status, i.notes, i.created_at, i.approved_at,
            u.full_name AS created_by_name, a.full_name AS approved_by_name,
+           c.name AS supplier_name,
            it.quantity, COALESCE(it.unit_price, 0) AS unit_price,
            (it.quantity * COALESCE(it.unit_price, 0)) AS line_value,
            COALESCE(it.rang, p.rang) AS rang,
@@ -92,12 +97,14 @@ async function fetchIntakeRows({ status, start_date, end_date, branchId }) {
     LEFT JOIN products p ON it.product_id = p.id
     LEFT JOIN users u ON i.created_by = u.id
     LEFT JOIN users a ON i.approved_by = a.id
+    LEFT JOIN customers c ON i.supplier_customer_id = c.id
     WHERE 1=1`;
   const params = [];
   let idx = 1;
   if (status)     { sql += ` AND i.status = $${idx++}`; params.push(status); }
   if (start_date) { sql += ` AND DATE(i.created_at) >= $${idx++}`; params.push(start_date); }
   if (end_date)   { sql += ` AND DATE(i.created_at) <= $${idx++}`; params.push(end_date); }
+  if (supplier_only) { sql += ` AND i.supplier_customer_id IS NOT NULL AND i.status <> 'REJECTED'`; }
   // FILIAL AJRATISH: filial faqat o'z kirimlari; zavod faqat zavodnikini
   if (branchId) { sql += ` AND i.branch_id = $${idx++}`; params.push(branchId); }
   else { sql += ` AND i.branch_id IS NULL`; }
@@ -108,10 +115,11 @@ async function fetchIntakeRows({ status, start_date, end_date, branchId }) {
 // GET /api/intakes/excel — kirimlar Excel hisoboti
 router.get('/excel', async (req, res, next) => {
   try {
-    const { status, start_date, end_date } = req.query;
-    const rows = await fetchIntakeRows({ status, start_date, end_date, branchId: req.user.branch_id || null });
+    const { status, start_date, end_date, supplier_only } = req.query;
+    const supplierOnly = supplier_only === '1' || supplier_only === 'true';
+    const rows = await fetchIntakeRows({ status, start_date, end_date, branchId: req.user.branch_id || null, supplier_only: supplierOnly });
     const reportService = require('../services/reportService');
-    const buffer = await reportService.generateIntakesExcel(rows, { status, start_date, end_date });
+    const buffer = await reportService.generateIntakesExcel(rows, { status, start_date, end_date, supplier_only: supplierOnly });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="kirimlar-${start_date || 'hammasi'}_${end_date || ''}.xlsx"`);
     res.send(Buffer.from(buffer));
@@ -121,10 +129,11 @@ router.get('/excel', async (req, res, next) => {
 // GET /api/intakes/pdf — kirimlar PDF hisoboti
 router.get('/pdf', async (req, res, next) => {
   try {
-    const { status, start_date, end_date } = req.query;
-    const rows = await fetchIntakeRows({ status, start_date, end_date, branchId: req.user.branch_id || null });
+    const { status, start_date, end_date, supplier_only } = req.query;
+    const supplierOnly = supplier_only === '1' || supplier_only === 'true';
+    const rows = await fetchIntakeRows({ status, start_date, end_date, branchId: req.user.branch_id || null, supplier_only: supplierOnly });
     const reportService = require('../services/reportService');
-    const buffer = await reportService.generateIntakesPDF(rows, { status, start_date, end_date });
+    const buffer = await reportService.generateIntakesPDF(rows, { status, start_date, end_date, supplier_only: supplierOnly });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="kirimlar-${start_date || 'hammasi'}_${end_date || ''}.pdf"`);
     res.send(Buffer.from(buffer));

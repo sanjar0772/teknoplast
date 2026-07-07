@@ -1084,16 +1084,18 @@ const periodLabel = (f) => {
 
 async function generateIntakesExcel(rows, filters = {}) {
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet('Kirimlar');
+  const supplierOnly = !!filters.supplier_only;
+  const sheet = workbook.addWorksheet(supplierOnly ? 'Sexdan olingan' : 'Kirimlar');
 
   sheet.columns = [
     { header: '№', key: 'num', width: 5 },
     { header: 'Sana', key: 'date', width: 14 },
+    { header: 'Kimdan', key: 'supplier', width: 22 },
     { header: 'Holat', key: 'status', width: 16 },
     { header: 'Mahsulot', key: 'product', width: 34 },
     { header: 'Rang', key: 'rang', width: 14 },
     { header: 'Miqdor', key: 'qty', width: 12 },
-    { header: "Narx (so'm/dona)", key: 'unit_price', width: 16 },
+    { header: "Kelish narxi (so'm/dona)", key: 'unit_price', width: 18 },
     { header: "Qiymat (so'm)", key: 'value', width: 16 },
     { header: 'Kiritdi', key: 'created_by', width: 20 },
     { header: 'Tasdiqladi', key: 'approved_by', width: 20 },
@@ -1107,6 +1109,7 @@ async function generateIntakesExcel(rows, filters = {}) {
     const row = sheet.addRow({
       num: i + 1,
       date: r.created_at ? new Date(r.created_at).toLocaleDateString('uz-UZ') : '',
+      supplier: r.supplier_name || '—',
       status: INTAKE_STATUS_UZ[r.status] || r.status,
       product: r.product_name || '—',
       rang: rangUz(r.rang),
@@ -1128,6 +1131,36 @@ async function generateIntakesExcel(rows, filters = {}) {
   totalRow.font = { bold: true };
   totalRow.getCell('value').numFmt = '#,##0';
 
+  // Sexdan olingan hisobotда — yetkazib beruvchi bo'yicha statistika (alohida varaq)
+  if (supplierOnly) {
+    const bySupplier = {};
+    rows.forEach(r => {
+      const key = r.supplier_name || '—';
+      if (!bySupplier[key]) bySupplier[key] = { qty: 0, sum: 0 };
+      bySupplier[key].qty += parseFloat(r.quantity || 0);
+      bySupplier[key].sum += parseFloat(r.quantity || 0) * parseFloat(r.unit_price || 0);
+    });
+    const st = workbook.addWorksheet('Statistika (kimdan)');
+    st.columns = [
+      { header: 'Kimdan', key: 'supplier', width: 30 },
+      { header: 'Jami miqdor', key: 'qty', width: 16 },
+      { header: "Jami summa (so'm)", key: 'sum', width: 20 },
+    ];
+    st.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    st.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D4ED8' } };
+    Object.entries(bySupplier).forEach(([supplier, v]) => {
+      const row = st.addRow({ supplier, qty: v.qty, sum: v.sum });
+      row.getCell('sum').numFmt = '#,##0';
+    });
+    const stTotal = st.addRow({
+      supplier: 'JAMI:',
+      qty: Object.values(bySupplier).reduce((a, v) => a + v.qty, 0),
+      sum: Object.values(bySupplier).reduce((a, v) => a + v.sum, 0),
+    });
+    stTotal.font = { bold: true };
+    stTotal.getCell('sum').numFmt = '#,##0';
+  }
+
   const buffer = await workbook.xlsx.writeBuffer();
   return buffer;
 }
@@ -1141,24 +1174,26 @@ async function generateIntakesPDF(rows, filters = {}) {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
+    const supplierOnly = !!filters.supplier_only;
     doc.fontSize(18).font('Arial-Bold').text('TEKNOPLAST', { align: 'center' });
-    doc.fontSize(12).font('Arial').text('Kirimlar hisoboti', { align: 'center' });
+    doc.fontSize(12).font('Arial').text(supplierOnly ? 'Boshqa sexdan olingan tovar hisoboti' : 'Kirimlar hisoboti', { align: 'center' });
     doc.fontSize(9).fillColor('#666').text(`Davr: ${periodLabel(filters)}   ·   Yaratildi: ${new Date().toLocaleDateString('uz-UZ')}`, { align: 'center' });
     doc.fillColor('black').moveDown(0.8);
 
     const money = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n) || 0));
 
-    // Ustun x-koordinatalari (A4, margin 40 → 40..555)
-    const col = { num: 40, date: 62, product: 116, rang: 250, qty: 300, narx: 340, value: 400, status: 490 };
+    // Ustun x-koordinatalari (A4, margin 40 → 40..555). "Kimdan" ustuni qo'shilgan.
+    const col = { num: 40, date: 58, supplier: 108, product: 170, rang: 285, qty: 322, narx: 356, value: 410, status: 495 };
     const right = 555;
 
     const drawHeader = (y) => {
       doc.font('Arial-Bold').fontSize(9).fillColor('black');
       doc.text('№', col.num, y);
       doc.text('Sana', col.date, y);
+      doc.text('Kimdan', col.supplier, y);
       doc.text('Mahsulot', col.product, y);
       doc.text('Rang', col.rang, y);
-      doc.text('Miqdor', col.qty, y);
+      doc.text('Dona', col.qty, y);
       doc.text('Narx', col.narx, y);
       doc.text('Qiymat', col.value, y);
       doc.text('Holat', col.status, y);
@@ -1167,26 +1202,28 @@ async function generateIntakesPDF(rows, filters = {}) {
     };
 
     let y = drawHeader(doc.y);
-    doc.font('Arial').fontSize(8.5);
+    doc.font('Arial').fontSize(8).fillColor('black');
     let totalQty = 0, totalValue = 0;
 
     rows.forEach((r, i) => {
-      if (y > 780) { doc.addPage(); y = drawHeader(40); doc.font('Arial').fontSize(8.5); }
+      if (y > 780) { doc.addPage(); y = drawHeader(40); doc.font('Arial').fontSize(8); }
       const qty = parseFloat(r.quantity || 0);
       const unitPrice = parseFloat(r.unit_price || 0);
       const lineValue = qty * unitPrice;
       totalQty += qty; totalValue += lineValue;
       doc.fillColor('black');
-      doc.text(String(i + 1), col.num, y, { width: 20 });
-      doc.text(r.created_at ? new Date(r.created_at).toLocaleDateString('uz-UZ') : '', col.date, y, { width: 52 });
-      doc.text(r.product_name || '—', col.product, y, { width: 132 });
-      doc.text(rangUz(r.rang), col.rang, y, { width: 48 });
-      doc.text(`${qty}`, col.qty, y, { width: 38 });
-      doc.text(unitPrice ? money(unitPrice) : '—', col.narx, y, { width: 58 });
-      doc.text(lineValue ? money(lineValue) : '—', col.value, y, { width: 88 });
-      doc.text(INTAKE_STATUS_UZ[r.status] || r.status, col.status, y, { width: 63 });
+      doc.text(String(i + 1), col.num, y, { width: 16 });
+      doc.text(r.created_at ? new Date(r.created_at).toLocaleDateString('uz-UZ') : '', col.date, y, { width: 48 });
+      doc.text(r.supplier_name || '—', col.supplier, y, { width: 60 });
+      doc.text(r.product_name || '—', col.product, y, { width: 113 });
+      doc.text(rangUz(r.rang), col.rang, y, { width: 35 });
+      doc.text(`${qty}`, col.qty, y, { width: 32 });
+      doc.text(unitPrice ? money(unitPrice) : '—', col.narx, y, { width: 52 });
+      doc.text(lineValue ? money(lineValue) : '—', col.value, y, { width: 83 });
+      doc.text(INTAKE_STATUS_UZ[r.status] || r.status, col.status, y, { width: 60 });
       const h = Math.max(
-        doc.heightOfString(r.product_name || '—', { width: 132 }),
+        doc.heightOfString(r.product_name || '—', { width: 113 }),
+        doc.heightOfString(r.supplier_name || '—', { width: 60 }),
         12
       );
       y += h + 4;
@@ -1196,6 +1233,32 @@ async function generateIntakesPDF(rows, filters = {}) {
     y += 6;
     doc.font('Arial-Bold').fontSize(10).fillColor('black');
     doc.text(`JAMI: ${rows.length} ta yozuv · ${totalQty} dona · ${money(totalValue)} so'm`, 40, y, { width: right - 40, align: 'right' });
+
+    // Sexdan olingan hisobotda — yetkazib beruvchi bo'yicha statistika
+    if (supplierOnly && rows.length) {
+      const bySupplier = {};
+      rows.forEach(r => {
+        const key = r.supplier_name || '—';
+        if (!bySupplier[key]) bySupplier[key] = { qty: 0, sum: 0 };
+        bySupplier[key].qty += parseFloat(r.quantity || 0);
+        bySupplier[key].sum += parseFloat(r.quantity || 0) * parseFloat(r.unit_price || 0);
+      });
+      y += 24;
+      if (y > 740) { doc.addPage(); y = 40; }
+      doc.font('Arial-Bold').fontSize(11).text('Kimdan bo\'yicha statistika', 40, y); y += 18;
+      doc.font('Arial-Bold').fontSize(9);
+      doc.text('Kimdan', 40, y); doc.text('Jami dona', 320, y, { width: 80, align: 'right' });
+      doc.text('Jami summa', 430, y, { width: 125, align: 'right' });
+      doc.moveTo(40, y + 13).lineTo(right, y + 13).strokeColor('#999').stroke(); y += 18;
+      doc.font('Arial').fontSize(9);
+      Object.entries(bySupplier).forEach(([supplier, v]) => {
+        if (y > 790) { doc.addPage(); y = 40; }
+        doc.text(supplier, 40, y, { width: 270 });
+        doc.text(`${v.qty}`, 320, y, { width: 80, align: 'right' });
+        doc.text(money(v.sum), 430, y, { width: 125, align: 'right' });
+        y += 16;
+      });
+    }
 
     doc.end();
   });

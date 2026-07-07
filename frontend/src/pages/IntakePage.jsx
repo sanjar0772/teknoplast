@@ -1247,6 +1247,151 @@ function WorkerOutputTab({ canApprove, canEdit }) {
   );
 }
 
+// ─── Boshqa sexdan olingan tovar (statistika) tab ─────────────────────────────
+function SupplierPurchasesTab() {
+  const [range, setRange] = useState({ start_date: '', end_date: '' });
+  const [dl, setDl] = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['intakes', 'supplier'],
+    queryFn: () => intakesAPI.getAll({ supplier_only: 1 }).then(r => r.data),
+  });
+  const all = data?.intakes || [];
+
+  // Sana bo'yicha (created_at) mijoz tomonда filtr
+  const rows = useMemo(() => all.filter(i => {
+    const d = String(i.created_at || '').slice(0, 10);
+    if (range.start_date && d < range.start_date) return false;
+    if (range.end_date && d > range.end_date) return false;
+    return true;
+  }), [all, range]);
+
+  const totals = useMemo(() => {
+    let qty = 0, sum = 0; const sup = new Set();
+    rows.forEach(i => { qty += parseFloat(i.total_qty) || 0; sum += parseFloat(i.total_value) || 0; if (i.supplier_name) sup.add(i.supplier_name); });
+    return { qty, sum, count: rows.length, suppliers: sup.size };
+  }, [rows]);
+
+  const bySupplier = useMemo(() => {
+    const m = {};
+    rows.forEach(i => {
+      const k = i.supplier_name || '—';
+      if (!m[k]) m[k] = { supplier: k, count: 0, qty: 0, sum: 0 };
+      m[k].count += 1; m[k].qty += parseFloat(i.total_qty) || 0; m[k].sum += parseFloat(i.total_value) || 0;
+    });
+    return Object.values(m).sort((a, b) => b.sum - a.sum);
+  }, [rows]);
+
+  const download = async (kind) => {
+    setDl(kind);
+    try {
+      const params = { supplier_only: 1 };
+      if (range.start_date) params.start_date = range.start_date;
+      if (range.end_date) params.end_date = range.end_date;
+      const res = kind === 'excel' ? await intakesAPI.downloadExcel(params) : await intakesAPI.downloadPdf(params);
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sexdan-olingan-${range.start_date || 'hammasi'}${range.end_date ? '_' + range.end_date : ''}.${kind === 'excel' ? 'xlsx' : 'pdf'}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { toast.error('Yuklab bo\'lmadi'); } finally { setDl(''); }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Filtr + eksport */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-gray-500 font-medium">Sana:</span>
+        <input type="date" value={range.start_date} onChange={e => setRange(r => ({ ...r, start_date: e.target.value }))} className="input text-xs py-1.5 w-36" />
+        <span className="text-gray-400 text-xs">—</span>
+        <input type="date" value={range.end_date} onChange={e => setRange(r => ({ ...r, end_date: e.target.value }))} className="input text-xs py-1.5 w-36" />
+        {(range.start_date || range.end_date) && (
+          <button onClick={() => setRange({ start_date: '', end_date: '' })} className="text-xs text-gray-400 hover:text-gray-600 underline">tozalash</button>
+        )}
+        <div className="flex-1" />
+        <button onClick={() => download('excel')} disabled={!!dl} className="btn-sm bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg px-3 flex items-center gap-1 hover:bg-emerald-100 disabled:opacity-50">
+          <FileDown size={13} /> {dl === 'excel' ? '...' : 'Excel'}
+        </button>
+        <button onClick={() => download('pdf')} disabled={!!dl} className="btn-sm bg-red-50 text-red-700 border border-red-200 rounded-lg px-3 flex items-center gap-1 hover:bg-red-100 disabled:opacity-50">
+          <FileText size={13} /> {dl === 'pdf' ? '...' : 'PDF'}
+        </button>
+      </div>
+
+      {/* Statistika kartalari */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+          <div className="text-xs text-amber-700">Jami summa (kelish)</div>
+          <div className="text-lg font-bold text-amber-800">{fmt(totals.sum)} so'm</div>
+        </div>
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+          <div className="text-xs text-blue-700">Jami miqdor</div>
+          <div className="text-lg font-bold text-blue-800">{fmt(totals.qty)} dona</div>
+        </div>
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+          <div className="text-xs text-gray-600">Kirimlar soni</div>
+          <div className="text-lg font-bold text-gray-800">{fmt(totals.count)} ta</div>
+        </div>
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+          <div className="text-xs text-gray-600">Yetkazib beruvchilar</div>
+          <div className="text-lg font-bold text-gray-800">{fmt(totals.suppliers)} ta</div>
+        </div>
+      </div>
+
+      {/* Kimdan bo'yicha statistika */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700 mb-2">Kimdan bo'yicha</h3>
+        <div className="table-container">
+          <table className="table text-sm">
+            <thead><tr><th>Kimdan</th><th className="text-right">Kirimlar</th><th className="text-right">Jami miqdor</th><th className="text-right">Jami summa</th></tr></thead>
+            <tbody>
+              {!bySupplier.length ? (
+                <tr><td colSpan={4} className="text-center py-6 text-gray-400">Ma'lumot yo'q</td></tr>
+              ) : bySupplier.map(s => (
+                <tr key={s.supplier}>
+                  <td className="font-medium">{s.supplier}</td>
+                  <td className="text-right">{fmt(s.count)}</td>
+                  <td className="text-right">{fmt(s.qty)} dona</td>
+                  <td className="text-right font-semibold text-amber-700">{fmt(s.sum)} so'm</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Batafsil ro'yxat */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700 mb-2">Batafsil</h3>
+        <div className="table-container">
+          <table className="table text-sm">
+            <thead><tr><th>Sana</th><th>Kimdan</th><th>Mahsulotlar</th><th className="text-right">Miqdor</th><th className="text-right">Summa</th><th>Holat</th></tr></thead>
+            <tbody>
+              {isLoading ? (
+                <tr><td colSpan={6} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
+              ) : !rows.length ? (
+                <tr><td colSpan={6} className="text-center py-8 text-gray-400">Boshqa sexdan olingan tovar yo'q</td></tr>
+              ) : rows.map(i => {
+                const st = STATUS[i.status] || STATUS.PENDING;
+                return (
+                  <tr key={i.id}>
+                    <td className="whitespace-nowrap">{new Date(i.created_at).toLocaleDateString('uz-UZ')}</td>
+                    <td className="font-medium">{i.supplier_name || '—'}</td>
+                    <td className="max-w-xs"><span className="text-gray-800">{i.product_list || `${i.item_count} xil`}</span></td>
+                    <td className="text-right font-semibold whitespace-nowrap">{fmt(i.total_qty)} dona</td>
+                    <td className="text-right whitespace-nowrap">{parseFloat(i.total_value) > 0 ? `${fmt(i.total_value)} so'm` : '—'}</td>
+                    <td><span className={st.cls}>{st.label}</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Asosiy sahifa ────────────────────────────────────────────────────────────
 export default function IntakePage() {
   const { isOwner, isSalesHead, isKirimchi, isProductionHead, user, activeBranch } = useAuthStore();
@@ -1256,12 +1401,15 @@ export default function IntakePage() {
   const canApprove = isOwner() || isSalesHead();
   // Tahrirlash/o'chirish — backend ruxsati bilan bir xil (OWNER/PRODUCTION_HEAD/KIRIMCHI)
   const canEdit = isOwner() || isProductionHead() || isKirimchi();
+  // Boshqa sexdan olingan tovar hisoboti — boshqaruv (ega / savdo boshlig'i)
+  const canSupplierReport = isOwner() || isSalesHead();
 
   // FILIAL kontekstida "Ishchilar ishi" YO'Q (filial xodimi YOKI EGA filialga kirgan)
   const isBranch = !!(user?.branch_id || activeBranch);
   const TABS = [
     { key: 'intake',  label: 'Mahsulot kirimi', icon: PackagePlus },
     ...(isBranch ? [] : [{ key: 'workers', label: 'Ishchilar ishi', icon: Users }]),
+    ...(canSupplierReport ? [{ key: 'supplier', label: 'Sexdan olingan', icon: FileText }] : []),
   ];
 
   return (
@@ -1297,6 +1445,9 @@ export default function IntakePage() {
       )}
       {tab === 'workers' && (
         <WorkerOutputTab canApprove={canApprove} canEdit={canEdit} />
+      )}
+      {tab === 'supplier' && (
+        <SupplierPurchasesTab />
       )}
     </div>
   );

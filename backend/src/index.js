@@ -67,7 +67,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'kirim-tasdiqlash-param-tartibi-fix', commit: 'v142' });
+  res.json({ version: 'sexdan-olingan-tovar-statistika', commit: 'v143' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

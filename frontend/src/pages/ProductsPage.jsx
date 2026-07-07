@@ -329,8 +329,8 @@ export default function ProductsPage({ embedded = false }) {
   // Savdo boshlig'i ham mahsulot ma'lumotini (nom, narx, rang...) tahrirlay oladi
   const canEdit = canWrite || isSalesHead();
   const canPrice = isOwner() || isAccountant() || isProductionHead();
-  // KIRIMCHI faqat yangi mahsulot qo'shishi mumkin
-  const canAdd = canWrite || isKirimchi();
+  // KIRIMCHI va Savdo boshlig'i yangi mahsulot qo'sha oladi
+  const canAdd = canWrite || isKirimchi() || isSalesHead();
   // Mahsulotni o'chirish — faqat ega (rahbar)
   const canDelete = isOwner();
 

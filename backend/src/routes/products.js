@@ -460,7 +460,7 @@ router.get('/turnover/pdf', async (req, res, next) => {
 });
 
 // POST /api/products
-router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
+router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI', 'SALES_HEAD'), [
   body('name').notEmpty().trim(),
   body('price').isFloat({ min: 0 }),
   body('type').notEmpty(),

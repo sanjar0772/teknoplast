@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { Html5Qrcode } from 'html5-qrcode';
-import { Plus, X, Save, Trash2, Download, Printer, ScanLine, Camera, Search, RotateCcw } from 'lucide-react';
+import { Plus, X, Save, Trash2, Download, Printer, ScanLine, Camera, Search, RotateCcw, Pencil } from 'lucide-react';
 import { productionAPI, employeesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import { RANGLAR, RANG_COLORS } from '../constants/colors';
@@ -140,6 +140,31 @@ export default function ProductionPage() {
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
+
+  // Tasdiqlanmagan (Kutilmoqda / Qaytarilgan) yozuvni tahrirlash — KIRIMCHI ham qila oladi
+  const [editRow, setEditRow] = useState(null);
+  const [editForm, setEditForm] = useState({ quantity_produced: '', rang: '' });
+  const openEditRow = (row) => {
+    setEditRow(row);
+    setEditForm({ quantity_produced: String(row.quantity_produced ?? ''), rang: row.rang || '' });
+  };
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }) => productionAPI.update(id, data),
+    onSuccess: () => {
+      toast.success('Yozuv o\'zgartirildi');
+      qc.invalidateQueries({ queryKey: ['production-daily', date] });
+      qc.invalidateQueries({ queryKey: ['production-history', historyEmpId] });
+      qc.invalidateQueries({ queryKey: ['production-summary', month] });
+      qc.invalidateQueries({ queryKey: ['production-rejected'] });
+      setEditRow(null);
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+  const saveEdit = () => {
+    const q = parseFloat(editForm.quantity_produced);
+    if (!(q >= 0)) { toast.error('Miqdor noto\'g\'ri'); return; }
+    updateMutation.mutate({ id: editRow.id, data: { quantity_produced: q, rang: editForm.rang || null } });
+  };
 
   const [entries, setEntries] = useState([]);
 
@@ -444,11 +469,11 @@ export default function ProductionPage() {
           <div className="table-container">
             <table className="table text-sm">
               <thead>
-                <tr><th>Sana</th><th>Mahsulot</th><th>Rang</th><th>Turi</th><th>Miqdor</th><th>Tarif</th><th>Haq</th><th>Holat</th></tr>
+                <tr><th>Sana</th><th>Mahsulot</th><th>Rang</th><th>Turi</th><th>Miqdor</th><th>Tarif</th><th>Haq</th><th>Holat</th>{canWrite && <th></th>}</tr>
               </thead>
               <tbody>
                 {!empHistory?.production?.length ? (
-                  <tr><td colSpan={8} className="text-center py-6 text-gray-400">Yozuv yo'q</td></tr>
+                  <tr><td colSpan={canWrite ? 9 : 8} className="text-center py-6 text-gray-400">Yozuv yo'q</td></tr>
                 ) : empHistory.production.map(row => (
                   <tr key={row.id}>
                     <td className="whitespace-nowrap">{new Date(row.production_date + 'T12:00:00').toLocaleDateString('uz-UZ')}</td>
@@ -468,8 +493,18 @@ export default function ProductionPage() {
                     <td>
                       {row.approval_status === 'APPROVED'
                         ? <span className="badge-green">Tasdiqlangan</span>
-                        : <span className="badge-yellow">Kutilmoqda</span>}
+                        : row.approval_status === 'REJECTED'
+                          ? <span className="badge bg-red-50 text-red-600" title={row.notes || ''}>Qaytarilgan</span>
+                          : <span className="badge-yellow">Kutilmoqda</span>}
                     </td>
+                    {canWrite && (
+                      <td>
+                        {row.approval_status !== 'APPROVED' && (
+                          <button onClick={() => openEditRow(row)} title="Tahrirlash"
+                            className="text-blue-500 hover:text-blue-700 p-1"><Pencil size={14} /></button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -711,11 +746,20 @@ export default function ProductionPage() {
                   </td>
                   {canWrite && (
                     <td>
-                      <button
-                        onClick={() => { if (confirm(`${row.employee_name} — ${fmt(row.quantity_produced)} dona o'chirilsinmi?`)) deleteMutation.mutate(row.id); }}
-                        disabled={deleteMutation.isPending}
-                        className="text-gray-300 hover:text-red-500 p-1"
-                      ><Trash2 size={14} /></button>
+                      <div className="flex items-center gap-1">
+                        {row.approval_status !== 'APPROVED' && (
+                          <button
+                            onClick={() => openEditRow(row)}
+                            title="Tahrirlash"
+                            className="text-blue-500 hover:text-blue-700 p-1"
+                          ><Pencil size={14} /></button>
+                        )}
+                        <button
+                          onClick={() => { if (confirm(`${row.employee_name} — ${fmt(row.quantity_produced)} dona o'chirilsinmi?`)) deleteMutation.mutate(row.id); }}
+                          disabled={deleteMutation.isPending}
+                          className="text-gray-300 hover:text-red-500 p-1"
+                        ><Trash2 size={14} /></button>
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -915,6 +959,43 @@ export default function ProductionPage() {
                 <input value={scanManual} onChange={e => setScanManual(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleScannedEmp(scanManual)}
                   placeholder="Yoki kodni qo'lda: teknoplast-emp-..." className="input pl-8 text-sm" autoFocus />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tasdiqlanmagan yozuvni tahrirlash modali */}
+      {editRow && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setEditRow(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-900">Yozuvni tahrirlash</h3>
+              <button onClick={() => setEditRow(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <div className="space-y-4">
+              <div className="text-sm text-gray-500">
+                <b className="text-gray-800">{editRow.employee_name || ''}</b> · {editRow.product_name || '—'}
+              </div>
+              <div>
+                <label className="label">Miqdor (dona) *</label>
+                <input type="number" min="0" value={editForm.quantity_produced}
+                  onChange={e => setEditForm(f => ({ ...f, quantity_produced: e.target.value }))}
+                  onFocus={e => e.target.select()} className="input" />
+              </div>
+              <div>
+                <label className="label">Rang</label>
+                <select value={editForm.rang} onChange={e => setEditForm(f => ({ ...f, rang: e.target.value }))} className="select">
+                  <option value="">— Rangsiz —</option>
+                  {RANGLAR.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setEditRow(null)} className="btn-secondary flex-1">Bekor</button>
+                <button onClick={saveEdit} disabled={updateMutation.isPending} className="btn-primary flex-1">
+                  <Save size={14} /> {updateMutation.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
+                </button>
               </div>
             </div>
           </div>

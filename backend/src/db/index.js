@@ -929,6 +929,9 @@ if (USE_PG) {
       `ALTER TABLE product_intakes ADD COLUMN supplier_customer_id TEXT`,
       // Kredit ikki marta yozilmasin uchun bayroq.
       `ALTER TABLE product_intakes ADD COLUMN supplier_credit_applied INTEGER DEFAULT 0`,
+      // Mahsulotning doimiy yetkazib beruvchi mijozi — kirimda mahsulot tanlanganда
+      // "kimdan olindi" avtomatik to'lishi uchun.
+      `ALTER TABLE products ADD COLUMN supplier_customer_id TEXT`,
     ];
     for (const m of migrations) {
       try {

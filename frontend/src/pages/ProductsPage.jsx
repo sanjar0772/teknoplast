@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { Plus, X, Package, DollarSign, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory, Calendar, CheckSquare, Square, FileText, FileSpreadsheet, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
-import { productsAPI } from '../services/api';
+import { productsAPI, customersAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import { RANGLAR, RANG_COLORS } from '../constants/colors';
 
@@ -229,6 +229,11 @@ export default function ProductsPage({ embedded = false }) {
     queryFn: () => productsAPI.getAll({ is_active: 'all', ...dateFilter }).then(r => r.data),
   });
 
+  const { data: customersData } = useQuery({
+    queryKey: ['customers', 'product-supplier'],
+    queryFn: () => customersAPI.getAll({ is_active: 'all' }).then(r => r.data),
+  });
+  const customers = customersData?.customers || [];
   const { data: rawMats } = useQuery({
     queryKey: ['raw-materials'],
     queryFn: () => productsAPI.getRawMaterials().then(r => r.data),
@@ -702,11 +707,23 @@ export default function ProductsPage({ embedded = false }) {
               <span className="text-sm font-medium text-amber-800">Boshqa sexdan olinadigan tovar (qayta sotish)</span>
             </label>
             {isResale && (
-              <div>
-                <label className="label">Kelish narxi (so'm) — biz to'laymiz</label>
-                <input {...register('cost_price', { setValueAs: v => parseFloat(String(v).replace(/\s/g,'').replace(/,/g,'')) || 0 })} type="text" inputMode="decimal" className="input" placeholder="masalan: 10 000" />
-                <p className="text-xs text-amber-700 mt-1">Yuqoridagi "Narxi" — biz sotadigan narx (ustiga qo'yib).</p>
-              </div>
+              <>
+                <div>
+                  <label className="label">Kelish narxi (so'm) — biz to'laymiz</label>
+                  <input {...register('cost_price', { setValueAs: v => parseFloat(String(v).replace(/\s/g,'').replace(/,/g,'')) || 0 })} type="text" inputMode="decimal" className="input" placeholder="masalan: 10 000" />
+                  <p className="text-xs text-amber-700 mt-1">Yuqoridagi "Narxi" — biz sotadigan narx (ustiga qo'yib).</p>
+                </div>
+                <div>
+                  <label className="label">Kimdan olinadi (yetkazib beruvchi mijoz)</label>
+                  <select {...register('supplier_customer_id')} className="select">
+                    <option value="">— Tanlang (ixtiyoriy) —</option>
+                    {customers.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}{c.phone ? ` (${c.phone})` : ''}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-amber-700 mt-1">Kirimda shu mahsulotni tanlaganingizda "Kimdan olindi" avtomatik shu mijoz bo'ladi.</p>
+                </div>
+              </>
             )}
           </div>
           <div>

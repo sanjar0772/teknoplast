@@ -469,18 +469,19 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI', 'SALES_HEAD
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { name, type, description, price, cost_price, is_resale, daily_production, stock_quantity, raw_material_id, unit, rang, kind, created_at } = req.body;
+    const { name, type, description, price, cost_price, is_resale, supplier_customer_id, daily_production, stock_quantity, raw_material_id, unit, rang, kind, created_at } = req.body;
     // Qo'shilgan sana — qo'lda kiritilsa o'sha sana, aks holda bugun
     const createdAt = created_at ? String(created_at).slice(0, 10) : new Date().toISOString();
     const initStock = parseFloat(stock_quantity) || 0;
     // Kelish narxi (boshqa sexdan olingan tovar uchun) va qayta sotish belgisi
     const costPrice = parseFloat(cost_price) || 0;
     const isResale = (is_resale === true || is_resale === 1 || is_resale === '1') ? 1 : 0;
+    const supplierId = isResale ? (supplier_customer_id || null) : null;
     // Filial foydalanuvchisi yaratsa — mahsulot o'sha filialniki (branch_id); zavod bo'lsa NULL.
     const branchId = req.user.branch_id || null;
     const result = await query(
-      'INSERT INTO products (name, type, description, price, cost_price, is_resale, daily_production, stock_quantity, raw_material_id, unit, rang, kind, created_at, branch_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
-      [name, type, description, price, costPrice, isResale, daily_production || 0, initStock, raw_material_id || null, unit || 'dona', rang || null, kind === 'KOMPONENT' ? 'KOMPONENT' : 'TAYYOR', createdAt, branchId]
+      'INSERT INTO products (name, type, description, price, cost_price, is_resale, daily_production, stock_quantity, raw_material_id, unit, rang, kind, created_at, branch_id, supplier_customer_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
+      [name, type, description, price, costPrice, isResale, daily_production || 0, initStock, raw_material_id || null, unit || 'dona', rang || null, kind === 'KOMPONENT' ? 'KOMPONENT' : 'TAYYOR', createdAt, branchId, supplierId]
     );
     // Boshlang'ich ombor bo'lsa — mahsulotning O'Z rangi buketiga ham yozamiz
     // (aks holda umumiy qoldiq bor, lekin rang bo'yicha sotib bo'lmaydigan "fantom ombor" hosil bo'ladi)
@@ -499,7 +500,7 @@ router.put('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'SALES_HEAD', 'ACCOU
       return res.status(400).json({ error: 'Yangilanishlar bo\'sh' });
     }
     // Ruxsat etilgan maydonlar (XSS / SQL injectiondan himoya)
-    const allowed = ['name', 'base_name', 'razmer', 'rang', 'type', 'description', 'price', 'cost_price', 'is_resale', 'daily_production', 'stock_quantity', 'unit', 'is_active', 'kind'];
+    const allowed = ['name', 'base_name', 'razmer', 'rang', 'type', 'description', 'price', 'cost_price', 'is_resale', 'supplier_customer_id', 'daily_production', 'stock_quantity', 'unit', 'is_active', 'kind'];
     // Filial foydalanuvchisi faqat O'Z mahsulotlarini o'zgartira oladi; zavod — faqat zavodnikini.
     const scope = req.user.branch_id || null;
     const client = await require('../db').getClient();
@@ -670,25 +671,28 @@ router.post('/import-pricelist', requireRole('OWNER'), async (req, res, next) =>
 // PUT /api/products/:id — yagona mahsulotni yangilash
 router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'SALES_HEAD'), async (req, res, next) => {
   try {
-    const { name, type, description, price, cost_price, is_resale, daily_production, stock_quantity, raw_material_id, unit, is_active, rang, created_at } = req.body;
+    const { name, type, description, price, cost_price, is_resale, supplier_customer_id, daily_production, stock_quantity, raw_material_id, unit, is_active, rang, created_at } = req.body;
     // Qo'shilgan sana — berilsa yangilanadi, aks holda eskisi qoladi
     const createdAt = created_at ? String(created_at).slice(0, 10) : null;
     const newStock = parseFloat(stock_quantity) || 0;
     const newRang = rang || '';
     const costPrice = parseFloat(cost_price) || 0;
     const isResale = (is_resale === true || is_resale === 1 || is_resale === '1') ? 1 : 0;
+    const supplierId = isResale ? (supplier_customer_id || null) : null;
 
     const client = await require('../db').getClient();
     try {
       await client.query('BEGIN');
       // Filial foydalanuvchisi faqat O'Z mahsulotini o'zgartira oladi (zavodnikiga tegmaydi).
       const scope = req.user.branch_id || null;
-      const updParams = [name, type, description, price, daily_production, newStock, raw_material_id, unit, is_active, rang || null, costPrice, isResale, createdAt, req.params.id];
-      let whereCond = 'id=$14';
-      if (scope) { updParams.push(scope); whereCond += ' AND branch_id=$15'; }
+      // MUHIM: SQLite adapter $N ni ko'rinish tartibida ? ga almashtiradi — parametrlar
+      // SQL'dagi ko'rinish tartibida bo'lishi shart.
+      const updParams = [name, type, description, price, daily_production, newStock, raw_material_id, unit, is_active, rang || null, costPrice, isResale, supplierId, createdAt, req.params.id];
+      let whereCond = 'id=$15';
+      if (scope) { updParams.push(scope); whereCond += ' AND branch_id=$16'; }
       else { whereCond += ' AND branch_id IS NULL'; }
       const result = await client.query(
-        `UPDATE products SET name=$1,type=$2,description=$3,price=$4,daily_production=$5,stock_quantity=$6,raw_material_id=$7,unit=$8,is_active=$9,rang=$10,cost_price=$11,is_resale=$12,created_at=COALESCE($13, created_at),updated_at=NOW() WHERE ${whereCond} RETURNING *`,
+        `UPDATE products SET name=$1,type=$2,description=$3,price=$4,daily_production=$5,stock_quantity=$6,raw_material_id=$7,unit=$8,is_active=$9,rang=$10,cost_price=$11,is_resale=$12,supplier_customer_id=$13,created_at=COALESCE($14, created_at),updated_at=NOW() WHERE ${whereCond} RETURNING *`,
         updParams
       );
       if (!result.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Mahsulot topilmadi' }); }

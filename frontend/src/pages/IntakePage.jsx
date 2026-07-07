@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { PackagePlus, X, Search, Plus, Trash2, Check, Ban, Eye, Save, Users, ChevronDown, Clock, FileDown, FileText, Pencil, RotateCcw } from 'lucide-react';
+import { PackagePlus, X, Search, Plus, Trash2, Check, Ban, Eye, Save, Users, ChevronDown, Clock, FileDown, FileText, Pencil, RotateCcw, Printer } from 'lucide-react';
 import { intakesAPI, productsAPI, productionAPI, employeesAPI, customersAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import clsx from 'clsx';
@@ -156,6 +156,46 @@ function ProductIntakeTab({ canCreate, canApprove }) {
       notes,
       supplier_customer_id: supplierId || null,
     });
+  };
+
+  // Kirim hujjatini chop etish (Batafsil oynasidagi "Chop etish" tugmasi)
+  const printIntake = () => {
+    if (!detail) return;
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const money = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
+    const it = detail.intake;
+    const total = detail.items.reduce((s, x) => s + (parseFloat(x.quantity) || 0) * (parseFloat(x.unit_price) || 0), 0);
+    const rows = detail.items.map((x, i) => {
+      const lv = (parseFloat(x.quantity) || 0) * (parseFloat(x.unit_price) || 0);
+      return `<tr><td>${i + 1}</td><td>${esc(x.product_name)}</td><td>${x.rang ? esc(x.rang) : 'Rangsiz'}</td>` +
+        `<td style="text-align:right">${money(x.quantity)} ${esc(x.unit || 'dona')}</td>` +
+        `<td style="text-align:right">${parseFloat(x.unit_price) > 0 ? money(x.unit_price) : '—'}</td>` +
+        `<td style="text-align:right">${lv > 0 ? money(lv) : '—'}</td></tr>`;
+    }).join('');
+    const statusLabel = STATUS[it.status]?.label || it.status;
+    const win = window.open('', '_blank', 'width=820,height=640');
+    if (!win) { toast.error('Chop etish oynasi ochilmadi (bloklangan)'); return; }
+    win.document.write(
+      `<!doctype html><html><head><meta charset="utf-8"><title>Kirim hujjati</title>` +
+      `<style>body{font-family:Arial,sans-serif;padding:24px;color:#111}h1{font-size:22px;margin:0;text-align:center}` +
+      `.sub{text-align:center;color:#555;font-size:13px;margin:2px 0 14px}.meta{font-size:13px;margin:3px 0}` +
+      `table{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}th,td{border:1px solid #999;padding:6px 8px;text-align:left}` +
+      `th{background:#eef}.total{text-align:right;font-weight:bold;font-size:16px;margin-top:12px}` +
+      `.sign{margin-top:44px;display:flex;justify-content:space-between;font-size:13px}</style></head><body>` +
+      `<h1>TEKNOPLAST</h1><div class="sub">Kirim hujjati</div>` +
+      `<div class="meta">Sana: <b>${it.created_at ? new Date(it.created_at).toLocaleDateString('uz-UZ') : '—'}</b></div>` +
+      `<div class="meta">Holat: <b>${esc(statusLabel)}</b></div>` +
+      (it.supplier_name ? `<div class="meta">Kimdan olindi: <b>${esc(it.supplier_name)}</b></div>` : '') +
+      `<div class="meta">Kiritdi: ${esc(it.created_by_name || '—')}${it.approved_by_name ? ` &middot; Tasdiqladi: ${esc(it.approved_by_name)}` : ''}</div>` +
+      (it.notes ? `<div class="meta">Izoh: ${esc(it.notes)}</div>` : '') +
+      `<table><thead><tr><th>№</th><th>Mahsulot</th><th>Rang</th><th style="text-align:right">Miqdor</th><th style="text-align:right">Narx</th><th style="text-align:right">Qiymat</th></tr></thead><tbody>${rows}</tbody></table>` +
+      `<div class="total">Jami: ${money(total)} so'm</div>` +
+      `<div class="sign"><span>Topshirdi: ______________</span><span>Qabul qildi: ______________</span></div>` +
+      `</body></html>`
+    );
+    win.document.close();
+    win.focus();
+    setTimeout(() => { try { win.print(); } catch {} }, 250);
   };
 
   return (
@@ -404,12 +444,15 @@ function ProductIntakeTab({ canCreate, canApprove }) {
                 </tbody>
               </table>
             </div>
-            {canApprove && detail.intake.status === 'PENDING' && (
-              <div className="flex gap-3">
-                <button onClick={() => rejectMutation.mutate(detail.intake.id)} className="btn-danger flex-1"><Ban size={14} /> Rad etish</button>
-                <button onClick={() => approveMutation.mutate(detail.intake.id)} className="btn-success flex-1"><Check size={14} /> Tasdiqlash</button>
-              </div>
-            )}
+            <div className="flex gap-3">
+              <button onClick={printIntake} className="btn-secondary flex-1"><Printer size={14} /> Chop etish</button>
+              {canApprove && detail.intake.status === 'PENDING' && (
+                <>
+                  <button onClick={() => rejectMutation.mutate(detail.intake.id)} className="btn-danger flex-1"><Ban size={14} /> Rad etish</button>
+                  <button onClick={() => approveMutation.mutate(detail.intake.id)} className="btn-success flex-1"><Check size={14} /> Tasdiqlash</button>
+                </>
+              )}
+            </div>
           </div>
         )}
       </Modal>

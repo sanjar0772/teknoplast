@@ -308,8 +308,9 @@ function ProductIntakeTab({ canCreate, canApprove }) {
                       {lineValue > 0 ? `${fmt(lineValue)} so'm` : '—'}
                     </td>
                     <td>
-                      <button onClick={() => removeRow(x.rowId)} className="text-gray-300 hover:text-red-500">
-                        <Trash2 size={14} />
+                      <button onClick={() => removeRow(x.rowId)} title="O'chirish"
+                        className="flex items-center justify-center w-8 h-8 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100">
+                        <Trash2 size={16} />
                       </button>
                     </td>
                   </tr>

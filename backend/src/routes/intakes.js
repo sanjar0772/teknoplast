@@ -237,9 +237,11 @@ router.put('/:id/approve', requireRole('OWNER', 'SALES_HEAD'), async (req, res, 
           creditApplied = 1;
         }
       }
+      // MUHIM: SQLite adapter $N ni ko'rinish tartibida ? ga almashtiradi — shuning uchun
+      // parametrlar SQL'dagi ko'rinish tartibida bo'lishi shart ($1,$2,$3).
       await client.query(
-        `UPDATE product_intakes SET status='APPROVED', approved_by=$1, approved_at=NOW(), supplier_credit_applied=$3, updated_at=NOW() WHERE id=$2`,
-        [req.user.id, req.params.id, creditApplied]
+        `UPDATE product_intakes SET status='APPROVED', approved_by=$1, approved_at=NOW(), supplier_credit_applied=$2, updated_at=NOW() WHERE id=$3`,
+        [req.user.id, creditApplied, req.params.id]
       );
       await client.query('COMMIT');
       logAudit(req, {

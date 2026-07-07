@@ -134,8 +134,8 @@ function ProductIntakeTab({ canCreate, canApprove }) {
     setCart(c => [{ rowId: newRowId(), product_id: p.id, name: p.name, stock: p.stock_quantity, rang: '', qty: 1, narx: defaultNarx }, ...c]);
     // Mahsulotга yetkazib beruvchi biriktirilgan bo'lsa — "Kimdan olindi" avtomatik to'ladi
     if (p.supplier_customer_id) setSupplierId(p.supplier_customer_id);
-    // Tanlangandan keyin qidiruvni tozalaymiz — pastdagi ro'yxat yopiladi (tanlangan pastdan olib tashlanadi)
-    setSearch('');
+    // Qidiruvni TOZALAMAYMIZ — ro'yxat ochiq qoladi, ketma-ket bir nechta mahsulot tanlash mumkin
+    // (tanlangan mahsulotda "Qo'shildi" belgisi chiqadi, lekin qayta bosib ham qo'shsa bo'ladi).
   };
   const updateRow = (rowId, field, value) => {
     setCart(c => c.map(r => r.rowId === rowId ? { ...r, [field]: value } : r));

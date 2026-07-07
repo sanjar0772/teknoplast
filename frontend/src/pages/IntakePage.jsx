@@ -22,7 +22,7 @@ function Modal({ open, onClose, title, children, wide }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${wide ? 'max-w-2xl' : 'max-w-lg'} p-6 max-h-[90vh] overflow-y-auto`}>
+      <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} p-6 max-h-[90vh] overflow-y-auto`}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-gray-900">{title}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
@@ -254,16 +254,16 @@ function ProductIntakeTab({ canCreate, canApprove }) {
           {search && filtered.length === 0 && (
             <p className="text-sm text-gray-400 px-1">"{search}" topilmadi</p>
           )}
-          <div className="border border-gray-100 rounded-xl overflow-hidden">
+          <div className="border border-gray-100 rounded-xl overflow-x-auto">
             <table className="table text-sm">
               <thead>
                 <tr>
                   <th>Mahsulot</th>
-                  <th className="w-32">Rang</th>
-                  <th className="w-20">Miqdor</th>
-                  <th className="w-28">Narx (dona)</th>
-                  <th className="w-28 text-right">Qiymat</th>
-                  <th className="w-12"></th>
+                  <th className="w-28">Rang</th>
+                  <th className="w-16">Miqdor</th>
+                  <th className="w-24">Narx (dona)</th>
+                  <th className="w-24 text-right">Qiymat</th>
+                  <th className="w-14 text-center">O'chir.</th>
                 </tr>
               </thead>
               <tbody>

@@ -937,6 +937,17 @@ if (USE_PG) {
       `ALTER TABLE machine_downtime ADD COLUMN mold_product_id TEXT`,
       // Stanokda hozir o'rnatilgan qolip (oxirgi tanlangan mahsulot) — kartada ko'rsatish uchun.
       `ALTER TABLE machines ADD COLUMN current_product_id TEXT`,
+      // Smena almashish tarixi — bitta stanokda 1-smena va 2-smena operatorlari
+      // almashinganda qayd etiladi (kim ketdi, kim keldi, qachon, kim belgiladi).
+      `CREATE TABLE IF NOT EXISTS machine_shift_changes (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        machine_id TEXT NOT NULL REFERENCES machines(id),
+        from_operator_id TEXT REFERENCES employees(id),
+        to_operator_id TEXT NOT NULL REFERENCES employees(id),
+        note TEXT,
+        changed_by TEXT REFERENCES users(id),
+        changed_at TEXT DEFAULT (datetime('now'))
+      )`,
     ];
     for (const m of migrations) {
       try {

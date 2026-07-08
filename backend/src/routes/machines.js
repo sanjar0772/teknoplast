@@ -11,7 +11,7 @@ router.use(authenticate);
 router.get('/', async (req, res, next) => {
   try {
     const result = await query(`
-      SELECT m.*, e.name as operator_name, p.name as current_product_name,
+      SELECT m.*, e.name as operator_name, e.shift as operator_shift, p.name as current_product_name,
         (SELECT d.status FROM machine_downtime d WHERE d.machine_id = m.id AND d.ended_at IS NULL ORDER BY d.started_at DESC LIMIT 1) AS pause_status,
         (SELECT d.reason FROM machine_downtime d WHERE d.machine_id = m.id AND d.ended_at IS NULL ORDER BY d.started_at DESC LIMIT 1) AS pause_reason,
         (SELECT d.mold_minutes FROM machine_downtime d WHERE d.machine_id = m.id AND d.ended_at IS NULL ORDER BY d.started_at DESC LIMIT 1) AS pause_mold_minutes
@@ -303,6 +303,45 @@ router.post('/:id/downtime', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME
       await query('UPDATE machines SET status=$1, updated_at=NOW() WHERE id=$2', [st, req.params.id]);
     }
     res.status(201).json({ downtime: ins.rows[0] });
+  } catch (err) { next(err); }
+});
+
+// ── Smena almashish (1-smena/2-smena operatori almashinuvi) ───────────────
+// GET /api/machines/:id/shift-changes — almashinuv tarixi
+router.get('/:id/shift-changes', async (req, res, next) => {
+  try {
+    const result = await query(
+      `SELECT sc.*, e1.name AS from_operator_name, e2.name AS to_operator_name, u.full_name AS changed_by_name
+       FROM machine_shift_changes sc
+       LEFT JOIN employees e1 ON sc.from_operator_id = e1.id
+       LEFT JOIN employees e2 ON sc.to_operator_id = e2.id
+       LEFT JOIN users u ON sc.changed_by = u.id
+       WHERE sc.machine_id = $1
+       ORDER BY sc.changed_at DESC LIMIT 20`,
+      [req.params.id]
+    );
+    res.json({ shift_changes: result.rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/machines/:id/shift-changes — operatorni almashtirish (stanok operatorini yangilaydi + jurnalga yozadi)
+router.post('/:id/shift-changes', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async (req, res, next) => {
+  try {
+    const { to_operator_id, note } = req.body;
+    if (!to_operator_id) return res.status(400).json({ error: 'Yangi operatorni tanlang' });
+
+    const m = await query('SELECT operator_id FROM machines WHERE id = $1', [req.params.id]);
+    if (!m.rows.length) return res.status(404).json({ error: 'Mashina topilmadi' });
+    const fromOperatorId = m.rows[0].operator_id || null;
+
+    await query('UPDATE machines SET operator_id = $1, updated_at = NOW() WHERE id = $2', [to_operator_id, req.params.id]);
+
+    const ins = await query(
+      `INSERT INTO machine_shift_changes (machine_id, from_operator_id, to_operator_id, note, changed_by)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [req.params.id, fromOperatorId, to_operator_id, (note || '').trim() || null, req.user.id]
+    );
+    res.status(201).json({ shift_change: ins.rows[0] });
   } catch (err) { next(err); }
 });
 

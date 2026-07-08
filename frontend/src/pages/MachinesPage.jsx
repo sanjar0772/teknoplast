@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw, BarChart3, FileSpreadsheet, FileText, QrCode, Download } from 'lucide-react';
+import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw, BarChart3, FileSpreadsheet, FileText, QrCode, Download, Users } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { machinesAPI, employeesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
@@ -384,6 +384,85 @@ function DowntimeModal({ machine, canWrite, onClose }) {
   );
 }
 
+const shiftLabel = (s) => s === '2-SMENA' ? '2-Smena' : s === '1-SMENA' ? '1-Smena' : '';
+
+// Smena almashish — stanokning joriy operatorini (1-smena/2-smena) almashtirish + tarix
+function ShiftChangeModal({ machine, employees, canWrite, onClose }) {
+  const qc = useQueryClient();
+  const [toOperator, setToOperator] = useState('');
+  const [note, setNote] = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['machine-shift-changes', machine?.id],
+    queryFn: () => machinesAPI.getShiftChanges(machine.id).then(r => r.data),
+    enabled: !!machine,
+  });
+
+  const changeMut = useMutation({
+    mutationFn: () => machinesAPI.changeShift(machine.id, { to_operator_id: toOperator, note }),
+    onSuccess: () => {
+      toast.success('Smena almashtirildi');
+      setToOperator(''); setNote('');
+      qc.invalidateQueries({ queryKey: ['machine-shift-changes', machine.id] });
+      qc.invalidateQueries({ queryKey: ['machines'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+
+  if (!machine) return null;
+  const rows = data?.shift_changes || [];
+
+  return (
+    <Modal open onClose={onClose} title={`👥 Smena almashtirish — ${machine.name}`}>
+      <div className="space-y-4">
+        <div className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+          Hozirgi operator: <b className="text-gray-900">{machine.operator_name || 'Belgilanmagan'}</b>
+          {machine.operator_shift && <span className="text-xs text-gray-400"> ({shiftLabel(machine.operator_shift)})</span>}
+        </div>
+
+        {canWrite && (
+          <div className="space-y-2">
+            <div>
+              <label className="label text-xs">Yangi operator (smenaga kiruvchi) *</label>
+              <select value={toOperator} onChange={e => setToOperator(e.target.value)} className="select" autoFocus>
+                <option value="">Tanlang...</option>
+                {(employees?.employees || []).map(e => (
+                  <option key={e.id} value={e.id}>{e.name}{e.shift ? ` (${shiftLabel(e.shift)})` : ''}</option>
+                ))}
+              </select>
+            </div>
+            <input value={note} onChange={e => setNote(e.target.value)} className="input" placeholder="Izoh (ixtiyoriy)" />
+            <button
+              onClick={() => { if (!toOperator) return toast.error('Operatorni tanlang'); changeMut.mutate(); }}
+              disabled={changeMut.isPending} className="btn-primary w-full">
+              {changeMut.isPending ? 'Saqlanmoqda...' : 'Smenani almashtirish'}
+            </button>
+          </div>
+        )}
+
+        <div className="border-t pt-3">
+          <div className="text-xs font-semibold text-gray-600 mb-1.5">Smena almashish tarixi</div>
+          {isLoading ? (
+            <p className="text-center text-gray-400 py-4 text-sm">Yuklanmoqda...</p>
+          ) : !rows.length ? (
+            <p className="text-center text-gray-400 py-4 text-sm">Hali almashinuv bo'lmagan</p>
+          ) : (
+            <div className="space-y-2 max-h-56 overflow-y-auto">
+              {rows.map(r => (
+                <div key={r.id} className="text-sm border-b border-gray-50 last:border-0 pb-1.5">
+                  <div className="text-gray-800">{r.from_operator_name || '—'} → <b>{r.to_operator_name}</b></div>
+                  <div className="text-xs text-gray-400">{fmtDT(r.changed_at)}{r.changed_by_name ? ` · ${r.changed_by_name}` : ''}</div>
+                  {r.note && <div className="text-xs text-gray-600">{r.note}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // Pause sababi — Nosoz / Buzilgan / Qalip almashmoqda (qalipga o'rtacha vaqt)
 function PauseReasonModal({ machine, pending, onConfirm, onClose }) {
   const [kind, setKind] = useState('NOSOZ');
@@ -474,6 +553,7 @@ export default function MachinesPage() {
   const [now, setNow] = useState(() => new Date());   // tushlik vaqtini jonli kuzatish
   const [qrMachine, setQrMachine] = useState(null);   // bitta stanok QR begiki
   const [qrBulk, setQrBulk] = useState(false);        // hamma stanok QR begiklari
+  const [shiftFor, setShiftFor] = useState(null);     // smena almashtirish modali (qaysi stanok)
 
   // Begiklarni bitta tugma bilan PNG qilib yuklab olish (Xodimlar sahifasidagi kabi)
   const downloadMachineBadges = async (list) => {
@@ -710,7 +790,12 @@ export default function MachinesPage() {
               <div className="space-y-1.5 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-500">Operator:</span>
-                  <span>{m.operator_name || '—'}</span>
+                  <span>
+                    {m.operator_name || '—'}
+                    {m.operator_name && m.operator_shift && (
+                      <span className="text-xs text-gray-400"> ({shiftLabel(m.operator_shift)})</span>
+                    )}
+                  </span>
                 </div>
                 {m.current_product_name && (
                   <div className="flex justify-between">
@@ -730,8 +815,13 @@ export default function MachinesPage() {
                 )}
               </div>
 
+              <button onClick={() => setShiftFor(m)}
+                className="btn-sm w-full mt-3 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded-lg px-2 flex items-center gap-1.5 justify-center">
+                <Users size={14} /> Smena almashtirish
+              </button>
+
               {canWrite && (
-                <div className="flex gap-2 mt-4">
+                <div className="flex gap-2 mt-2">
                   <button onClick={() => openEdit(m)} className="btn-secondary btn-sm flex-1">Tahrirlash</button>
                   <select
                     value={m.status}
@@ -840,6 +930,14 @@ export default function MachinesPage() {
 
       {cycleFor && <CycleTimeModal machine={cycleFor} canWrite={canWrite} onClose={() => setCycleFor(null)} />}
       {downtimeFor && <DowntimeModal machine={downtimeFor} canWrite={canWrite} onClose={() => setDowntimeFor(null)} />}
+      {shiftFor && (
+        <ShiftChangeModal
+          machine={machines.find(x => x.id === shiftFor.id) || shiftFor}
+          employees={employees}
+          canWrite={canWrite}
+          onClose={() => setShiftFor(null)}
+        />
+      )}
       {pauseFor && (
         <PauseReasonModal
           machine={pauseFor}

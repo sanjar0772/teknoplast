@@ -932,6 +932,11 @@ if (USE_PG) {
       // Mahsulotning doimiy yetkazib beruvchi mijozi — kirimda mahsulot tanlanganда
       // "kimdan olindi" avtomatik to'lishi uchun.
       `ALTER TABLE products ADD COLUMN supplier_customer_id TEXT`,
+      // Qalip almashishda ALMASHTIRILAYOTGAN qolip (mahsulot) — QOLIP sababi bilan
+      // to'xtatilganda majburiy tanlanadi.
+      `ALTER TABLE machine_downtime ADD COLUMN mold_product_id TEXT`,
+      // Stanokda hozir o'rnatilgan qolip (oxirgi tanlangan mahsulot) — kartada ko'rsatish uchun.
+      `ALTER TABLE machines ADD COLUMN current_product_id TEXT`,
     ];
     for (const m of migrations) {
       try {

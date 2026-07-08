@@ -2,7 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw, BarChart3, FileSpreadsheet, FileText } from 'lucide-react';
+import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw, BarChart3, FileSpreadsheet, FileText, QrCode, Download } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { machinesAPI, employeesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -128,6 +129,37 @@ function Modal({ open, onClose, title, children }) {
           <button onClick={onClose}><X size={20} className="text-gray-400" /></button>
         </div>
         {children}
+      </div>
+    </div>
+  );
+}
+
+// Stanok QR begiki — chop etib mashinaga yopishtirish uchun
+function MachineBadgeCard({ machine }) {
+  return (
+    <div style={{
+      width: '7cm', border: '2px solid #2563eb', borderRadius: '6px',
+      padding: '10px', fontFamily: 'Arial, sans-serif', background: 'white',
+      display: 'inline-block', margin: '4px', verticalAlign: 'top',
+      boxSizing: 'border-box', pageBreakInside: 'avoid',
+    }}>
+      <div style={{ textAlign: 'center', borderBottom: '1px solid #e5e7eb', paddingBottom: '5px', marginBottom: '5px' }}>
+        <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#1d4ed8', letterSpacing: '1px' }}>TEKNOPLAST</div>
+        <div style={{ fontSize: '8px', color: '#9ca3af' }}>Stanok / Mashina</div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '6px' }}>
+        <QRCodeSVG value={`teknoplast-machine-${machine.id}`} size={85} level="M" includeMargin={false} />
+      </div>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#111827', marginBottom: '4px' }}>{machine.name}</div>
+        <span style={{
+          background: machine.type === 'MASHINA' ? '#fef3c7' : '#dbeafe',
+          color: machine.type === 'MASHINA' ? '#92400e' : '#1d4ed8',
+          padding: '1px 7px', borderRadius: '4px', fontSize: '9px', fontWeight: 'bold',
+        }}>
+          {machine.type === 'MASHINA' ? 'Mashina' : 'Stanok'}
+        </span>
+        <div style={{ fontSize: '8px', color: '#d1d5db', marginTop: '4px' }}>ID: {String(machine.id).slice(0, 8)}</div>
       </div>
     </div>
   );
@@ -339,6 +371,7 @@ function DowntimeModal({ machine, canWrite, onClose }) {
                     <span className="text-xs text-gray-400">{d.ended_at ? 'Yopilgan' : 'Davom etmoqda'}</span>
                   </div>
                   <div className="text-xs text-gray-500 mt-0.5">{fmtDT(d.started_at)} → {d.ended_at ? fmtDT(d.ended_at) : '...'}</div>
+                  {d.mold_product_name && <div className="text-xs text-blue-700 mt-0.5">Qolip: {d.mold_product_name}</div>}
                   {d.reason && <div className="text-xs text-gray-700 mt-0.5">Sabab: {d.reason}</div>}
                   {d.recorded_by_name && <div className="text-[11px] text-gray-400">Qayd etdi: {d.recorded_by_name}</div>}
                 </div>
@@ -356,6 +389,14 @@ function PauseReasonModal({ machine, pending, onConfirm, onClose }) {
   const [kind, setKind] = useState('NOSOZ');
   const [reason, setReason] = useState('');
   const [moldMin, setMoldMin] = useState('');
+  const [moldProductId, setMoldProductId] = useState('');
+
+  const { data: prodData } = useQuery({
+    queryKey: ['products-all-for-mold'],
+    queryFn: () => productsAPI.getAll({ is_active: 'all' }).then(r => r.data),
+    enabled: !!machine,
+  });
+  const products = (prodData?.products || []).filter(p => p.kind !== 'KOMPONENT');
 
   const opts = [
     { v: 'NOSOZ',    label: 'Nosoz',             Icon: Wrench,        on: 'border-yellow-400 bg-yellow-50 text-yellow-700' },
@@ -364,11 +405,13 @@ function PauseReasonModal({ machine, pending, onConfirm, onClose }) {
   ];
 
   const confirm = () => {
+    if (kind === 'QOLIP' && !moldProductId) return toast.error("Almashtirilayotgan qolipni (mahsulotni) tanlang");
     if (kind === 'QOLIP' && !(parseFloat(moldMin) >= 0)) return toast.error("Qalip almashish vaqtini kiriting (daqiqa)");
+    const moldProductName = products.find(p => p.id === moldProductId)?.name || '';
     const composed = kind === 'QOLIP'
-      ? `Qalip almashmoqda${moldMin ? ` (~${moldMin} daqiqa)` : ''}${reason ? ' — ' + reason : ''}`
+      ? `Qalip almashmoqda${moldProductName ? ` → ${moldProductName}` : ''}${moldMin ? ` (~${moldMin} daqiqa)` : ''}${reason ? ' — ' + reason : ''}`
       : (reason || (kind === 'BUZILGAN' ? 'Buzilgan' : 'Nosoz'));
-    onConfirm({ pause_kind: kind, reason: composed, mold_minutes: kind === 'QOLIP' ? moldMin : null });
+    onConfirm({ pause_kind: kind, reason: composed, mold_minutes: kind === 'QOLIP' ? moldMin : null, product_id: kind === 'QOLIP' ? moldProductId : null });
   };
 
   return (
@@ -387,11 +430,20 @@ function PauseReasonModal({ machine, pending, onConfirm, onClose }) {
         </div>
 
         {kind === 'QOLIP' && (
-          <div>
-            <label className="label text-xs">O'rtacha qalip almashish vaqti (daqiqa) *</label>
-            <input type="number" min="0" step="1" value={moldMin}
-              onChange={e => setMoldMin(e.target.value)} className="input" placeholder="masalan: 15" autoFocus />
-          </div>
+          <>
+            <div>
+              <label className="label text-xs">Qaysi qolipga (mahsulotga) almashtirilyapti? *</label>
+              <select value={moldProductId} onChange={e => setMoldProductId(e.target.value)} className="select" autoFocus>
+                <option value="">Tanlang...</option>
+                {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label text-xs">O'rtacha qalip almashish vaqti (daqiqa) *</label>
+              <input type="number" min="0" step="1" value={moldMin}
+                onChange={e => setMoldMin(e.target.value)} className="input" placeholder="masalan: 15" />
+            </div>
+          </>
         )}
 
         <div>
@@ -420,6 +472,67 @@ export default function MachinesPage() {
   const [choosing, setChoosing] = useState(false);    // "Stanok yoki Mashina" tanlash
   const [pauseFor, setPauseFor] = useState(null);     // pause sababi modali (qaysi stanok)
   const [now, setNow] = useState(() => new Date());   // tushlik vaqtini jonli kuzatish
+  const [qrMachine, setQrMachine] = useState(null);   // bitta stanok QR begiki
+  const [qrBulk, setQrBulk] = useState(false);        // hamma stanok QR begiklari
+
+  // Begiklarni bitta tugma bilan PNG qilib yuklab olish (Xodimlar sahifasidagi kabi)
+  const downloadMachineBadges = async (list) => {
+    const zone = document.querySelector('.machine-badge-print-zone');
+    if (!zone || !list?.length) return;
+    const svgs = zone.querySelectorAll('svg');
+    const loadImg = (svgEl) => new Promise((res, rej) => {
+      const xml = new XMLSerializer().serializeToString(svgEl);
+      const url = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(xml)));
+      const im = new Image();
+      im.onload = () => res(im);
+      im.onerror = rej;
+      im.src = url;
+    });
+    try {
+      const qrImgs = await Promise.all(Array.from(svgs).map(loadImg));
+      const S = 3;
+      const bw = 260, bh = 200, gap = 10;
+      const cols = list.length === 1 ? 1 : Math.min(3, list.length);
+      const rows = Math.ceil(list.length / cols);
+      const W = cols * bw + (cols + 1) * gap;
+      const H = rows * bh + (rows + 1) * gap;
+      const canvas = document.createElement('canvas');
+      canvas.width = W * S; canvas.height = H * S;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(S, S);
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+      ctx.textAlign = 'center';
+      list.forEach((m, i) => {
+        const col = i % cols, row = Math.floor(i / cols);
+        const x = gap + col * (bw + gap), y = gap + row * (bh + gap);
+        ctx.fillStyle = '#fff'; ctx.fillRect(x, y, bw, bh);
+        ctx.strokeStyle = '#2563eb'; ctx.lineWidth = 2; ctx.strokeRect(x, y, bw, bh);
+        ctx.fillStyle = '#1d4ed8'; ctx.font = 'bold 16px Arial';
+        ctx.fillText('TEKNOPLAST', x + bw / 2, y + 24);
+        ctx.fillStyle = '#9ca3af'; ctx.font = '9px Arial';
+        ctx.fillText('Stanok / Mashina', x + bw / 2, y + 38);
+        const qr = qrImgs[i];
+        if (qr) ctx.drawImage(qr, x + (bw - 110) / 2, y + 46, 110, 110);
+        ctx.fillStyle = '#111827'; ctx.font = 'bold 14px Arial';
+        ctx.fillText(String(m.name || '').slice(0, 26), x + bw / 2, y + 176);
+        ctx.fillStyle = '#1d4ed8'; ctx.font = '11px Arial';
+        ctx.fillText(m.type === 'MASHINA' ? 'Mashina' : 'Stanok', x + bw / 2, y + 192);
+      });
+      canvas.toBlob((b) => {
+        if (!b) { toast.error('Yuklab bo\'lmadi'); return; }
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(b);
+        a.download = list.length === 1
+          ? `qr-stanok-${String(list[0].name || 'stanok').replace(/[^A-Za-z0-9]+/g, '_')}.png`
+          : 'qr-stanoklar.png';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        toast.success('Yuklab olindi');
+      }, 'image/png');
+    } catch {
+      toast.error('Yuklab bo\'lmadi');
+    }
+  };
 
   // Har 30 soniyada vaqtni yangilab, tushlik holatini avtomatik yoqib/o'chiramiz
   useEffect(() => {
@@ -488,11 +601,17 @@ export default function MachinesPage() {
     <div className="space-y-6">
       <div className="page-header">
         <h1 className="page-title">Mashinalar</h1>
-        {canWrite && (
-          <button onClick={() => setChoosing(true)} className="btn-primary btn-sm">
-            <Plus size={14} /> Qo'shish
+        <div className="flex gap-2">
+          <button onClick={() => setQrBulk(true)}
+            className="btn-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 flex items-center gap-1">
+            <QrCode size={14} /> Hamma QR
           </button>
-        )}
+          {canWrite && (
+            <button onClick={() => setChoosing(true)} className="btn-primary btn-sm">
+              <Plus size={14} /> Qo'shish
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tushlik (obed) — vaqt kelganda avtomatik chiqadi */}
@@ -593,6 +712,12 @@ export default function MachinesPage() {
                   <span className="text-gray-500">Operator:</span>
                   <span>{m.operator_name || '—'}</span>
                 </div>
+                {m.current_product_name && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Joriy qolip:</span>
+                    <span className="font-medium text-blue-700">{m.current_product_name}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-gray-500">Kunlik quvvat:</span>
                   <span>{m.daily_production_capacity || 0} dona</span>
@@ -628,6 +753,10 @@ export default function MachinesPage() {
                 <button onClick={() => setDowntimeFor(m)}
                   className="btn-sm flex-1 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-lg px-2 flex items-center gap-1 justify-center">
                   <Wrench size={13} /> Holat/Nosozlik
+                </button>
+                <button onClick={() => setQrMachine(m)}
+                  className="btn-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 flex items-center gap-1 justify-center">
+                  <QrCode size={13} /> QR
                 </button>
               </div>
             </div>
@@ -718,6 +847,57 @@ export default function MachinesPage() {
           onClose={() => setPauseFor(null)}
           onConfirm={(payload) => { runningMutation.mutate({ id: pauseFor.id, is_running: 0, ...payload }); setPauseFor(null); }}
         />
+      )}
+
+      {/* Bitta stanok QR begiki */}
+      {qrMachine && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setQrMachine(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl p-6 max-w-xs w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-gray-900">Stanok QR kodi</h3>
+              <button onClick={() => setQrMachine(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <div className="machine-badge-print-zone flex justify-center">
+              <MachineBadgeCard machine={qrMachine} />
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setQrMachine(null)} className="btn-secondary flex-1">Yopish</button>
+              <button onClick={() => downloadMachineBadges([qrMachine])} className="btn-primary flex-1 flex items-center justify-center gap-1">
+                <Download size={14} /> Yuklab olish
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hamma stanok/mashina QR begiklari */}
+      {qrBulk && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setQrBulk(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 max-h-[88vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="font-bold text-gray-900">Barcha QR Kodlar</h3>
+                <p className="text-xs text-gray-400 mt-0.5">{machines.length} ta stanok/mashina</p>
+              </div>
+              <button onClick={() => setQrBulk(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <div className="machine-badge-print-zone flex flex-wrap gap-1 overflow-y-auto flex-1 justify-center">
+              {!machines.length ? (
+                <p className="text-center text-gray-400 py-8 w-full">Stanok/mashina topilmadi</p>
+              ) : machines.map(m => (
+                <MachineBadgeCard key={m.id} machine={m} />
+              ))}
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setQrBulk(false)} className="btn-secondary flex-1">Yopish</button>
+              <button onClick={() => downloadMachineBadges(machines)} className="btn-primary flex-1 flex items-center justify-center gap-1">
+                <Download size={14} /> Hammasini yuklab olish
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -11,11 +11,13 @@ router.use(authenticate);
 router.get('/', async (req, res, next) => {
   try {
     const result = await query(`
-      SELECT m.*, e.name as operator_name,
+      SELECT m.*, e.name as operator_name, p.name as current_product_name,
         (SELECT d.status FROM machine_downtime d WHERE d.machine_id = m.id AND d.ended_at IS NULL ORDER BY d.started_at DESC LIMIT 1) AS pause_status,
         (SELECT d.reason FROM machine_downtime d WHERE d.machine_id = m.id AND d.ended_at IS NULL ORDER BY d.started_at DESC LIMIT 1) AS pause_reason,
         (SELECT d.mold_minutes FROM machine_downtime d WHERE d.machine_id = m.id AND d.ended_at IS NULL ORDER BY d.started_at DESC LIMIT 1) AS pause_mold_minutes
-      FROM machines m LEFT JOIN employees e ON m.operator_id = e.id
+      FROM machines m
+      LEFT JOIN employees e ON m.operator_id = e.id
+      LEFT JOIN products p ON m.current_product_id = p.id
       WHERE m.is_active = true${req.user.branch_id ? ' AND m.branch_id = $1' : ' AND m.branch_id IS NULL'} ORDER BY m.name
     `, req.user.branch_id ? [req.user.branch_id] : []);
     res.json({ machines: result.rows });
@@ -187,6 +189,11 @@ router.put('/:id/running', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME')
     const reason = (req.body.reason || '').trim() || null;
     const moldMinutes = (req.body.mold_minutes != null && req.body.mold_minutes !== '')
       ? parseFloat(req.body.mold_minutes) : null;
+    // QOLIP bo'lsa — almashtirilayotgan qolip (mahsulot) majburiy tanlanadi
+    const moldProductId = pauseKind === 'QOLIP' ? (req.body.product_id || null) : null;
+    if (pauseKind === 'QOLIP' && !moldProductId) {
+      return res.status(400).json({ error: "Almashtirilayotgan qolipni (mahsulotni) tanlang" });
+    }
 
     // Downtime statusi + stanok sog'lik holati (QOLIP — sog'lik holatiga tegmaydi)
     let dtStatus = 'SERVICE', machineStatus = null;
@@ -194,17 +201,22 @@ router.put('/:id/running', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME')
     else if (pauseKind === 'NOSOZ') { dtStatus = 'SERVICE'; machineStatus = 'SERVICE'; }
     else if (pauseKind === 'QOLIP') { dtStatus = 'MOLD'; machineStatus = null; }
 
-    const upd = machineStatus
-      ? await query('UPDATE machines SET is_running=0, status=$1, updated_at=NOW() WHERE id=$2 RETURNING *', [machineStatus, id])
-      : await query('UPDATE machines SET is_running=0, updated_at=NOW() WHERE id=$1 RETURNING *', [id]);
+    let upd;
+    if (machineStatus) {
+      upd = await query('UPDATE machines SET is_running=0, status=$1, updated_at=NOW() WHERE id=$2 RETURNING *', [machineStatus, id]);
+    } else if (pauseKind === 'QOLIP') {
+      upd = await query('UPDATE machines SET is_running=0, current_product_id=$1, updated_at=NOW() WHERE id=$2 RETURNING *', [moldProductId, id]);
+    } else {
+      upd = await query('UPDATE machines SET is_running=0, updated_at=NOW() WHERE id=$1 RETURNING *', [id]);
+    }
     if (!upd.rows.length) return res.status(404).json({ error: 'Mashina topilmadi' });
 
     // Bitta aktiv to'xtash yozuvi: avvalgisini yopib, yangisini ochamiz
     await query('UPDATE machine_downtime SET ended_at=NOW() WHERE machine_id=$1 AND ended_at IS NULL', [id]);
     await query(
-      `INSERT INTO machine_downtime (machine_id, status, reason, started_at, mold_minutes, recorded_by)
-       VALUES ($1,$2,$3,NOW(),$4,$5)`,
-      [id, dtStatus, reason, moldMinutes, req.user.id]
+      `INSERT INTO machine_downtime (machine_id, status, reason, started_at, mold_minutes, mold_product_id, recorded_by)
+       VALUES ($1,$2,$3,NOW(),$4,$5,$6)`,
+      [id, dtStatus, reason, moldMinutes, moldProductId, req.user.id]
     );
     res.json({ machine: upd.rows[0] });
   } catch (err) { next(err); }
@@ -263,9 +275,10 @@ router.delete('/:id/cycle-times/:productId', requireRole('OWNER', 'PRODUCTION_HE
 router.get('/:id/downtime', async (req, res, next) => {
   try {
     const result = await query(
-      `SELECT d.*, u.full_name AS recorded_by_name
+      `SELECT d.*, u.full_name AS recorded_by_name, p.name AS mold_product_name
        FROM machine_downtime d
        LEFT JOIN users u ON d.recorded_by = u.id
+       LEFT JOIN products p ON d.mold_product_id = p.id
        WHERE d.machine_id = $1
        ORDER BY COALESCE(d.started_at, d.created_at) DESC`,
       [req.params.id]

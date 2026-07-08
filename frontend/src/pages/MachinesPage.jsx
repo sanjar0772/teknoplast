@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw, BarChart3, FileSpreadsheet, FileText, QrCode, Download, Users } from 'lucide-react';
+import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw, BarChart3, FileSpreadsheet, FileText, QrCode, Download, Users, Camera } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { Html5Qrcode } from 'html5-qrcode';
 import { machinesAPI, employeesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -387,10 +388,19 @@ function DowntimeModal({ machine, canWrite, onClose }) {
 const shiftLabel = (s) => s === '2-SMENA' ? '2-Smena' : s === '1-SMENA' ? '1-Smena' : '';
 
 // Smena almashish — stanokning joriy operatorini (1-smena/2-smena) almashtirish + tarix
+// QR begik ichidagi qiymat: "teknoplast-emp-<id>" — id'ni ajratib olamiz (Xodimlar begiki bilan bir xil format)
+const parseEmpIdFromQr = (raw) => {
+  const s = String(raw || '').trim();
+  const m = s.match(/teknoplast-emp-(.+)$/i);
+  return m ? m[1] : s;
+};
+
 function ShiftChangeModal({ machine, employees, canWrite, onClose }) {
   const qc = useQueryClient();
   const [toOperator, setToOperator] = useState('');
   const [note, setNote] = useState('');
+  const [scanOpen, setScanOpen] = useState(false);
+  const scannerRef = useRef(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['machine-shift-changes', machine?.id],
@@ -399,9 +409,10 @@ function ShiftChangeModal({ machine, employees, canWrite, onClose }) {
   });
 
   const changeMut = useMutation({
-    mutationFn: () => machinesAPI.changeShift(machine.id, { to_operator_id: toOperator, note }),
-    onSuccess: () => {
-      toast.success('Smena almashtirildi');
+    mutationFn: (operatorId) => machinesAPI.changeShift(machine.id, { to_operator_id: operatorId, note }),
+    onSuccess: (_res, operatorId) => {
+      const emp = (employees?.employees || []).find(e => e.id === operatorId);
+      toast.success(`Smena almashtirildi${emp ? ` — ${emp.name}` : ''}`);
       setToOperator(''); setNote('');
       qc.invalidateQueries({ queryKey: ['machine-shift-changes', machine.id] });
       qc.invalidateQueries({ queryKey: ['machines'] });
@@ -409,11 +420,50 @@ function ShiftChangeModal({ machine, employees, canWrite, onClose }) {
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
+  const stopScan = () => {
+    const qr = scannerRef.current;
+    if (qr && qr.isScanning) { qr.stop().then(() => qr.clear()).catch(() => {}); }
+    scannerRef.current = null;
+  };
+
+  // QR skanerlangan begikni operator sifatida qabul qilamiz — ro'yxatdan qidirib
+  // o'tirmasdan, to'g'ridan-to'g'ri smenani almashtiramiz.
+  const handleScannedBadge = (raw) => {
+    const id = parseEmpIdFromQr(raw);
+    const emp = (employees?.employees || []).find(e => e.id === id);
+    if (!emp) { toast.error("Bu QR stanokchi begiki emas yoki mos kelmadi"); return; }
+    stopScan();
+    setScanOpen(false);
+    changeMut.mutate(id);
+  };
+
+  useEffect(() => {
+    if (!scanOpen) return;
+    try {
+      const qr = new Html5Qrcode('machine-shift-qr-reader');
+      scannerRef.current = qr;
+      qr.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: 220 },
+        (decoded) => { handleScannedBadge(decoded); },
+        () => {}
+      ).catch(() => {
+        toast('Kamera ishlamasa, ro\'yxatdan tanlang', { icon: 'ℹ️' });
+      });
+    } catch (e) {
+      toast.error('Kamera: ' + (e.message || 'Xato'));
+    }
+    return () => { stopScan(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanOpen]);
+
+  useEffect(() => () => stopScan(), []);
+
   if (!machine) return null;
   const rows = data?.shift_changes || [];
 
   return (
-    <Modal open onClose={onClose} title={`👥 Smena almashtirish — ${machine.name}`}>
+    <Modal open onClose={() => { stopScan(); onClose(); }} title={`👥 Smena almashtirish — ${machine.name}`}>
       <div className="space-y-4">
         <div className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
           Hozirgi operator: <b className="text-gray-900">{machine.operator_name || 'Belgilanmagan'}</b>
@@ -422,21 +472,40 @@ function ShiftChangeModal({ machine, employees, canWrite, onClose }) {
 
         {canWrite && (
           <div className="space-y-2">
-            <div>
-              <label className="label text-xs">Yangi operator (smenaga kiruvchi) *</label>
-              <select value={toOperator} onChange={e => setToOperator(e.target.value)} className="select" autoFocus>
-                <option value="">Tanlang...</option>
-                {(employees?.employees || []).map(e => (
-                  <option key={e.id} value={e.id}>{e.name}{e.shift ? ` (${shiftLabel(e.shift)})` : ''}</option>
-                ))}
-              </select>
-            </div>
-            <input value={note} onChange={e => setNote(e.target.value)} className="input" placeholder="Izoh (ixtiyoriy)" />
-            <button
-              onClick={() => { if (!toOperator) return toast.error('Operatorni tanlang'); changeMut.mutate(); }}
-              disabled={changeMut.isPending} className="btn-primary w-full">
-              {changeMut.isPending ? 'Saqlanmoqda...' : 'Smenani almashtirish'}
-            </button>
+            {scanOpen ? (
+              <div className="space-y-2">
+                <div id="machine-shift-qr-reader" className="w-full rounded-xl overflow-hidden bg-black" style={{ minHeight: 200 }} />
+                <p className="text-xs text-gray-400 text-center flex items-center justify-center gap-1">
+                  <Camera size={12} /> Kamerani stanokchi QR begikiga to'g'rilang — o'qilishi bilan smena almashadi
+                </p>
+                <button onClick={() => { stopScan(); setScanOpen(false); }} className="btn-secondary w-full">Bekor</button>
+              </div>
+            ) : (
+              <>
+                <button onClick={() => setScanOpen(true)}
+                  className="btn-sm w-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 py-2 flex items-center gap-1.5 justify-center">
+                  <QrCode size={14} /> QR begikni skanerlash (tezkor)
+                </button>
+                <div className="flex items-center gap-2 text-xs text-gray-300">
+                  <div className="flex-1 border-t border-gray-100" /> yoki ro'yxatdan <div className="flex-1 border-t border-gray-100" />
+                </div>
+                <div>
+                  <label className="label text-xs">Yangi operator (smenaga kiruvchi) *</label>
+                  <select value={toOperator} onChange={e => setToOperator(e.target.value)} className="select">
+                    <option value="">Tanlang...</option>
+                    {(employees?.employees || []).map(e => (
+                      <option key={e.id} value={e.id}>{e.name}{e.shift ? ` (${shiftLabel(e.shift)})` : ''}</option>
+                    ))}
+                  </select>
+                </div>
+                <input value={note} onChange={e => setNote(e.target.value)} className="input" placeholder="Izoh (ixtiyoriy)" />
+                <button
+                  onClick={() => { if (!toOperator) return toast.error('Operatorni tanlang'); changeMut.mutate(toOperator); }}
+                  disabled={changeMut.isPending} className="btn-primary w-full">
+                  {changeMut.isPending ? 'Saqlanmoqda...' : 'Smenani almashtirish'}
+                </button>
+              </>
+            )}
           </div>
         )}
 

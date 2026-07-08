@@ -859,6 +859,7 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
   const [searchText, setSearchText] = useState(''); // yozib qidirish maydoni
   const [selection, setSelection] = useState(''); // "mold:<id>" yoki "product:<id>" — searchText mos kelganda to'ladi
   const [moldName, setMoldName] = useState(''); // yangi kalipga o'zi yozadigan nom (ixtiyoriy)
+  const [cycleSeconds, setCycleSeconds] = useState(''); // 1 dona necha soniyada chiqadi (ixtiyoriy)
   const [note, setNote] = useState('');
 
   const { data: moldsData } = useQuery({
@@ -874,10 +875,16 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
     queryFn: () => machinesAPI.getMoldChanges(machine.id).then(r => r.data),
     enabled: !!machine,
   });
+  const { data: cycleData } = useQuery({
+    queryKey: ['machine-cycle-times', machine?.id],
+    queryFn: () => machinesAPI.getCycleTimes(machine.id).then(r => r.data),
+    enabled: !!machine,
+  });
 
   const molds = moldsData?.molds || [];
   const products = prodData?.products || [];
   const rows = historyData?.mold_changes || [];
+  const cycleRows = cycleData?.cycle_times || [];
 
   // Yozib qidirish uchun bitta ro'yxatga birlashtirilgan variantlar (kalip + mahsulot/komponent)
   const candidates = [
@@ -897,19 +904,40 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
     setSelection(match ? match.key : '');
   };
 
+  // Tanlangan variant qaysi mahsulotga tegishli — cycle-time shu mahsulot uchun saqlanadi
+  const resolvedProductId = (() => {
+    if (!selection) return '';
+    const [kind, id] = selection.split(':');
+    if (kind === 'product') return id;
+    return molds.find(mo => mo.id === id)?.product_id || '';
+  })();
+
+  useEffect(() => {
+    if (!resolvedProductId) { setCycleSeconds(''); return; }
+    const existing = cycleRows.find(r => r.product_id === resolvedProductId);
+    setCycleSeconds(existing ? String(existing.cycle_seconds) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedProductId, cycleData]);
+
   const assignMut = useMutation({
-    mutationFn: (sel) => {
+    mutationFn: async (sel) => {
       const [kind, id] = sel.split(':');
-      return machinesAPI.assignMold(machine.id, kind === 'mold'
+      const res = await machinesAPI.assignMold(machine.id, kind === 'mold'
         ? { mold_id: id, note }
         : { product_id: id, mold_name: moldName.trim() || undefined, note });
+      const sec = parseFloat(cycleSeconds);
+      if (resolvedProductId && sec > 0) {
+        await machinesAPI.setCycleTime(machine.id, { product_id: resolvedProductId, cycle_seconds: sec });
+      }
+      return res;
     },
     onSuccess: () => {
       toast.success('Kalip biriktirildi');
-      setSearchText(''); setSelection(''); setMoldName(''); setNote('');
+      setSearchText(''); setSelection(''); setMoldName(''); setNote(''); setCycleSeconds('');
       qc.invalidateQueries({ queryKey: ['machine-mold-changes', machine.id] });
       qc.invalidateQueries({ queryKey: ['machines'] });
       qc.invalidateQueries({ queryKey: ['molds'] });
+      qc.invalidateQueries({ queryKey: ['machine-cycle-times', machine.id] });
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
@@ -958,6 +986,16 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
             {selection.startsWith('product:') && (
               <input value={moldName} onChange={e => setMoldName(e.target.value)} className="input"
                 placeholder="Kalip nomi (ixtiyoriy — yozsangiz, shu nom bilan yangi kalip qo'shiladi)" />
+            )}
+            {resolvedProductId && (
+              <div>
+                <label className="label text-xs">1 dona necha soniyada chiqadi (ixtiyoriy)</label>
+                <input type="number" min="0" step="0.1" value={cycleSeconds}
+                  onChange={e => setCycleSeconds(e.target.value)} className="input" placeholder="masalan: 18" />
+                {parseFloat(cycleSeconds) > 0 && (
+                  <p className="text-xs text-gray-400 mt-1">~{Math.round(3600 / parseFloat(cycleSeconds))} dona/soat</p>
+                )}
+              </div>
             )}
             <input value={note} onChange={e => setNote(e.target.value)} className="input" placeholder="Izoh (ixtiyoriy)" />
             <div className="flex gap-2">

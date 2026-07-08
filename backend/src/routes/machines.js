@@ -108,7 +108,7 @@ router.get('/stats/pdf', async (req, res, next) => {
 });
 
 // POST /api/machines
-router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), [
+router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME', 'KIRIMCHI'), [
   body('name').notEmpty().trim(),
 ], async (req, res, next) => {
   try {
@@ -125,7 +125,7 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), [
 });
 
 // PUT /api/machines/:id
-router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async (req, res, next) => {
+router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME', 'KIRIMCHI'), async (req, res, next) => {
   try {
     const { name, code, type, status, operator_id, last_service_date, next_service_date, daily_production_capacity, location } = req.body;
     const result = await query(
@@ -138,7 +138,7 @@ router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async 
 });
 
 // PUT /api/machines/:id/status — holatni o'zgartirish (+ nosozlik jurnaliga yozish)
-router.put('/:id/status', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async (req, res, next) => {
+router.put('/:id/status', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME', 'KIRIMCHI'), async (req, res, next) => {
   try {
     const { status, reason } = req.body;
     if (!['WORKING', 'BROKEN', 'SERVICE'].includes(status)) {
@@ -171,7 +171,7 @@ router.put('/:id/status', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'),
 
 // PUT /api/machines/:id/running — play/pause. Play = ishga tushadi (WORKING).
 // Pause = to'xtaydi + sabab: NOSOZ / BUZILGAN / QOLIP (qalip almashish, o'rtacha vaqt bilan).
-router.put('/:id/running', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async (req, res, next) => {
+router.put('/:id/running', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME', 'KIRIMCHI'), async (req, res, next) => {
   try {
     const id = req.params.id;
     const is_running = req.body.is_running ? 1 : 0;
@@ -241,7 +241,7 @@ router.get('/:id/cycle-times', async (req, res, next) => {
 });
 
 // POST /api/machines/:id/cycle-times — mahsulot cycle-time qo'shish/yangilash (upsert)
-router.post('/:id/cycle-times', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async (req, res, next) => {
+router.post('/:id/cycle-times', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME', 'KIRIMCHI'), async (req, res, next) => {
   try {
     const { product_id, cycle_seconds } = req.body;
     const sec = parseFloat(cycle_seconds);
@@ -265,7 +265,7 @@ router.post('/:id/cycle-times', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_T
 });
 
 // DELETE /api/machines/:id/cycle-times/:productId
-router.delete('/:id/cycle-times/:productId', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async (req, res, next) => {
+router.delete('/:id/cycle-times/:productId', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME', 'KIRIMCHI'), async (req, res, next) => {
   try {
     await query('DELETE FROM machine_cycle_times WHERE machine_id=$1 AND product_id=$2', [req.params.id, req.params.productId]);
     res.json({ success: true });
@@ -290,7 +290,7 @@ router.get('/:id/downtime', async (req, res, next) => {
 });
 
 // POST /api/machines/:id/downtime — nosozlikni vaqt oralig'i + sabab bilan yozish
-router.post('/:id/downtime', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async (req, res, next) => {
+router.post('/:id/downtime', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME', 'KIRIMCHI'), async (req, res, next) => {
   try {
     const { started_at, ended_at, reason, status } = req.body;
     if (!started_at) return res.status(400).json({ error: 'Boshlanish vaqti kiritilmagan' });
@@ -327,7 +327,7 @@ router.get('/:id/shift-changes', async (req, res, next) => {
 });
 
 // POST /api/machines/:id/shift-changes — operatorni almashtirish (stanok operatorini yangilaydi + jurnalga yozadi)
-router.post('/:id/shift-changes', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async (req, res, next) => {
+router.post('/:id/shift-changes', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME', 'KIRIMCHI'), async (req, res, next) => {
   try {
     const { to_operator_id, note } = req.body;
     if (!to_operator_id) return res.status(400).json({ error: 'Yangi operatorni tanlang' });
@@ -366,7 +366,7 @@ router.get('/:id/mold-changes', async (req, res, next) => {
 });
 
 // POST /api/machines/:id/mold-changes — kalipni biriktirish (mold_id yoki product_id) yoki yechish (ikkalasi ham bo'sh)
-router.post('/:id/mold-changes', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async (req, res, next) => {
+router.post('/:id/mold-changes', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME', 'KIRIMCHI'), async (req, res, next) => {
   try {
     const { mold_id, product_id, note } = req.body;
     const m = await query('SELECT current_mold_id, branch_id FROM machines WHERE id = $1', [req.params.id]);

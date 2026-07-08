@@ -24,7 +24,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // POST /api/molds — yangi qolip qo'shish
-router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), [
+router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME', 'KIRIMCHI'), [
   body('name').notEmpty().trim(),
   body('product_id').notEmpty(),
 ], async (req, res, next) => {
@@ -44,7 +44,7 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), [
 });
 
 // PUT /api/molds/:id — tahrirlash
-router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async (req, res, next) => {
+router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME', 'KIRIMCHI'), async (req, res, next) => {
   try {
     const { name, product_id, cavity_count, status, location, notes } = req.body;
     const result = await query(
@@ -59,7 +59,7 @@ router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async 
 });
 
 // DELETE /api/molds/:id — ro'yxatdan olib tashlash (nofaol qilinadi)
-router.delete('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async (req, res, next) => {
+router.delete('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME', 'KIRIMCHI'), async (req, res, next) => {
   try {
     const result = await query('UPDATE molds SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING id', [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Qolip topilmadi' });

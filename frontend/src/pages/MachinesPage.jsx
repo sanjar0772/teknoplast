@@ -979,7 +979,7 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
 }
 
 export default function MachinesPage() {
-  const { isOwner, isProductionHead, isCycleTime } = useAuthStore();
+  const { isOwner, isProductionHead, isCycleTime, isKirimchi } = useAuthStore();
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editMachine, setEditMachine] = useState(null);
@@ -1177,7 +1177,7 @@ export default function MachinesPage() {
     setShowModal(true);
   };
 
-  const canWrite = isOwner() || isProductionHead() || isCycleTime();
+  const canWrite = isOwner() || isProductionHead() || isCycleTime() || isKirimchi();
   const machines = data?.machines || [];
   const working = machines.filter(m => m.status === 'WORKING').length;
   const broken = machines.filter(m => m.status === 'BROKEN').length;

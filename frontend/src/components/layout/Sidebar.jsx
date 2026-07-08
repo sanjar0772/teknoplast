@@ -42,7 +42,7 @@ const NAV_ITEMS = [
   { to: '/components', icon: Boxes,           label: 'Komponentlar',     roles: ['OWNER','PRODUCTION_HEAD','KIRIMCHI'] },
   { to: '/quick-sale', icon: ShoppingBag,     label: 'Savdo qilish',     roles: ['OWNER','ACCOUNTANT','SALES_HEAD','AGENT'] },
   { to: '/inventory',  icon: Warehouse,       label: 'Ombor',            roles: ['OWNER','ACCOUNTANT','PRODUCTION_HEAD','KIRIMCHI','OMBORCHI','TAMINOTCHI','SALES_HEAD'] },
-  { to: '/machines',   icon: Cog,             label: 'Mashinalar',       roles: ['OWNER','PRODUCTION_HEAD','CYCLE_TIME'] },
+  { to: '/machines',   icon: Cog,             label: 'Mashinalar',       roles: ['OWNER','PRODUCTION_HEAD','CYCLE_TIME','KIRIMCHI'] },
   { to: '/branches',   icon: Store,           label: 'Filiallar',        roles: ['OWNER'] },
   // Tarozi — asosiy tizimda TAMINOTCHI chek chiqaradi; EGA cheklarni ko'radi
   { to: '/tarozi',        icon: Scale,        label: 'Tarozi',           roles: ['OWNER','TAMINOTCHI'] },

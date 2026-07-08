@@ -948,6 +948,33 @@ if (USE_PG) {
         changed_by TEXT REFERENCES users(id),
         changed_at TEXT DEFAULT (datetime('now'))
       )`,
+      // Qaliplar ro'yxati — haqiqiy jismoniy qoliplar (nomi/kodi, necha ko'ylik,
+      // holati, joylashuvi). Har bir qolip bitta mahsulot/komponentga bog'langan.
+      `CREATE TABLE IF NOT EXISTS molds (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        name TEXT NOT NULL,
+        product_id TEXT NOT NULL REFERENCES products(id),
+        cavity_count INTEGER,
+        status TEXT DEFAULT 'AKTIV',
+        location TEXT,
+        notes TEXT,
+        is_active INTEGER DEFAULT 1,
+        branch_id TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )`,
+      // Stanokka biriktirilgan jismoniy qolip (molds ro'yxatidan) — "kalip belgilash".
+      `ALTER TABLE machines ADD COLUMN current_mold_id TEXT REFERENCES molds(id)`,
+      // Kalip biriktirish tarixi — qaysi stanokka qachon qaysi qolip o'rnatilgani/yechilgani.
+      `CREATE TABLE IF NOT EXISTS machine_mold_changes (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        machine_id TEXT NOT NULL REFERENCES machines(id),
+        from_mold_id TEXT REFERENCES molds(id),
+        to_mold_id TEXT REFERENCES molds(id),
+        note TEXT,
+        changed_by TEXT REFERENCES users(id),
+        changed_at TEXT DEFAULT (datetime('now'))
+      )`,
     ];
     for (const m of migrations) {
       try {

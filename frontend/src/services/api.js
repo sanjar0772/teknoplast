@@ -241,9 +241,19 @@ export const machinesAPI = {
   addDowntime: (id, data) => api.post(`/machines/${id}/downtime`, data),
   getShiftChanges: (id) => api.get(`/machines/${id}/shift-changes`),
   changeShift: (id, data) => api.post(`/machines/${id}/shift-changes`, data),
+  getMoldChanges: (id) => api.get(`/machines/${id}/mold-changes`),
+  assignMold: (id, data) => api.post(`/machines/${id}/mold-changes`, data),
   getStats: (params) => api.get('/machines/stats', { params }),
   statsExcel: (params) => api.get('/machines/stats/excel', { params, responseType: 'blob' }),
   statsPdf: (params) => api.get('/machines/stats/pdf', { params, responseType: 'blob' }),
+};
+
+// Qaliplar (molds)
+export const moldsAPI = {
+  getAll: () => api.get('/molds'),
+  create: (data) => api.post('/molds', data),
+  update: (id, data) => api.put(`/molds/${id}`, data),
+  remove: (id) => api.delete(`/molds/${id}`),
 };
 
 // Reports

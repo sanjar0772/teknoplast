@@ -2,10 +2,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw, BarChart3, FileSpreadsheet, FileText, QrCode, Download, Users, Camera, Search } from 'lucide-react';
+import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw, BarChart3, FileSpreadsheet, FileText, QrCode, Download, Users, Camera, Search, Layers, Pencil } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { machinesAPI, employeesAPI, productsAPI } from '../services/api';
+import { machinesAPI, employeesAPI, productsAPI, moldsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
 const fmtN = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -538,6 +538,7 @@ function PauseReasonModal({ machine, pending, onConfirm, onClose, initialKind })
   const [reason, setReason] = useState('');
   const [moldMin, setMoldMin] = useState('');
   const [moldProductId, setMoldProductId] = useState('');
+  const [selectedMoldName, setSelectedMoldName] = useState(''); // ro'yxatdan tanlangan qolip nomi (faqat matn uchun)
 
   const { data: prodData } = useQuery({
     queryKey: ['products-all-for-mold'],
@@ -547,18 +548,28 @@ function PauseReasonModal({ machine, pending, onConfirm, onClose, initialKind })
   // Qolip tayyor mahsulot yoki komponent (detal) uchun ham bo'lishi mumkin — ikkalasi ham ko'rsatiladi
   const products = prodData?.products || [];
 
+  const { data: moldsData } = useQuery({
+    queryKey: ['molds-for-pause'],
+    queryFn: () => moldsAPI.getAll().then(r => r.data),
+    enabled: !!machine,
+  });
+  const activeMolds = (moldsData?.molds || []).filter(mo => mo.status === 'AKTIV');
+
   const opts = [
     { v: 'NOSOZ',    label: 'Nosoz',             Icon: Wrench,        on: 'border-yellow-400 bg-yellow-50 text-yellow-700' },
     { v: 'BUZILGAN', label: 'Buzilgan',          Icon: AlertTriangle, on: 'border-red-400 bg-red-50 text-red-700' },
     { v: 'QOLIP',    label: 'Qalip almashmoqda', Icon: RefreshCw,     on: 'border-blue-400 bg-blue-50 text-blue-700' },
   ];
 
+  const pickMold = (mo) => { setMoldProductId(mo.product_id); setSelectedMoldName(mo.name); };
+
   const confirm = () => {
     if (kind === 'QOLIP' && !moldProductId) return toast.error("Almashtirilayotgan qolipni (mahsulotni) tanlang");
     if (kind === 'QOLIP' && !(parseFloat(moldMin) >= 0)) return toast.error("Qalip almashish vaqtini kiriting (daqiqa)");
     const moldProductName = products.find(p => p.id === moldProductId)?.name || '';
+    const moldLabel = selectedMoldName ? `${selectedMoldName} (${moldProductName})` : moldProductName;
     const composed = kind === 'QOLIP'
-      ? `Qalip almashmoqda${moldProductName ? ` → ${moldProductName}` : ''}${moldMin ? ` (~${moldMin} daqiqa)` : ''}${reason ? ' — ' + reason : ''}`
+      ? `Qalip almashmoqda${moldLabel ? ` → ${moldLabel}` : ''}${moldMin ? ` (~${moldMin} daqiqa)` : ''}${reason ? ' — ' + reason : ''}`
       : (reason || (kind === 'BUZILGAN' ? 'Buzilgan' : 'Nosoz'));
     onConfirm({ pause_kind: kind, reason: composed, mold_minutes: kind === 'QOLIP' ? moldMin : null, product_id: kind === 'QOLIP' ? moldProductId : null });
   };
@@ -580,9 +591,26 @@ function PauseReasonModal({ machine, pending, onConfirm, onClose, initialKind })
 
         {kind === 'QOLIP' && (
           <>
+            {activeMolds.length > 0 && (
+              <div>
+                <label className="label text-xs">Ro'yxatdan qolip tanlash (tezkor)</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {activeMolds.map(mo => (
+                    <button key={mo.id} type="button" onClick={() => pickMold(mo)}
+                      className={`px-2.5 py-1 rounded-lg border text-xs ${
+                        moldProductId === mo.product_id && selectedMoldName === mo.name
+                          ? 'border-blue-400 bg-blue-50 text-blue-700'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}>
+                      {mo.name} <span className="opacity-60">· {mo.product_name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div>
               <label className="label text-xs">Qaysi qolipga (mahsulotga) almashtirilyapti? *</label>
-              <select value={moldProductId} onChange={e => setMoldProductId(e.target.value)} className="select" autoFocus>
+              <select value={moldProductId} onChange={e => { setMoldProductId(e.target.value); setSelectedMoldName(''); }} className="select" autoFocus>
                 <option value="">Tanlang...</option>
                 {products.map(p => <option key={p.id} value={p.id}>{p.name}{p.kind === 'KOMPONENT' ? ' — Komponent' : ''}</option>)}
               </select>
@@ -636,6 +664,12 @@ function MachineHubModal({ machine, canWrite, onClose, onAction }) {
               )}
             </span>
           </div>
+          {machine.current_mold_name && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">Joriy kalip:</span>
+              <span className="font-medium text-indigo-700">{machine.current_mold_name}</span>
+            </div>
+          )}
           {machine.current_product_name && (
             <div className="flex justify-between">
               <span className="text-gray-500">Joriy qolip:</span>
@@ -664,6 +698,12 @@ function MachineHubModal({ machine, canWrite, onClose, onAction }) {
               <RefreshCw size={14} /> Qolip almashtirish
             </button>
           )}
+          {canWrite && (
+            <button onClick={() => onAction('kalip-assign')}
+              className="btn-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 py-2.5 flex items-center gap-1.5 justify-center">
+              <Layers size={14} /> Kalip belgilash
+            </button>
+          )}
           <button onClick={() => onAction('downtime')}
             className="btn-sm bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-lg px-2 py-2.5 flex items-center gap-1.5 justify-center">
             <Wrench size={14} /> Holat/Nosozlik
@@ -676,6 +716,232 @@ function MachineHubModal({ machine, canWrite, onClose, onAction }) {
             className="btn-sm col-span-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 py-2.5 flex items-center gap-1.5 justify-center">
             <QrCode size={14} /> QR kodni ko'rish
           </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+const MOLD_STATUS = {
+  AKTIV:   { label: 'Aktiv',    cls: 'badge-green' },
+  TAMIRDA: { label: "Ta'mirda", cls: 'badge-yellow' },
+  NOSOZ:   { label: 'Nosoz',    cls: 'badge-red' },
+};
+
+// Qaliplar ro'yxati — haqiqiy jismoniy qoliplarni kiritish/tahrirlash
+// (nomi/kodi, qaysi mahsulot/komponent, necha ko'ylik, holati, joylashuvi)
+function MoldsModal({ canWrite, onClose }) {
+  const qc = useQueryClient();
+  const [editId, setEditId] = useState(null);
+  const [form, setForm] = useState({ name: '', product_id: '', cavity_count: '', status: 'AKTIV', location: '', notes: '' });
+
+  const { data: moldsData, isLoading } = useQuery({
+    queryKey: ['molds'],
+    queryFn: () => moldsAPI.getAll().then(r => r.data),
+  });
+  const { data: prodData } = useQuery({
+    queryKey: ['products-all-for-molds'],
+    queryFn: () => productsAPI.getAll({ is_active: 'all' }).then(r => r.data),
+  });
+  const products = prodData?.products || [];
+  const molds = moldsData?.molds || [];
+
+  const resetForm = () => { setEditId(null); setForm({ name: '', product_id: '', cavity_count: '', status: 'AKTIV', location: '', notes: '' }); };
+
+  const saveMut = useMutation({
+    mutationFn: () => editId ? moldsAPI.update(editId, form) : moldsAPI.create(form),
+    onSuccess: () => {
+      toast.success(editId ? 'Qolip yangilandi' : "Qolip qo'shildi");
+      qc.invalidateQueries({ queryKey: ['molds'] });
+      qc.invalidateQueries({ queryKey: ['molds-for-pause'] });
+      resetForm();
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+
+  const delMut = useMutation({
+    mutationFn: (id) => moldsAPI.remove(id),
+    onSuccess: () => {
+      toast.success("Qolip o'chirildi");
+      qc.invalidateQueries({ queryKey: ['molds'] });
+      qc.invalidateQueries({ queryKey: ['molds-for-pause'] });
+    },
+  });
+
+  const startEdit = (mo) => {
+    setEditId(mo.id);
+    setForm({ name: mo.name, product_id: mo.product_id, cavity_count: mo.cavity_count || '', status: mo.status || 'AKTIV', location: mo.location || '', notes: mo.notes || '' });
+  };
+
+  return (
+    <Modal open onClose={onClose} title="🧩 Qaliplar">
+      <div className="space-y-4">
+        {canWrite && (
+          <div className="border border-gray-200 rounded-xl p-3 space-y-2">
+            <div className="text-xs font-semibold text-gray-600">{editId ? 'Qolipni tahrirlash' : 'Yangi qolip qoʻshish'}</div>
+            <div className="grid grid-cols-2 gap-2">
+              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="Nomi/kodi (masalan: QP-014)" className="input text-sm" />
+              <select value={form.product_id} onChange={e => setForm(f => ({ ...f, product_id: e.target.value }))} className="select text-sm">
+                <option value="">Mahsulot tanlang...</option>
+                {products.map(p => <option key={p.id} value={p.id}>{p.name}{p.kind === 'KOMPONENT' ? ' — Komponent' : ''}</option>)}
+              </select>
+              <input type="number" min="1" value={form.cavity_count} onChange={e => setForm(f => ({ ...f, cavity_count: e.target.value }))}
+                placeholder="Ko'ylik soni (ixtiyoriy)" className="input text-sm" />
+              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="select text-sm">
+                <option value="AKTIV">Aktiv</option>
+                <option value="TAMIRDA">Ta'mirda</option>
+                <option value="NOSOZ">Nosoz</option>
+              </select>
+              <input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
+                placeholder="Joylashuvi (ixtiyoriy)" className="input text-sm col-span-2" />
+              <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Izoh (ixtiyoriy)" className="input text-sm col-span-2" />
+            </div>
+            <div className="flex gap-2">
+              {editId && <button onClick={resetForm} className="btn-secondary btn-sm flex-1">Bekor</button>}
+              <button
+                onClick={() => {
+                  if (!form.name.trim()) return toast.error('Nomini kiriting');
+                  if (!form.product_id) return toast.error('Mahsulotni tanlang');
+                  saveMut.mutate();
+                }}
+                disabled={saveMut.isPending} className="btn-primary btn-sm flex-1">
+                {saveMut.isPending ? 'Saqlanmoqda...' : editId ? 'Yangilash' : "Qo'shish"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="border-t pt-3">
+          {isLoading ? (
+            <p className="text-center text-gray-400 py-4 text-sm">Yuklanmoqda...</p>
+          ) : !molds.length ? (
+            <p className="text-center text-gray-400 py-4 text-sm">Hali qolip qo'shilmagan</p>
+          ) : (
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {molds.map(mo => (
+                <div key={mo.id} className="flex items-center justify-between gap-2 text-sm border-b border-gray-50 last:border-0 pb-2">
+                  <div className="min-w-0">
+                    <div className="font-medium text-gray-900 truncate flex items-center gap-1.5">
+                      {mo.name}
+                      <span className={MOLD_STATUS[mo.status]?.cls || 'badge-gray'}>{MOLD_STATUS[mo.status]?.label || mo.status}</span>
+                    </div>
+                    <div className="text-xs text-gray-500 truncate">
+                      {mo.product_name || '—'}{mo.cavity_count ? ` · ${mo.cavity_count} ko'ylik` : ''}{mo.location ? ` · ${mo.location}` : ''}
+                    </div>
+                    {mo.current_machine_name && (
+                      <div className="text-xs text-indigo-600 truncate">📍 {mo.current_machine_name}'da o'rnatilgan</div>
+                    )}
+                  </div>
+                  {canWrite && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => startEdit(mo)} className="text-blue-500 hover:text-blue-700 p-1"><Pencil size={14} /></button>
+                      <button onClick={() => { if (window.confirm(`"${mo.name}" o'chirilsinmi?`)) delMut.mutate(mo.id); }}
+                        className="text-gray-300 hover:text-red-500 p-1"><Trash2 size={14} /></button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Kalip belgilash — stanokka molds ro'yxatidan jismoniy qolip biriktirish/yechish
+// (Qolip almashtirish (pause) — to'xtash sababini yozadi; bu esa registrdagi
+// aniq jismoniy qolipni doimiy biriktirib qo'yadi, tarixi bilan.)
+function MoldAssignModal({ machine, canWrite, onClose }) {
+  const qc = useQueryClient();
+  const [selectedMoldId, setSelectedMoldId] = useState('');
+  const [note, setNote] = useState('');
+
+  const { data: moldsData } = useQuery({
+    queryKey: ['molds'],
+    queryFn: () => moldsAPI.getAll().then(r => r.data),
+  });
+  const { data: historyData, isLoading } = useQuery({
+    queryKey: ['machine-mold-changes', machine?.id],
+    queryFn: () => machinesAPI.getMoldChanges(machine.id).then(r => r.data),
+    enabled: !!machine,
+  });
+
+  const molds = moldsData?.molds || [];
+  const rows = historyData?.mold_changes || [];
+
+  const assignMut = useMutation({
+    mutationFn: (moldId) => machinesAPI.assignMold(machine.id, { mold_id: moldId, note }),
+    onSuccess: (_res, moldId) => {
+      const mo = molds.find(x => x.id === moldId);
+      toast.success(moldId ? `Kalip biriktirildi${mo ? ` — ${mo.name}` : ''}` : 'Kalip yechildi');
+      setSelectedMoldId(''); setNote('');
+      qc.invalidateQueries({ queryKey: ['machine-mold-changes', machine.id] });
+      qc.invalidateQueries({ queryKey: ['machines'] });
+      qc.invalidateQueries({ queryKey: ['molds'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+
+  if (!machine) return null;
+
+  return (
+    <Modal open onClose={onClose} title={`🧩 Kalip belgilash — ${machine.name}`}>
+      <div className="space-y-4">
+        <div className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+          Joriy kalip: <b className="text-gray-900">{machine.current_mold_name || 'Biriktirilmagan'}</b>
+          {machine.current_mold_location && <span className="text-xs text-gray-400"> ({machine.current_mold_location})</span>}
+        </div>
+
+        {canWrite && (
+          <div className="space-y-2">
+            <div>
+              <label className="label text-xs">Biriktiriladigan kalip</label>
+              <select value={selectedMoldId} onChange={e => setSelectedMoldId(e.target.value)} className="select">
+                <option value="">Tanlang...</option>
+                {molds.map(mo => (
+                  <option key={mo.id} value={mo.id} disabled={!!mo.current_machine_id && mo.current_machine_id !== machine.id}>
+                    {mo.name}{mo.product_name ? ` (${mo.product_name})` : ''}
+                    {mo.current_machine_id && mo.current_machine_id !== machine.id ? ` — ${mo.current_machine_name}'da band` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <input value={note} onChange={e => setNote(e.target.value)} className="input" placeholder="Izoh (ixtiyoriy)" />
+            <div className="flex gap-2">
+              <button
+                onClick={() => { if (!selectedMoldId) return toast.error('Kalipni tanlang'); assignMut.mutate(selectedMoldId); }}
+                disabled={assignMut.isPending} className="btn-primary flex-1">
+                {assignMut.isPending ? 'Saqlanmoqda...' : 'Biriktirish'}
+              </button>
+              {machine.current_mold_id && (
+                <button onClick={() => assignMut.mutate(null)} disabled={assignMut.isPending} className="btn-secondary">
+                  Yechish
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="border-t pt-3">
+          <div className="text-xs font-semibold text-gray-600 mb-1.5">Kalip biriktirish tarixi</div>
+          {isLoading ? (
+            <p className="text-center text-gray-400 py-4 text-sm">Yuklanmoqda...</p>
+          ) : !rows.length ? (
+            <p className="text-center text-gray-400 py-4 text-sm">Hali biriktirilmagan</p>
+          ) : (
+            <div className="space-y-2 max-h-56 overflow-y-auto">
+              {rows.map(r => (
+                <div key={r.id} className="text-sm border-b border-gray-50 last:border-0 pb-1.5">
+                  <div className="text-gray-800">{r.from_mold_name || '—'} → <b>{r.to_mold_name || 'Yechildi'}</b></div>
+                  <div className="text-xs text-gray-400">{fmtDT(r.changed_at)}{r.changed_by_name ? ` · ${r.changed_by_name}` : ''}</div>
+                  {r.note && <div className="text-xs text-gray-600">{r.note}</div>}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </Modal>
@@ -695,6 +961,8 @@ export default function MachinesPage() {
   const [qrMachine, setQrMachine] = useState(null);   // bitta stanok QR begiki
   const [qrBulk, setQrBulk] = useState(false);        // hamma stanok QR begiklari
   const [shiftFor, setShiftFor] = useState(null);     // smena almashtirish modali (qaysi stanok)
+  const [moldsOpen, setMoldsOpen] = useState(false);  // qaliplar ro'yxati modali
+  const [moldAssignFor, setMoldAssignFor] = useState(null); // kalip belgilash modali (qaysi stanok)
   const [pauseInitialKind, setPauseInitialKind] = useState('NOSOZ'); // pause modali qaysi sabab bilan ochilsin
   const [hubMachine, setHubMachine] = useState(null); // stanok QR skanerlanganda ochiladigan amallar markazi
   const [pageScanOpen, setPageScanOpen] = useState(false); // sahifa darajasidagi stanok QR skaneri
@@ -750,6 +1018,8 @@ export default function MachinesPage() {
     } else if (key === 'mold') {
       setPauseInitialKind('QOLIP');
       setPauseFor(m);
+    } else if (key === 'kalip-assign') {
+      setMoldAssignFor(m);
     } else if (key === 'shift') {
       setShiftFor(m);
     } else if (key === 'downtime') {
@@ -896,6 +1166,10 @@ export default function MachinesPage() {
             className="btn-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 flex items-center gap-1">
             <QrCode size={14} /> Hamma QR
           </button>
+          <button onClick={() => setMoldsOpen(true)}
+            className="btn-sm bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg px-3 flex items-center gap-1">
+            <Layers size={14} /> Qaliplar
+          </button>
           {canWrite && (
             <button onClick={() => setChoosing(true)} className="btn-primary btn-sm">
               <Plus size={14} /> Qo'shish
@@ -1007,6 +1281,14 @@ export default function MachinesPage() {
                     )}
                   </span>
                 </div>
+                {m.current_mold_name && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Joriy kalip:</span>
+                    <span className="font-medium text-indigo-700">
+                      {m.current_mold_name}{m.current_mold_location ? ` (${m.current_mold_location})` : ''}
+                    </span>
+                  </div>
+                )}
                 {m.current_product_name && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">Joriy qolip:</span>
@@ -1028,6 +1310,11 @@ export default function MachinesPage() {
               <button onClick={() => setShiftFor(m)}
                 className="btn-sm w-full mt-3 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded-lg px-2 flex items-center gap-1.5 justify-center">
                 <Users size={14} /> Smena almashtirish
+              </button>
+
+              <button onClick={() => setMoldAssignFor(m)}
+                className="btn-sm w-full mt-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 flex items-center gap-1.5 justify-center">
+                <Layers size={14} /> Kalip belgilash
               </button>
 
               {canWrite && (
@@ -1163,6 +1450,16 @@ export default function MachinesPage() {
           canWrite={canWrite}
           onClose={() => setHubMachine(null)}
           onAction={handleHubAction}
+        />
+      )}
+
+      {moldsOpen && <MoldsModal canWrite={canWrite} onClose={() => setMoldsOpen(false)} />}
+
+      {moldAssignFor && (
+        <MoldAssignModal
+          machine={machines.find(x => x.id === moldAssignFor.id) || moldAssignFor}
+          canWrite={canWrite}
+          onClose={() => setMoldAssignFor(null)}
         />
       )}
 

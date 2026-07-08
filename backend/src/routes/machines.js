@@ -12,12 +12,14 @@ router.get('/', async (req, res, next) => {
   try {
     const result = await query(`
       SELECT m.*, e.name as operator_name, e.shift as operator_shift, p.name as current_product_name,
+        cm.name AS current_mold_name, cm.status AS current_mold_status, cm.location AS current_mold_location, cm.cavity_count AS current_mold_cavity_count,
         (SELECT d.status FROM machine_downtime d WHERE d.machine_id = m.id AND d.ended_at IS NULL ORDER BY d.started_at DESC LIMIT 1) AS pause_status,
         (SELECT d.reason FROM machine_downtime d WHERE d.machine_id = m.id AND d.ended_at IS NULL ORDER BY d.started_at DESC LIMIT 1) AS pause_reason,
         (SELECT d.mold_minutes FROM machine_downtime d WHERE d.machine_id = m.id AND d.ended_at IS NULL ORDER BY d.started_at DESC LIMIT 1) AS pause_mold_minutes
       FROM machines m
       LEFT JOIN employees e ON m.operator_id = e.id
       LEFT JOIN products p ON m.current_product_id = p.id
+      LEFT JOIN molds cm ON m.current_mold_id = cm.id
       WHERE m.is_active = true${req.user.branch_id ? ' AND m.branch_id = $1' : ' AND m.branch_id IS NULL'} ORDER BY m.name
     `, req.user.branch_id ? [req.user.branch_id] : []);
     res.json({ machines: result.rows });
@@ -342,6 +344,52 @@ router.post('/:id/shift-changes', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE
       [req.params.id, fromOperatorId, to_operator_id, (note || '').trim() || null, req.user.id]
     );
     res.status(201).json({ shift_change: ins.rows[0] });
+  } catch (err) { next(err); }
+});
+
+// ── Kalip belgilash (stanokka jismoniy qolip biriktirish) ─────────────────
+// GET /api/machines/:id/mold-changes — biriktirish tarixi
+router.get('/:id/mold-changes', async (req, res, next) => {
+  try {
+    const result = await query(
+      `SELECT mc.*, mo1.name AS from_mold_name, mo2.name AS to_mold_name, u.full_name AS changed_by_name
+       FROM machine_mold_changes mc
+       LEFT JOIN molds mo1 ON mc.from_mold_id = mo1.id
+       LEFT JOIN molds mo2 ON mc.to_mold_id = mo2.id
+       LEFT JOIN users u ON mc.changed_by = u.id
+       WHERE mc.machine_id = $1
+       ORDER BY mc.changed_at DESC LIMIT 20`,
+      [req.params.id]
+    );
+    res.json({ mold_changes: result.rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/machines/:id/mold-changes — kalipni biriktirish (mold_id) yoki yechish (mold_id bo'sh)
+router.post('/:id/mold-changes', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async (req, res, next) => {
+  try {
+    const { mold_id, note } = req.body;
+    const m = await query('SELECT current_mold_id FROM machines WHERE id = $1', [req.params.id]);
+    if (!m.rows.length) return res.status(404).json({ error: 'Mashina topilmadi' });
+    const fromMoldId = m.rows[0].current_mold_id || null;
+    const toMoldId = mold_id || null;
+
+    if (toMoldId) {
+      const mo = await query('SELECT id FROM molds WHERE id = $1 AND is_active = true', [toMoldId]);
+      if (!mo.rows.length) return res.status(400).json({ error: 'Qolip topilmadi' });
+      // Boshqa stanokda o'rnatilgan bo'lsa — u yerdan avtomatik yechiladi
+      await query('UPDATE machines SET current_mold_id = NULL, updated_at = NOW() WHERE current_mold_id = $1 AND id <> $2', [toMoldId, req.params.id]);
+    }
+    if (!toMoldId && !fromMoldId) return res.status(400).json({ error: 'Stanokda hech qanday kalip biriktirilmagan' });
+
+    await query('UPDATE machines SET current_mold_id = $1, updated_at = NOW() WHERE id = $2', [toMoldId, req.params.id]);
+
+    const ins = await query(
+      `INSERT INTO machine_mold_changes (machine_id, from_mold_id, to_mold_id, note, changed_by)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [req.params.id, fromMoldId, toMoldId, (note || '').trim() || null, req.user.id]
+    );
+    res.status(201).json({ mold_change: ins.rows[0] });
   } catch (err) { next(err); }
 });
 

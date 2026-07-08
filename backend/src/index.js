@@ -53,6 +53,7 @@ app.use('/api/salaries', require('./routes/salaries'));
 app.use('/api/salary-slip', require('./routes/salary-slip'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/machines', require('./routes/machines'));
+app.use('/api/molds', require('./routes/molds'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/ahmad', require('./routes/ahmad'));

@@ -856,7 +856,8 @@ function MoldsModal({ canWrite, onClose }) {
 // aniq jismoniy qolipni doimiy biriktirib qo'yadi, tarixi bilan.)
 function MoldAssignModal({ machine, canWrite, onClose }) {
   const qc = useQueryClient();
-  const [selection, setSelection] = useState(''); // "mold:<id>" yoki "product:<id>"
+  const [searchText, setSearchText] = useState(''); // yozib qidirish maydoni
+  const [selection, setSelection] = useState(''); // "mold:<id>" yoki "product:<id>" — searchText mos kelganda to'ladi
   const [moldName, setMoldName] = useState(''); // yangi kalipga o'zi yozadigan nom (ixtiyoriy)
   const [note, setNote] = useState('');
 
@@ -878,6 +879,24 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
   const products = prodData?.products || [];
   const rows = historyData?.mold_changes || [];
 
+  // Yozib qidirish uchun bitta ro'yxatga birlashtirilgan variantlar (kalip + mahsulot/komponent)
+  const candidates = [
+    ...molds.map(mo => ({
+      key: `mold:${mo.id}`,
+      label: `🧩 ${mo.name}${mo.product_name ? ` (${mo.product_name})` : ''}${mo.current_machine_id && mo.current_machine_id !== machine.id ? ` — hozir: ${mo.current_machine_name}` : ''}`,
+    })),
+    ...products.map(p => ({
+      key: `product:${p.id}`,
+      label: `📦 ${p.name}${p.kind === 'KOMPONENT' ? ' (komponent)' : ''}`,
+    })),
+  ];
+
+  const handleSearchChange = (val) => {
+    setSearchText(val);
+    const match = candidates.find(c => c.label === val);
+    setSelection(match ? match.key : '');
+  };
+
   const assignMut = useMutation({
     mutationFn: (sel) => {
       const [kind, id] = sel.split(':');
@@ -887,7 +906,7 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
     },
     onSuccess: () => {
       toast.success('Kalip biriktirildi');
-      setSelection(''); setMoldName(''); setNote('');
+      setSearchText(''); setSelection(''); setMoldName(''); setNote('');
       qc.invalidateQueries({ queryKey: ['machine-mold-changes', machine.id] });
       qc.invalidateQueries({ queryKey: ['machines'] });
       qc.invalidateQueries({ queryKey: ['molds'] });
@@ -899,7 +918,7 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
     mutationFn: () => machinesAPI.assignMold(machine.id, { mold_id: null, note }),
     onSuccess: () => {
       toast.success('Kalip yechildi');
-      setSelection(''); setNote('');
+      setSearchText(''); setSelection(''); setNote('');
       qc.invalidateQueries({ queryKey: ['machine-mold-changes', machine.id] });
       qc.invalidateQueries({ queryKey: ['machines'] });
       qc.invalidateQueries({ queryKey: ['molds'] });
@@ -921,26 +940,20 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
           <div className="space-y-2">
             <div>
               <label className="label text-xs">Mahsulot/komponent yoki ro'yxatdagi kalip</label>
-              <select value={selection} onChange={e => setSelection(e.target.value)} className="select">
-                <option value="">Tanlang...</option>
-                {molds.length > 0 && (
-                  <optgroup label="Ro'yxatdagi qoliplar">
-                    {molds.map(mo => (
-                      <option key={mo.id} value={`mold:${mo.id}`} disabled={!!mo.current_machine_id && mo.current_machine_id !== machine.id}>
-                        {mo.name}{mo.product_name ? ` (${mo.product_name})` : ''}
-                        {mo.current_machine_id && mo.current_machine_id !== machine.id ? ` — ${mo.current_machine_name}'da band` : ''}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                <optgroup label="Mahsulotlar va komponentlar">
-                  {products.map(p => (
-                    <option key={p.id} value={`product:${p.id}`}>
-                      {p.name}{p.kind === 'KOMPONENT' ? ' (komponent)' : ''}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
+              <input
+                type="text"
+                list="mold-assign-candidates"
+                value={searchText}
+                onChange={e => handleSearchChange(e.target.value)}
+                className="input"
+                placeholder="Yozib qidiring..."
+              />
+              <datalist id="mold-assign-candidates">
+                {candidates.map(c => <option key={c.key} value={c.label} />)}
+              </datalist>
+              {searchText && !selection && (
+                <p className="text-xs text-amber-600 mt-1">Ro'yxatdan mos variantni tanlang</p>
+              )}
             </div>
             {selection.startsWith('product:') && (
               <input value={moldName} onChange={e => setMoldName(e.target.value)} className="input"

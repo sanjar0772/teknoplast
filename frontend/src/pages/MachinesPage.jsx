@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw, BarChart3, FileSpreadsheet, FileText, QrCode, Download, Users, Camera } from 'lucide-react';
+import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw, BarChart3, FileSpreadsheet, FileText, QrCode, Download, Users, Camera, Search } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { machinesAPI, employeesAPI, productsAPI } from '../services/api';
@@ -533,8 +533,8 @@ function ShiftChangeModal({ machine, employees, canWrite, onClose }) {
 }
 
 // Pause sababi — Nosoz / Buzilgan / Qalip almashmoqda (qalipga o'rtacha vaqt)
-function PauseReasonModal({ machine, pending, onConfirm, onClose }) {
-  const [kind, setKind] = useState('NOSOZ');
+function PauseReasonModal({ machine, pending, onConfirm, onClose, initialKind }) {
+  const [kind, setKind] = useState(initialKind || 'NOSOZ');
   const [reason, setReason] = useState('');
   const [moldMin, setMoldMin] = useState('');
   const [moldProductId, setMoldProductId] = useState('');
@@ -610,6 +610,77 @@ function PauseReasonModal({ machine, pending, onConfirm, onClose }) {
   );
 }
 
+// Stanok QR begisi skanerlanganda ochiladigan tezkor amallar markazi —
+// bitta joydan smena almashtirish, qolip almashtirish, holat/nosozlik va h.k.
+function MachineHubModal({ machine, canWrite, onClose, onAction }) {
+  if (!machine) return null;
+  const st = STATUS[machine.status] || STATUS.WORKING;
+  return (
+    <Modal open onClose={onClose} title={machine.name}>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between text-sm bg-gray-50 rounded-lg px-3 py-2">
+          <span className="text-gray-600">
+            {machine.type === 'MASHINA' ? 'Mashina' : 'Stanok'}{machine.location ? ` · ${machine.location}` : ''}
+          </span>
+          <span className={st.cls}>{st.label}</span>
+        </div>
+
+        <div className="space-y-1 text-sm">
+          <div className="flex justify-between">
+            <span className="text-gray-500">Operator:</span>
+            <span>
+              {machine.operator_name || '—'}
+              {machine.operator_name && machine.operator_shift && (
+                <span className="text-xs text-gray-400"> ({shiftLabel(machine.operator_shift)})</span>
+              )}
+            </span>
+          </div>
+          {machine.current_product_name && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">Joriy qolip:</span>
+              <span className="font-medium text-blue-700">{machine.current_product_name}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          {canWrite && (
+            <button onClick={() => onAction('toggle')}
+              className={`btn-sm col-span-2 rounded-lg px-2 py-2.5 flex items-center gap-1.5 justify-center ${
+                machine.is_running ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+              }`}>
+              {machine.is_running ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+              {machine.is_running ? "To'xtatish" : 'Ishga tushirish'}
+            </button>
+          )}
+          <button onClick={() => onAction('shift')}
+            className="btn-sm bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded-lg px-2 py-2.5 flex items-center gap-1.5 justify-center">
+            <Users size={14} /> Smena
+          </button>
+          {canWrite && (
+            <button onClick={() => onAction('mold')}
+              className="btn-sm bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg px-2 py-2.5 flex items-center gap-1.5 justify-center">
+              <RefreshCw size={14} /> Qolip almashtirish
+            </button>
+          )}
+          <button onClick={() => onAction('downtime')}
+            className="btn-sm bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-lg px-2 py-2.5 flex items-center gap-1.5 justify-center">
+            <Wrench size={14} /> Holat/Nosozlik
+          </button>
+          <button onClick={() => onAction('cycle')}
+            className="btn-sm bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200 rounded-lg px-2 py-2.5 flex items-center gap-1.5 justify-center">
+            <Timer size={14} /> Cycle-time
+          </button>
+          <button onClick={() => onAction('qr')}
+            className="btn-sm col-span-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 py-2.5 flex items-center gap-1.5 justify-center">
+            <QrCode size={14} /> QR kodni ko'rish
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function MachinesPage() {
   const { isOwner, isProductionHead, isCycleTime } = useAuthStore();
   const qc = useQueryClient();
@@ -623,6 +694,71 @@ export default function MachinesPage() {
   const [qrMachine, setQrMachine] = useState(null);   // bitta stanok QR begiki
   const [qrBulk, setQrBulk] = useState(false);        // hamma stanok QR begiklari
   const [shiftFor, setShiftFor] = useState(null);     // smena almashtirish modali (qaysi stanok)
+  const [pauseInitialKind, setPauseInitialKind] = useState('NOSOZ'); // pause modali qaysi sabab bilan ochilsin
+  const [hubMachine, setHubMachine] = useState(null); // stanok QR skanerlanganda ochiladigan amallar markazi
+  const [pageScanOpen, setPageScanOpen] = useState(false); // sahifa darajasidagi stanok QR skaneri
+  const [pageScanManual, setPageScanManual] = useState('');
+  const pageScannerRef = useRef(null);
+
+  const stopPageScan = () => {
+    const qr = pageScannerRef.current;
+    if (qr && qr.isScanning) { qr.stop().then(() => qr.clear()).catch(() => {}); }
+    pageScannerRef.current = null;
+  };
+
+  // Stanok QR begisi ("teknoplast-machine-<id>") skanerlanganda — o'sha stanokning
+  // tezkor amallar markazini ochamiz (ro'yxatdan qidirib o'tirmasdan)
+  const handlePageScanned = (raw) => {
+    const m = String(raw || '').trim().match(/teknoplast-machine-(.+)$/i);
+    const id = m ? m[1] : String(raw || '').trim();
+    const machine = (data?.machines || []).find(x => x.id === id);
+    if (!machine) { toast.error('Stanok topilmadi — QR mos kelmadi'); return; }
+    stopPageScan();
+    setPageScanOpen(false);
+    setPageScanManual('');
+    setHubMachine(machine);
+  };
+
+  useEffect(() => {
+    if (!pageScanOpen) return;
+    try {
+      const qr = new Html5Qrcode('machine-hub-qr-reader');
+      pageScannerRef.current = qr;
+      qr.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: 220 },
+        (decoded) => { handlePageScanned(decoded); },
+        () => {}
+      ).catch(() => {
+        toast('Kamera ishlamasa, kodni qo\'lda kiriting', { icon: 'ℹ️' });
+      });
+    } catch (e) {
+      toast.error('Kamera: ' + (e.message || 'Xato'));
+    }
+    return () => { stopPageScan(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageScanOpen]);
+
+  // Amallar markazidagi tugmalar — mavjud modallarni shu stanok uchun ochadi
+  const handleHubAction = (key) => {
+    const m = (data?.machines || []).find(x => x.id === hubMachine.id) || hubMachine;
+    setHubMachine(null);
+    if (key === 'toggle') {
+      if (m.is_running) { setPauseInitialKind('NOSOZ'); setPauseFor(m); }
+      else runningMutation.mutate({ id: m.id, is_running: 1 });
+    } else if (key === 'mold') {
+      setPauseInitialKind('QOLIP');
+      setPauseFor(m);
+    } else if (key === 'shift') {
+      setShiftFor(m);
+    } else if (key === 'downtime') {
+      setDowntimeFor(m);
+    } else if (key === 'cycle') {
+      setCycleFor(m);
+    } else if (key === 'qr') {
+      setQrMachine(m);
+    }
+  };
 
   // Begiklarni bitta tugma bilan PNG qilib yuklab olish (Xodimlar sahifasidagi kabi)
   const downloadMachineBadges = async (list) => {
@@ -751,6 +887,10 @@ export default function MachinesPage() {
       <div className="page-header">
         <h1 className="page-title">Mashinalar</h1>
         <div className="flex gap-2">
+          <button onClick={() => setPageScanOpen(true)}
+            className="btn-sm bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-lg px-3 flex items-center gap-1">
+            <Camera size={14} /> QR skanerlash
+          </button>
           <button onClick={() => setQrBulk(true)}
             className="btn-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 flex items-center gap-1">
             <QrCode size={14} /> Hamma QR
@@ -826,7 +966,7 @@ export default function MachinesPage() {
                 <div className="flex items-center gap-2">
                   {canWrite && (
                     <button
-                      onClick={() => m.is_running ? setPauseFor(m) : runningMutation.mutate({ id: m.id, is_running: 1 })}
+                      onClick={() => { if (m.is_running) { setPauseInitialKind('NOSOZ'); setPauseFor(m); } else { runningMutation.mutate({ id: m.id, is_running: 1 }); } }}
                       disabled={runningMutation.isPending}
                       title={m.is_running ? "To'xtatish" : 'Ishga tushirish'}
                       className={`w-8 h-8 rounded-full flex items-center justify-center transition shrink-0 ${
@@ -1011,9 +1151,43 @@ export default function MachinesPage() {
         <PauseReasonModal
           machine={pauseFor}
           pending={runningMutation.isPending}
+          initialKind={pauseInitialKind}
           onClose={() => setPauseFor(null)}
           onConfirm={(payload) => { runningMutation.mutate({ id: pauseFor.id, is_running: 0, ...payload }); setPauseFor(null); }}
         />
+      )}
+      {hubMachine && (
+        <MachineHubModal
+          machine={machines.find(x => x.id === hubMachine.id) || hubMachine}
+          canWrite={canWrite}
+          onClose={() => setHubMachine(null)}
+          onAction={handleHubAction}
+        />
+      )}
+
+      {/* Sahifa darajasidagi QR skaner — stanokni skanerlab, uning amallar markazini ochish */}
+      {pageScanOpen && (
+        <div className="fixed inset-0 z-[65] flex items-start justify-center pt-16 p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => { stopPageScan(); setPageScanOpen(false); }} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-900">Stanok QR begisini skanerlash</h3>
+              <button onClick={() => { stopPageScan(); setPageScanOpen(false); }} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <div className="space-y-3">
+              <div id="machine-hub-qr-reader" className="w-full rounded-xl overflow-hidden bg-black" style={{ minHeight: 220 }} />
+              <p className="text-xs text-gray-400 text-center flex items-center justify-center gap-1">
+                <Camera size={12} /> Kamerani stanok QR begisiga to'g'rilang — o'qilgach amallar menyusi ochiladi
+              </p>
+              <div className="relative mt-4 pt-4 border-t border-gray-200">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input value={pageScanManual} onChange={e => setPageScanManual(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handlePageScanned(pageScanManual)}
+                  placeholder="Yoki kodni qo'lda: teknoplast-machine-..." className="input pl-8 text-sm" autoFocus />
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Bitta stanok QR begiki */}

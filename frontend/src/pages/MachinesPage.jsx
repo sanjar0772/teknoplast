@@ -544,7 +544,8 @@ function PauseReasonModal({ machine, pending, onConfirm, onClose, initialKind })
     queryFn: () => productsAPI.getAll({ is_active: 'all' }).then(r => r.data),
     enabled: !!machine,
   });
-  const products = (prodData?.products || []).filter(p => p.kind !== 'KOMPONENT');
+  // Qolip tayyor mahsulot yoki komponent (detal) uchun ham bo'lishi mumkin — ikkalasi ham ko'rsatiladi
+  const products = prodData?.products || [];
 
   const opts = [
     { v: 'NOSOZ',    label: 'Nosoz',             Icon: Wrench,        on: 'border-yellow-400 bg-yellow-50 text-yellow-700' },
@@ -583,7 +584,7 @@ function PauseReasonModal({ machine, pending, onConfirm, onClose, initialKind })
               <label className="label text-xs">Qaysi qolipga (mahsulotga) almashtirilyapti? *</label>
               <select value={moldProductId} onChange={e => setMoldProductId(e.target.value)} className="select" autoFocus>
                 <option value="">Tanlang...</option>
-                {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {products.map(p => <option key={p.id} value={p.id}>{p.name}{p.kind === 'KOMPONENT' ? ' — Komponent' : ''}</option>)}
               </select>
             </div>
             <div>

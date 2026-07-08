@@ -8,6 +8,7 @@ const ROLE_PERMISSIONS = {
   ],
   SALES_HEAD: [
     'sales:read', 'sales:write',
+    'returns:write',
     'products:read', 'products:price:read',
     'discounts:read', 'discounts:write',
     'customers:read', 'reports:sales'

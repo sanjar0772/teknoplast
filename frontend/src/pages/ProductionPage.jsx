@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Plus, X, Save, Trash2, Download, Printer, ScanLine, Camera, Search, RotateCcw, Pencil } from 'lucide-react';
-import { productionAPI, employeesAPI, productsAPI } from '../services/api';
+import { productionAPI, employeesAPI, productsAPI, machinesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import { RANGLAR, RANG_COLORS } from '../constants/colors';
 
@@ -70,6 +70,12 @@ export default function ProductionPage() {
   const { data: products } = useQuery({
     queryKey: ['products'],
     queryFn: () => productsAPI.getAll().then(r => r.data),
+  });
+
+  // Stanok QR begiki skanerlanganda — biriktirilgan operator + joriy qolipni topish uchun
+  const { data: machinesData } = useQuery({
+    queryKey: ['machines'],
+    queryFn: () => machinesAPI.getAll().then(r => r.data),
   });
 
   // Stanokchi/Detalchi xodimlar ro'yxati (davr statistikasi uchun)
@@ -200,6 +206,9 @@ export default function ProductionPage() {
   const prodMap = {};
   (products?.products || []).forEach(p => { prodMap[p.id] = p; });
 
+  const machineMap = {};
+  (machinesData?.machines || []).forEach(m => { machineMap[m.id] = m; });
+
   const newItem = () => ({ prodSearch: '', product_id: '', production_type: 'FINISHED', tarif: '', quantity_produced: '', rang: '' });
 
   const addEntry = () => {
@@ -232,6 +241,56 @@ export default function ProductionPage() {
     toast.success(`✅ ${emp.name}${emp.type === 'STANOKCHI' ? ' · Stanokchi' : emp.type === 'DETALCHI' ? ' · Detalchi' : ''}`);
   };
 
+  // Stanok QR begiki: "teknoplast-machine-<id>" — id'ni ajratib olamiz
+  const parseMachineIdFromQr = (raw) => {
+    const m = String(raw || '').trim().match(/teknoplast-machine-(.+)$/i);
+    return m ? m[1] : null;
+  };
+
+  // Stanok QR o'qilganda — biriktirilgan operator va joriy qolip (mahsulot) avtomatik
+  // to'ladi; kirimchi faqat dona va rangni kiritadi. Operator/qolip yo'q bo'lsa —
+  // shu qismi bo'sh qoladi, qo'lda tanlanadi (bloklamaydi).
+  const handleScannedMachine = (machineId) => {
+    const machine = machineMap[machineId];
+    if (!machine) { toast.error('Stanok topilmadi — QR mos kelmadi'); return; }
+
+    const emp = machine.operator_id ? empMap[machine.operator_id] : null;
+    const product = machine.current_product_id ? prodMap[machine.current_product_id] : null;
+
+    const item = newItem();
+    if (product) {
+      item.prodSearch = product.name;
+      item.product_id = product.id;
+      if (product.kind === 'KOMPONENT') item.production_type = 'KOMPONENT';
+      else if (emp?.type === 'DETALCHI') item.production_type = 'SEMI_FINISHED';
+      item.tarif = emp ? autoTarif(emp.id, product.id, item.production_type) : '';
+    } else if (emp?.type === 'DETALCHI') {
+      item.production_type = 'SEMI_FINISHED';
+    }
+
+    setEntries(prev => {
+      if (showBulk && emp && prev.some(e => e.employee_id === emp.id)) return prev;
+      const entry = { employee_id: emp?.id || '', items: [item] };
+      return showBulk ? [...prev, entry] : [entry];
+    });
+    setShowBulk(true);
+    stopScan();
+    setScanOpen(false);
+    setScanManual('');
+
+    if (!emp) { toast.error(`"${machine.name}" — operator biriktirilmagan, xodimni qo'lda tanlang`); return; }
+    const parts = [emp.name];
+    if (product) parts.push(product.name);
+    toast.success(`✅ ${machine.name} — ${parts.join(' · ')}`);
+  };
+
+  // QR skanerlangan kod xodim begiki yoki stanok begiki bo'lishi mumkin — turini aniqlab yo'naltiramiz
+  const handleScanned = (raw) => {
+    const machineId = parseMachineIdFromQr(raw);
+    if (machineId) { handleScannedMachine(machineId); return; }
+    handleScannedEmp(raw);
+  };
+
   // Kamera skani (kamera ishlamasa — qo'lda kod kiritish mumkin)
   useEffect(() => {
     if (!scanOpen) return;
@@ -241,7 +300,7 @@ export default function ProductionPage() {
       qr.start(
         { facingMode: 'environment' },
         { fps: 10, qrbox: 220 },
-        (decoded) => { handleScannedEmp(decoded); },
+        (decoded) => { handleScanned(decoded); },
         () => {}
       ).catch(() => {
         toast('Kamera ishlamasa, kodni qo\'lda kiriting', { icon: 'ℹ️' });
@@ -982,19 +1041,19 @@ export default function ProductionPage() {
           <div className="absolute inset-0 bg-black/50" onClick={() => { stopScan(); setScanOpen(false); }} />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-gray-900">Stanokchi QR begikini skanerlash</h3>
+              <h3 className="font-bold text-gray-900">QR begikini skanerlash</h3>
               <button onClick={() => { stopScan(); setScanOpen(false); }} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
             </div>
             <div className="space-y-3">
               <div id="prod-qr-reader" className="w-full rounded-xl overflow-hidden bg-black" style={{ minHeight: 220 }} />
               <p className="text-xs text-gray-400 text-center flex items-center justify-center gap-1">
-                <Camera size={12} /> Kamerani xodim QR begikiga to'g'rilang — o'qilgach kunlik kiritish ochiladi
+                <Camera size={12} /> Xodim begigini yoki stanok begisini skanerlang — stanok skanerlansa operator va qolip avtomatik to'ladi
               </p>
               <div className="relative mt-4 pt-4 border-t border-gray-200">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input value={scanManual} onChange={e => setScanManual(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleScannedEmp(scanManual)}
-                  placeholder="Yoki kodni qo'lda: teknoplast-emp-..." className="input pl-8 text-sm" autoFocus />
+                  onKeyDown={e => e.key === 'Enter' && handleScanned(scanManual)}
+                  placeholder="Yoki kodni qo'lda: teknoplast-emp-... yoki teknoplast-machine-..." className="input pl-8 text-sm" autoFocus />
               </div>
             </div>
           </div>

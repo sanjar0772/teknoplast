@@ -113,7 +113,7 @@ export default function LoginPage() {
           </form>
 
           <p className="text-center text-xs text-gray-400 mt-6">
-            Teknoplast Boshqaruv Tizimi v156
+            Teknoplast Boshqaruv Tizimi v157
           </p>
         </div>
       </div>

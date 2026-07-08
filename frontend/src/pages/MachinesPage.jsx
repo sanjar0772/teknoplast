@@ -857,6 +857,7 @@ function MoldsModal({ canWrite, onClose }) {
 function MoldAssignModal({ machine, canWrite, onClose }) {
   const qc = useQueryClient();
   const [selection, setSelection] = useState(''); // "mold:<id>" yoki "product:<id>"
+  const [moldName, setMoldName] = useState(''); // yangi kalipga o'zi yozadigan nom (ixtiyoriy)
   const [note, setNote] = useState('');
 
   const { data: moldsData } = useQuery({
@@ -880,11 +881,13 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
   const assignMut = useMutation({
     mutationFn: (sel) => {
       const [kind, id] = sel.split(':');
-      return machinesAPI.assignMold(machine.id, kind === 'mold' ? { mold_id: id, note } : { product_id: id, note });
+      return machinesAPI.assignMold(machine.id, kind === 'mold'
+        ? { mold_id: id, note }
+        : { product_id: id, mold_name: moldName.trim() || undefined, note });
     },
     onSuccess: () => {
       toast.success('Kalip biriktirildi');
-      setSelection(''); setNote('');
+      setSelection(''); setMoldName(''); setNote('');
       qc.invalidateQueries({ queryKey: ['machine-mold-changes', machine.id] });
       qc.invalidateQueries({ queryKey: ['machines'] });
       qc.invalidateQueries({ queryKey: ['molds'] });
@@ -939,6 +942,10 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
                 </optgroup>
               </select>
             </div>
+            {selection.startsWith('product:') && (
+              <input value={moldName} onChange={e => setMoldName(e.target.value)} className="input"
+                placeholder="Kalip nomi (ixtiyoriy — yozsangiz, shu nom bilan yangi kalip qo'shiladi)" />
+            )}
             <input value={note} onChange={e => setNote(e.target.value)} className="input" placeholder="Izoh (ixtiyoriy)" />
             <div className="flex gap-2">
               <button

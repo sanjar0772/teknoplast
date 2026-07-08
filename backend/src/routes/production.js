@@ -30,7 +30,7 @@ async function insertProductionRow(client, {
 // GET /api/production — kunlik ishlab chiqarish
 router.get('/', async (req, res, next) => {
   try {
-    const { date, month, employee_id } = req.query;
+    const { date, month, employee_id, start_date, end_date } = req.query;
     let sql = `
       SELECT ep.*, e.name as employee_name, e.type as employee_type,
              p.name as product_name, p.kind as product_kind
@@ -44,6 +44,8 @@ router.get('/', async (req, res, next) => {
     if (date)        { sql += ` AND ep.production_date = $${idx++}`; params.push(date); }
     if (month)       { sql += ` AND ep.month = $${idx++}`; params.push(month); }
     if (employee_id) { sql += ` AND ep.employee_id = $${idx++}`; params.push(employee_id); }
+    if (start_date)  { sql += ` AND ep.production_date >= $${idx++}`; params.push(start_date); }
+    if (end_date)    { sql += ` AND ep.production_date <= $${idx++}`; params.push(end_date); }
     sql += ' ORDER BY ep.production_date DESC, e.name';
     const result = await query(sql, params);
     res.json({ production: result.rows });

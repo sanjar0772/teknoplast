@@ -36,6 +36,8 @@ export default function ProductionPage() {
   const [shiftFilter, setShiftFilter] = useState(morningShift ? '2-SMENA' : ''); // '' = hammasi, '1-SMENA', '2-SMENA' — faqat Stanokchiga ta'sir qiladi (ertalab 7-10 → avto 2-SMENA)
   const [compactMode, setCompactMode] = useState(false);
   const empIdsInitialized = useRef(false);
+  // Davr statistikasida "Ish kunlari"ga bosilganda — o'sha xodimning kunlik tafsiloti
+  const [dayDetailEmp, setDayDetailEmp] = useState(null); // { id, name, type, shift }
 
   const { data: summary } = useQuery({
     queryKey: ['production-summary', month],
@@ -106,9 +108,33 @@ export default function ProductionPage() {
     enabled: !!rangeStart && !!rangeEnd && selectedEmpIds.length > 0,
   });
 
+  const { data: dayDetail } = useQuery({
+    queryKey: ['production-day-detail', dayDetailEmp?.id, rangeStart, rangeEnd],
+    queryFn: () => productionAPI.getAll({ employee_id: dayDetailEmp.id, start_date: rangeStart, end_date: rangeEnd }).then(r => r.data),
+    enabled: !!dayDetailEmp,
+  });
+
   const sumField = (rows, field) => rows.reduce((s, r) => s + parseFloat(r[field] || 0), 0);
   const rangeStanokchiRows = (rangeSummary?.summary || []).filter(r => r.type === 'STANOKCHI');
   const rangeDetalchiRows = (rangeSummary?.summary || []).filter(r => r.type === 'DETALCHI');
+
+  // Kunlik tafsilotni sana bo'yicha guruhlab, har kun uchun jamlaydi
+  const dayDetailGroups = (() => {
+    const rows = dayDetail?.production || [];
+    const byDate = new Map();
+    for (const row of rows) {
+      if (!byDate.has(row.production_date)) byDate.set(row.production_date, []);
+      byDate.get(row.production_date).push(row);
+    }
+    return [...byDate.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([production_date, items]) => ({
+        production_date,
+        items,
+        totalQty: sumField(items, 'quantity_produced'),
+        totalEarned: sumField(items, 'calculated_amount'),
+      }));
+  })();
 
   const downloadRangeExcel = async () => {
     try {
@@ -657,7 +683,12 @@ export default function ProductionPage() {
                       <tr key={row.employee_id}>
                         <td className="font-medium">{row.name}</td>
                         <td>Stanokchi <span className="text-xs text-gray-400">({row.shift === '2-SMENA' ? '2-Smena' : '1-Smena'})</span></td>
-                        <td>{row.work_days} kun</td>
+                        <td>
+                          <button type="button" onClick={() => setDayDetailEmp({ id: row.employee_id, name: row.name, type: row.type, shift: row.shift })}
+                            className="text-blue-600 hover:text-blue-800 underline decoration-dotted underline-offset-2" title="Kunlar bo'yicha ko'rish">
+                            {row.work_days} kun
+                          </button>
+                        </td>
                         <td>{fmt(row.total_produced)} dona</td>
                         <td className="font-semibold text-green-700">{fmt(row.total_earned)} so'm</td>
                       </tr>
@@ -674,7 +705,12 @@ export default function ProductionPage() {
                       <tr key={row.employee_id}>
                         <td className="font-medium">{row.name}</td>
                         <td>Detalchi</td>
-                        <td>{row.work_days} kun</td>
+                        <td>
+                          <button type="button" onClick={() => setDayDetailEmp({ id: row.employee_id, name: row.name, type: row.type, shift: row.shift })}
+                            className="text-blue-600 hover:text-blue-800 underline decoration-dotted underline-offset-2" title="Kunlar bo'yicha ko'rish">
+                            {row.work_days} kun
+                          </button>
+                        </td>
                         <td>{fmt(row.total_produced)} dona</td>
                         <td className="font-semibold text-green-700">{fmt(row.total_earned)} so'm</td>
                       </tr>
@@ -998,6 +1034,76 @@ export default function ProductionPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Xodimning davr ichidagi kunlar bo'yicha tafsiloti ("Ish kunlari"ga bosilganda) */}
+      {dayDetailEmp && (
+        <div className="fixed inset-0 z-[70] flex items-start justify-center pt-16 p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setDayDetailEmp(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-bold text-gray-900">
+                {dayDetailEmp.name}
+                <span className="ml-2 text-xs font-normal text-gray-400">
+                  ({dayDetailEmp.type === 'DETALCHI' ? 'Detalchi' : `Stanokchi${dayDetailEmp.shift ? ` · ${dayDetailEmp.shift === '2-SMENA' ? '2-Smena' : '1-Smena'}` : ''}`})
+                </span>
+              </h3>
+              <button onClick={() => setDayDetailEmp(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <p className="text-xs text-gray-400 mb-4">
+              {new Date(rangeStart + 'T12:00:00').toLocaleDateString('uz-UZ')} — {new Date(rangeEnd + 'T12:00:00').toLocaleDateString('uz-UZ')} ·
+              {' '}{dayDetailGroups.length} kun ishlagan
+            </p>
+
+            {!dayDetailGroups.length ? (
+              <p className="text-center py-8 text-gray-400 text-sm">Bu davrda ish kunlari topilmadi</p>
+            ) : (
+              <div className="space-y-4">
+                {dayDetailGroups.map(group => (
+                  <div key={group.production_date} className="border border-gray-100 rounded-xl overflow-hidden">
+                    <div className="flex items-center justify-between bg-gray-50 px-3 py-2">
+                      <span className="font-medium text-sm text-gray-700">
+                        {new Date(group.production_date + 'T12:00:00').toLocaleDateString('uz-UZ', { weekday: 'short', day: 'numeric', month: 'long' })}
+                      </span>
+                      <span className="text-sm">
+                        <span className="text-gray-500">{fmt(group.totalQty)} dona</span>
+                        {' · '}
+                        <span className="font-semibold text-green-700">{fmt(group.totalEarned)} so'm</span>
+                      </span>
+                    </div>
+                    <table className="table text-sm">
+                      <tbody>
+                        {group.items.map(row => (
+                          <tr key={row.id}>
+                            <td>{row.product_name || '—'}</td>
+                            <td>
+                              {row.rang ? (
+                                <span className="inline-flex items-center gap-1">
+                                  <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background: RANG_COLORS[row.rang] || '#999' }} />
+                                  {row.rang}
+                                </span>
+                              ) : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td>{fmt(row.quantity_produced)} dona</td>
+                            <td className="text-gray-500">{fmt(row.daily_tariff)} so'm</td>
+                            <td className="font-semibold text-green-700">{fmt(row.calculated_amount)} so'm</td>
+                            <td>
+                              {row.approval_status === 'APPROVED'
+                                ? <span className="badge-green">Tasdiqlangan</span>
+                                : row.approval_status === 'REJECTED'
+                                  ? <span className="badge bg-red-50 text-red-600" title={row.notes || ''}>Qaytarilgan</span>
+                                  : <span className="badge-yellow">Kutilmoqda</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

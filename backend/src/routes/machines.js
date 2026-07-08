@@ -365,14 +365,34 @@ router.get('/:id/mold-changes', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/machines/:id/mold-changes — kalipni biriktirish (mold_id) yoki yechish (mold_id bo'sh)
+// POST /api/machines/:id/mold-changes — kalipni biriktirish (mold_id yoki product_id) yoki yechish (ikkalasi ham bo'sh)
 router.post('/:id/mold-changes', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME'), async (req, res, next) => {
   try {
-    const { mold_id, note } = req.body;
-    const m = await query('SELECT current_mold_id FROM machines WHERE id = $1', [req.params.id]);
+    const { mold_id, product_id, note } = req.body;
+    const m = await query('SELECT current_mold_id, branch_id FROM machines WHERE id = $1', [req.params.id]);
     if (!m.rows.length) return res.status(404).json({ error: 'Mashina topilmadi' });
     const fromMoldId = m.rows[0].current_mold_id || null;
-    const toMoldId = mold_id || null;
+    let toMoldId = mold_id || null;
+
+    // Mahsulot/komponent to'g'ridan-to'g'ri tanlangan bo'lsa — o'sha mahsulot uchun
+    // mavjud qolipni topamiz, bo'lmasa mahsulot nomi bilan yangi qolip yozib qo'yamiz.
+    if (!toMoldId && product_id) {
+      const existing = await query(
+        'SELECT id FROM molds WHERE product_id = $1 AND is_active = true ORDER BY created_at LIMIT 1',
+        [product_id]
+      );
+      if (existing.rows.length) {
+        toMoldId = existing.rows[0].id;
+      } else {
+        const prod = await query('SELECT name FROM products WHERE id = $1', [product_id]);
+        if (!prod.rows.length) return res.status(400).json({ error: 'Mahsulot/komponent topilmadi' });
+        const created = await query(
+          'INSERT INTO molds (name, product_id, status, branch_id) VALUES ($1,$2,$3,$4) RETURNING *',
+          [prod.rows[0].name, product_id, 'AKTIV', m.rows[0].branch_id || null]
+        );
+        toMoldId = created.rows[0].id;
+      }
+    }
 
     if (toMoldId) {
       const mo = await query('SELECT id FROM molds WHERE id = $1 AND is_active = true', [toMoldId]);

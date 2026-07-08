@@ -856,12 +856,16 @@ function MoldsModal({ canWrite, onClose }) {
 // aniq jismoniy qolipni doimiy biriktirib qo'yadi, tarixi bilan.)
 function MoldAssignModal({ machine, canWrite, onClose }) {
   const qc = useQueryClient();
-  const [selectedMoldId, setSelectedMoldId] = useState('');
+  const [selection, setSelection] = useState(''); // "mold:<id>" yoki "product:<id>"
   const [note, setNote] = useState('');
 
   const { data: moldsData } = useQuery({
     queryKey: ['molds'],
     queryFn: () => moldsAPI.getAll().then(r => r.data),
+  });
+  const { data: prodData } = useQuery({
+    queryKey: ['products-all-for-mold'],
+    queryFn: () => productsAPI.getAll({ is_active: 'true' }).then(r => r.data),
   });
   const { data: historyData, isLoading } = useQuery({
     queryKey: ['machine-mold-changes', machine?.id],
@@ -870,14 +874,29 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
   });
 
   const molds = moldsData?.molds || [];
+  const products = prodData?.products || [];
   const rows = historyData?.mold_changes || [];
 
   const assignMut = useMutation({
-    mutationFn: (moldId) => machinesAPI.assignMold(machine.id, { mold_id: moldId, note }),
-    onSuccess: (_res, moldId) => {
-      const mo = molds.find(x => x.id === moldId);
-      toast.success(moldId ? `Kalip biriktirildi${mo ? ` — ${mo.name}` : ''}` : 'Kalip yechildi');
-      setSelectedMoldId(''); setNote('');
+    mutationFn: (sel) => {
+      const [kind, id] = sel.split(':');
+      return machinesAPI.assignMold(machine.id, kind === 'mold' ? { mold_id: id, note } : { product_id: id, note });
+    },
+    onSuccess: () => {
+      toast.success('Kalip biriktirildi');
+      setSelection(''); setNote('');
+      qc.invalidateQueries({ queryKey: ['machine-mold-changes', machine.id] });
+      qc.invalidateQueries({ queryKey: ['machines'] });
+      qc.invalidateQueries({ queryKey: ['molds'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+
+  const unassignMut = useMutation({
+    mutationFn: () => machinesAPI.assignMold(machine.id, { mold_id: null, note }),
+    onSuccess: () => {
+      toast.success('Kalip yechildi');
+      setSelection(''); setNote('');
       qc.invalidateQueries({ queryKey: ['machine-mold-changes', machine.id] });
       qc.invalidateQueries({ queryKey: ['machines'] });
       qc.invalidateQueries({ queryKey: ['molds'] });
@@ -898,26 +917,37 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
         {canWrite && (
           <div className="space-y-2">
             <div>
-              <label className="label text-xs">Biriktiriladigan kalip</label>
-              <select value={selectedMoldId} onChange={e => setSelectedMoldId(e.target.value)} className="select">
+              <label className="label text-xs">Mahsulot/komponent yoki ro'yxatdagi kalip</label>
+              <select value={selection} onChange={e => setSelection(e.target.value)} className="select">
                 <option value="">Tanlang...</option>
-                {molds.map(mo => (
-                  <option key={mo.id} value={mo.id} disabled={!!mo.current_machine_id && mo.current_machine_id !== machine.id}>
-                    {mo.name}{mo.product_name ? ` (${mo.product_name})` : ''}
-                    {mo.current_machine_id && mo.current_machine_id !== machine.id ? ` — ${mo.current_machine_name}'da band` : ''}
-                  </option>
-                ))}
+                {molds.length > 0 && (
+                  <optgroup label="Ro'yxatdagi qoliplar">
+                    {molds.map(mo => (
+                      <option key={mo.id} value={`mold:${mo.id}`} disabled={!!mo.current_machine_id && mo.current_machine_id !== machine.id}>
+                        {mo.name}{mo.product_name ? ` (${mo.product_name})` : ''}
+                        {mo.current_machine_id && mo.current_machine_id !== machine.id ? ` — ${mo.current_machine_name}'da band` : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="Mahsulotlar va komponentlar">
+                  {products.map(p => (
+                    <option key={p.id} value={`product:${p.id}`}>
+                      {p.name}{p.kind === 'KOMPONENT' ? ' (komponent)' : ''}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </div>
             <input value={note} onChange={e => setNote(e.target.value)} className="input" placeholder="Izoh (ixtiyoriy)" />
             <div className="flex gap-2">
               <button
-                onClick={() => { if (!selectedMoldId) return toast.error('Kalipni tanlang'); assignMut.mutate(selectedMoldId); }}
+                onClick={() => { if (!selection) return toast.error('Mahsulot yoki kalipni tanlang'); assignMut.mutate(selection); }}
                 disabled={assignMut.isPending} className="btn-primary flex-1">
                 {assignMut.isPending ? 'Saqlanmoqda...' : 'Biriktirish'}
               </button>
               {machine.current_mold_id && (
-                <button onClick={() => assignMut.mutate(null)} disabled={assignMut.isPending} className="btn-secondary">
+                <button onClick={() => unassignMut.mutate()} disabled={unassignMut.isPending} className="btn-secondary">
                   Yechish
                 </button>
               )}

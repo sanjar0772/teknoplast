@@ -703,15 +703,9 @@ function MachineHubModal({ machine, canWrite, onClose, onAction }) {
             <Users size={14} /> Smena
           </button>
           {canWrite && (
-            <button onClick={() => onAction('mold')}
-              className="btn-sm bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg px-2 py-2.5 flex items-center gap-1.5 justify-center">
-              <RefreshCw size={14} /> Qolip almashtirish
-            </button>
-          )}
-          {canWrite && (
             <button onClick={() => onAction('kalip-assign')}
-              className="btn-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 py-2.5 flex items-center gap-1.5 justify-center">
-              <Layers size={14} /> Kalip belgilash
+              className="btn-sm col-span-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 py-2.5 flex items-center gap-1.5 justify-center">
+              <Layers size={14} /> {machine.current_mold_id ? 'Qolip almashtirish' : 'Kalip belgilash'}
             </button>
           )}
           <button onClick={() => onAction('downtime')}
@@ -867,9 +861,10 @@ function MoldsModal({ canWrite, onClose }) {
 function MoldAssignModal({ machine, canWrite, onClose }) {
   const qc = useQueryClient();
   const [searchText, setSearchText] = useState(''); // yozib qidirish maydoni
-  const [selection, setSelection] = useState(''); // "mold:<id>" yoki "product:<id>" — searchText mos kelganda to'ladi
+  const [selection, setSelection] = useState(''); // "mold:<id>" yoki "product:<id>" — variant tanlanganda to'ladi
+  const [showList, setShowList] = useState(false); // yozilayotganda pastda ro'yxat ochiq turadi
   const [moldName, setMoldName] = useState(''); // yangi kalipga o'zi yozadigan nom (ixtiyoriy)
-  const [cycleSeconds, setCycleSeconds] = useState(''); // 1 dona necha soniyada chiqadi (ixtiyoriy)
+  const [cycleSeconds, setCycleSeconds] = useState(''); // 1 dona necha soniyada chiqadi (majburiy)
   const [note, setNote] = useState('');
 
   const { data: moldsData } = useQuery({
@@ -910,9 +905,17 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
 
   const handleSearchChange = (val) => {
     setSearchText(val);
-    const match = candidates.find(c => c.label === val);
-    setSelection(match ? match.key : '');
+    setSelection('');
+    setShowList(true);
   };
+  const pickCandidate = (c) => {
+    setSearchText(c.label);
+    setSelection(c.key);
+    setShowList(false);
+  };
+  const filteredCandidates = searchText.trim()
+    ? candidates.filter(c => c.label.toLowerCase().includes(searchText.trim().toLowerCase())).slice(0, 30)
+    : candidates.slice(0, 30);
 
   // Tanlangan variant qaysi mahsulotga tegishli — cycle-time shu mahsulot uchun saqlanadi
   const resolvedProductId = (() => {
@@ -967,7 +970,7 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
   if (!machine) return null;
 
   return (
-    <Modal open onClose={onClose} title={`🧩 Kalip belgilash — ${machine.name}`}>
+    <Modal open onClose={onClose} title={`🧩 ${machine.current_mold_id ? 'Qolip almashtirish' : 'Kalip belgilash'} — ${machine.name}`}>
       <div className="space-y-4">
         <div className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
           Joriy kalip: <b className="text-gray-900">{machine.current_mold_name || 'Biriktirilmagan'}</b>
@@ -976,19 +979,30 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
 
         {canWrite && (
           <div className="space-y-2">
-            <div>
+            <div className="relative">
               <label className="label text-xs">Mahsulot/komponent yoki ro'yxatdagi kalip</label>
               <input
                 type="text"
-                list="mold-assign-candidates"
                 value={searchText}
                 onChange={e => handleSearchChange(e.target.value)}
+                onFocus={() => setShowList(true)}
+                onBlur={() => setTimeout(() => setShowList(false), 150)}
                 className="input"
                 placeholder="Yozib qidiring..."
+                autoComplete="off"
               />
-              <datalist id="mold-assign-candidates">
-                {candidates.map(c => <option key={c.key} value={c.label} />)}
-              </datalist>
+              {showList && filteredCandidates.length > 0 && (
+                <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                  {filteredCandidates.map(c => (
+                    <button key={c.key} type="button"
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => pickCandidate(c)}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 border-b border-gray-50 last:border-0">
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              )}
               {searchText && !selection && (
                 <p className="text-xs text-amber-600 mt-1">Ro'yxatdan mos variantni tanlang</p>
               )}
@@ -999,7 +1013,7 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
             )}
             {resolvedProductId && (
               <div>
-                <label className="label text-xs">1 dona necha soniyada chiqadi (ixtiyoriy)</label>
+                <label className="label text-xs">1 dona necha soniyada chiqadi *</label>
                 <input type="number" min="0" step="0.1" value={cycleSeconds}
                   onChange={e => setCycleSeconds(e.target.value)} className="input" placeholder="masalan: 18" />
                 {parseFloat(cycleSeconds) > 0 && (
@@ -1010,7 +1024,11 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
             <input value={note} onChange={e => setNote(e.target.value)} className="input" placeholder="Izoh (ixtiyoriy)" />
             <div className="flex gap-2">
               <button
-                onClick={() => { if (!selection) return toast.error('Mahsulot yoki kalipni tanlang'); assignMut.mutate(selection); }}
+                onClick={() => {
+                  if (!selection) return toast.error('Mahsulot yoki kalipni tanlang');
+                  if (!(parseFloat(cycleSeconds) > 0)) return toast.error('Cycle-time (1 dona necha soniyada) kiritilishi shart');
+                  assignMut.mutate(selection);
+                }}
                 disabled={assignMut.isPending} className="btn-primary flex-1">
                 {assignMut.isPending ? 'Saqlanmoqda...' : 'Biriktirish'}
               </button>
@@ -1113,9 +1131,6 @@ export default function MachinesPage() {
     if (key === 'toggle') {
       if (m.is_running) { setPauseInitialKind('NOSOZ'); setPauseFor(m); }
       else runningMutation.mutate({ id: m.id, is_running: 1 });
-    } else if (key === 'mold') {
-      setPauseInitialKind('QOLIP');
-      setPauseFor(m);
     } else if (key === 'kalip-assign') {
       setMoldAssignFor(m);
     } else if (key === 'shift') {
@@ -1415,7 +1430,7 @@ export default function MachinesPage() {
 
               <button onClick={() => setMoldAssignFor(m)}
                 className="btn-sm w-full mt-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 flex items-center gap-1.5 justify-center">
-                <Layers size={14} /> Kalip belgilash
+                <Layers size={14} /> {m.current_mold_id ? 'Qolip almashtirish' : 'Kalip belgilash'}
               </button>
 
               {canWrite && (

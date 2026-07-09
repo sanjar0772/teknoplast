@@ -401,6 +401,13 @@ function ShiftChangeModal({ machine, employees, canWrite, onClose }) {
   const [note, setNote] = useState('');
   const [scanOpen, setScanOpen] = useState(false);
   const scannerRef = useRef(null);
+  // Kamera dekodlash callback'i faqat scanOpen o'zgarganda qayta ro'yxatdan o'tadi (pastdagi
+  // effekt), shuning uchun `employees` to'g'ridan-to'g'ri undan foydalansa — ro'yxat
+  // skanerlash boshlanganidan KEYIN yangilansa ham, callback ESKI (bo'sh/eskirgan)
+  // ro'yxatni ko'radi va operator hech qachon topilmaydi. Ref orqali doim eng so'nggisini o'qiymiz.
+  const employeesRef = useRef(employees);
+  useEffect(() => { employeesRef.current = employees; }, [employees]);
+  const scanHandledRef = useRef(false); // bir skanerlashda bir marta ishlov berish (tez-tez frame kelishidan)
 
   const { data, isLoading } = useQuery({
     queryKey: ['machine-shift-changes', machine?.id],
@@ -429,9 +436,11 @@ function ShiftChangeModal({ machine, employees, canWrite, onClose }) {
   // QR skanerlangan begikni operator sifatida qabul qilamiz — ro'yxatdan qidirib
   // o'tirmasdan, to'g'ridan-to'g'ri smenani almashtiramiz.
   const handleScannedBadge = (raw) => {
+    if (scanHandledRef.current) return; // kamera bir necha freym uchun bir xil kodni qayta yuborishi mumkin
     const id = parseEmpIdFromQr(raw);
-    const emp = (employees?.employees || []).find(e => e.id === id);
+    const emp = (employeesRef.current?.employees || []).find(e => e.id === id);
     if (!emp) { toast.error("Bu QR stanokchi begiki emas yoki mos kelmadi"); return; }
+    scanHandledRef.current = true;
     stopScan();
     setScanOpen(false);
     changeMut.mutate(id);
@@ -439,6 +448,7 @@ function ShiftChangeModal({ machine, employees, canWrite, onClose }) {
 
   useEffect(() => {
     if (!scanOpen) return;
+    scanHandledRef.current = false;
     try {
       const qr = new Html5Qrcode('machine-shift-qr-reader');
       scannerRef.current = qr;
@@ -1190,8 +1200,11 @@ export default function MachinesPage() {
     queryFn: () => machinesAPI.getAll().then(r => r.data),
   });
 
+  // Alohida kalit — IntakePage/ProductionPage'dagi ['employees-active'] (barcha turdagi
+  // xodimlar) bilan bir xil kalitni ulashsa, ikkalasining keshi bir-birini bosib, stanokchi
+  // ro'yxati boshqa sahifadan kelgan (filtrsiz yoki bo'sh) ma'lumot bilan almashib qolar edi.
   const { data: employees } = useQuery({
-    queryKey: ['employees-active'],
+    queryKey: ['employees-active', 'STANOKCHI'],
     queryFn: () => employeesAPI.getAll({ type: 'STANOKCHI', is_active: 'true' }).then(r => r.data),
   });
 

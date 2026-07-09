@@ -352,12 +352,15 @@ async function buildKassa(scope, date) {
     for (const s of sales) {
       const key = s.order_ref || s.id;
       if (!groups[key]) {
-        groups[key] = { time: s.created_at, customer: s.customer_name || 'Tasodifiy mijoz', total: 0, paid_now: 0, discount: 0, items: 0, notes: s.notes || '' };
+        groups[key] = { time: s.created_at, customer: s.customer_name || 'Tasodifiy mijoz', total: 0, paid_now: 0, settled: 0, discount: 0, items: 0, notes: s.notes || '' };
         order.push(key);
       }
       const g = groups[key];
       g.total += parseFloat(s.total_amount) || 0;
+      // Naqd = SAVDO PAYTIDAGI to'lov (keyingi qarz to'lovlari va chegirma ayirilgan)
       g.paid_now += Math.max(0, (parseFloat(s.payment_amount) || 0) + (refundMap[s.id] || 0) - (paidMap[s.id] || 0));
+      // Jami to'langan (naqd + chegirma + keyingi qarz to'lovlari) — HOZIRGI holat; refund reduksiyasini bekor qilamiz
+      g.settled += (parseFloat(s.payment_amount) || 0) + (refundMap[s.id] || 0);
       g.discount += discSaleMap[s.id] || 0;
       g.items += 1;
     }
@@ -370,8 +373,10 @@ async function buildKassa(scope, date) {
         amount: Math.round(g.total),
         paid: Math.round(g.paid_now),
         discount: Math.round(g.discount),
-        // Qarz = savdo summasi − naqd to'lov − chegirma (chegirma qarzni kamaytiradi)
-        debt: Math.max(0, Math.round(g.total - g.paid_now - g.discount)),
+        // Qarz = savdoning HOZIR qolgan qarzi (total − jami to'langan). Qarz keyin (hatto shu
+        // kuni) to'lansa 0 bo'ladi — to'lov alohida QARZ_TOLOV qatorida ko'rinadi. Shunday qilib
+        // to'langan savdoda "yolg'on qarz" ko'rinmaydi.
+        debt: Math.max(0, Math.round(g.total - g.settled)),
       });
     }
 

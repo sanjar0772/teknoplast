@@ -335,16 +335,30 @@ async function buildKassa(scope, date) {
       refRows.forEach(r => { refundMap[r.sale_id] = parseFloat(r.refunded) || 0; });
     } catch (e) { /* sale_returns hali bo'lmasa */ }
 
+    // Savdo PAYTIDA berilgan chegirma (DISCOUNT to'lovi, payment_ref = shu savdoning order_ref'i).
+    // Chegirma pul emas, lekin QARZNI kamaytiradi — shuning uchun "Qarzga"da hisobga olinishi shart.
+    // (Aks holda qarz chegirma miqdoricha OSHIQ ko'rinadi: Naqd 500 · Qarzga 4000 — aslida qarz 3000.)
+    const discSaleMap = {};
+    try {
+      const dRows = (await query(`
+        SELECT pm.sale_id, COALESCE(SUM(pm.amount), 0) AS disc
+        FROM payments pm JOIN sales s ON pm.sale_id = s.id
+        WHERE DATE(s.sale_date) = $1${sScope} AND pm.method = 'DISCOUNT' AND pm.payment_ref = s.order_ref
+        GROUP BY pm.sale_id`, params)).rows;
+      dRows.forEach(r => { discSaleMap[r.sale_id] = parseFloat(r.disc) || 0; });
+    } catch (e) { /* payment_ref/method ustuni hali bo'lmasa */ }
+
     const groups = {}; const order = [];
     for (const s of sales) {
       const key = s.order_ref || s.id;
       if (!groups[key]) {
-        groups[key] = { time: s.created_at, customer: s.customer_name || 'Tasodifiy mijoz', total: 0, paid_now: 0, items: 0, notes: s.notes || '' };
+        groups[key] = { time: s.created_at, customer: s.customer_name || 'Tasodifiy mijoz', total: 0, paid_now: 0, discount: 0, items: 0, notes: s.notes || '' };
         order.push(key);
       }
       const g = groups[key];
       g.total += parseFloat(s.total_amount) || 0;
       g.paid_now += Math.max(0, (parseFloat(s.payment_amount) || 0) + (refundMap[s.id] || 0) - (paidMap[s.id] || 0));
+      g.discount += discSaleMap[s.id] || 0;
       g.items += 1;
     }
 
@@ -355,7 +369,9 @@ async function buildKassa(scope, date) {
         type: 'SAVDO', time: g.time, customer: g.customer, items: g.items,
         amount: Math.round(g.total),
         paid: Math.round(g.paid_now),
-        debt: Math.max(0, Math.round(g.total - g.paid_now)),
+        discount: Math.round(g.discount),
+        // Qarz = savdo summasi − naqd to'lov − chegirma (chegirma qarzni kamaytiradi)
+        debt: Math.max(0, Math.round(g.total - g.paid_now - g.discount)),
       });
     }
 

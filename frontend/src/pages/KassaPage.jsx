@@ -165,9 +165,11 @@ export default function KassaPage() {
                   <td className="font-medium text-gray-900">{o.customer}</td>
                   <td>
                     <span className={`badge ${badge.cls} w-fit`}>{badge.label}</span>
-                    {o.type === 'SAVDO' && o.debt > 0 && (
+                    {o.type === 'SAVDO' && (o.debt > 0 || o.discount > 0) && (
                       <div className="text-[11px] text-gray-500 mt-0.5">
-                        Naqd: {fmt(o.paid)} · Qarzga: <span className="text-amber-600 font-medium">{fmt(o.debt)}</span>
+                        Naqd: {fmt(o.paid)}
+                        {o.discount > 0 && <> · Chegirma: <span className="text-rose-500 font-medium">{fmt(o.discount)}</span></>}
+                        {o.debt > 0 && <> · Qarzga: <span className="text-amber-600 font-medium">{fmt(o.debt)}</span></>}
                       </div>
                     )}
                     {o.type === 'QARZ_TOLOV' && o.method && (

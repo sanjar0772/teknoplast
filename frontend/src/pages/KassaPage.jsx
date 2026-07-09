@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Wallet, ShoppingBag, Coins, RotateCcw, Printer, ChevronLeft, ChevronRight, FileSpreadsheet, FileText } from 'lucide-react';
+import { Wallet, ShoppingBag, Coins, RotateCcw, Printer, ChevronLeft, ChevronRight, FileSpreadsheet, FileText, X } from 'lucide-react';
 import { reportsAPI } from '../services/api';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -33,6 +33,7 @@ const OP_BADGE = {
 // Kunlik KASSA — shu kundagi barcha pul operatsiyalari raqamlangan qisqa ro'yxat
 export default function KassaPage() {
   const [date, setDate] = useState(localToday());
+  const [methodFor, setMethodFor] = useState(null); // bosilgan to'lov usuli kaliti — operatsiyalarini ko'rsatish uchun
 
   const { data, isLoading } = useQuery({
     queryKey: ['kassa', date],
@@ -69,18 +70,22 @@ export default function KassaPage() {
   const t = data?.totals || {};
   const ops = data?.ops || [];
   const m = data?.methods || {};
+  const mOps = data?.methodOps || {};
   const isToday = date === localToday();
 
-  // To'lov usullari bo'yicha jamlanma (kassa oxirida) — faqat 0 dan katta usullar
+  // To'lov usullari bo'yicha jamlanma (kassa oxirida) — bosilsa o'sha operatsiyalar ochiladi
   const METHODS = [
-    { key: 'CASH',     label: 'Naqd',   emoji: '💵' },
-    { key: 'CARD',     label: 'Karta',  emoji: '💳' },
-    { key: 'TRANSFER', label: 'Bank',   emoji: '🏦' },
-    { key: 'PAYME',    label: 'Pay Me', emoji: '📱' },
-    { key: 'CLICK',    label: 'Click',  emoji: '📲' },
+    { key: 'CASH',     label: 'Naqd',    emoji: '💵' },
+    { key: 'CARD',     label: 'Karta',   emoji: '💳' },
+    { key: 'TRANSFER', label: 'Bank',    emoji: '🏦' },
+    { key: 'CLICK',    label: 'Click',   emoji: '📲' },
+    { key: 'DISCOUNT', label: 'Skidka',  emoji: '🏷️' },
   ];
   const methodRows = METHODS.map(x => ({ ...x, value: parseFloat(m[x.key]) || 0 }));
-  const methodsTotal = methodRows.reduce((s, x) => s + x.value, 0);
+  // Skidka pul emas — "jami" summasiga qo'shilmaydi, faqat alohida ko'rsatiladi
+  const methodsTotal = methodRows.filter(x => x.key !== 'DISCOUNT').reduce((s, x) => s + x.value, 0);
+  const activeMethod = methodRows.find(x => x.key === methodFor);
+  const activeMethodOps = (mOps[methodFor] || []).slice().sort((a, b) => new Date(a.time) - new Date(b.time));
 
   const cards = [
     { label: 'Kassaga kirdi',  value: `${fmt(t.kirim)} so'm`,      sub: `Savdodan: ${fmt(t.savdo_naqd)} · Qarzdan: ${fmt(t.qarz_tolov)}`, cls: 'text-emerald-600', bg: 'bg-emerald-50', Icon: Wallet },
@@ -205,15 +210,49 @@ export default function KassaPage() {
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
             {methodRows.map(x => (
-              <div key={x.key} className={`rounded-xl border p-3 ${x.value > 0 ? 'border-gray-200 bg-gray-50' : 'border-gray-100 bg-white opacity-60'}`}>
+              <button key={x.key} type="button" onClick={() => x.value > 0 && setMethodFor(x.key)}
+                disabled={x.value <= 0}
+                className={`text-left rounded-xl border p-3 transition ${
+                  x.value > 0 ? 'border-gray-200 bg-gray-50 hover:border-blue-300 hover:bg-blue-50 cursor-pointer' : 'border-gray-100 bg-white opacity-60 cursor-default'
+                }`}>
                 <p className="text-xs text-gray-500">{x.emoji} {x.label}</p>
                 <p className={`text-base font-bold mt-0.5 ${x.value > 0 ? 'text-gray-900' : 'text-gray-300'}`}>{fmt(x.value)}</p>
-              </div>
+              </button>
             ))}
           </div>
           <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
             <span className="text-sm font-medium text-gray-600">Jami (barcha usullar):</span>
             <span className="text-lg font-bold text-emerald-700">{fmt(methodsTotal)} so'm</span>
+          </div>
+        </div>
+      )}
+
+      {/* Tanlangan to'lov usuli bo'yicha operatsiyalar */}
+      {activeMethod && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setMethodFor(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-gray-100">
+              <h3 className="font-bold text-gray-900">{activeMethod.emoji} {activeMethod.label} — operatsiyalar</h3>
+              <button onClick={() => setMethodFor(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <div className="overflow-y-auto p-4 space-y-2">
+              {!activeMethodOps.length ? (
+                <p className="text-center text-gray-400 py-6 text-sm">Operatsiya topilmadi</p>
+              ) : activeMethodOps.map((o, i) => (
+                <div key={i} className="flex items-center justify-between text-sm border-b border-gray-50 last:border-0 pb-2">
+                  <div>
+                    <div className="font-medium text-gray-900">{o.customer}</div>
+                    <div className="text-xs text-gray-400">{timeLabel(o.time)} · {o.source}</div>
+                  </div>
+                  <div className="font-bold text-gray-900">{fmt(o.amount)} so'm</div>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+              <span className="text-sm font-medium text-gray-600">Jami:</span>
+              <span className="text-base font-bold text-emerald-700">{fmt(activeMethod.value)} so'm</span>
+            </div>
           </div>
         </div>
       )}

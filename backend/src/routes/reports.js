@@ -410,16 +410,42 @@ async function buildKassa(scope, date) {
     const qarz_tolov = sum('QARZ_TOLOV', 'amount');
     const chiqim = sum('VOZVRAT', 'amount');
 
-    // TO'LOV USULLARI bo'yicha jamlanma (Naqd/Karta/Bank/Pay Me/Click) — kassa oxirida ko'rsatiladi.
+    // TO'LOV USULLARI bo'yicha jamlanma (Naqd/Karta/Bank/Click/Skidka) — kassa oxirida ko'rsatiladi,
+    // har usulga bosilganda o'sha operatsiyalar ro'yxati (methodOps) ochiladi.
     // Savdo: chek notes'idan ("To'lov: Naqd: X · Karta: Y ..."). Qarz to'lov: payments.method'dan.
-    // Skidka (chegirma) — pul emas, hisobga olinmaydi.
-    const methods = { CASH: 0, CARD: 0, TRANSFER: 0, PAYME: 0, CLICK: 0 };
-    const NOTE_RE = { CASH: /Naqd:\s*([\d.]+)/i, CARD: /Karta:\s*([\d.]+)/i, TRANSFER: /Bank:\s*([\d.]+)/i, PAYME: /Payme:\s*([\d.]+)/i, CLICK: /Click:\s*([\d.]+)/i };
+    // Skidka — pul emas, kirim/sof kassaga qo'shilmaydi, lekin alohida ko'rsatiladi.
+    const methods = { CASH: 0, CARD: 0, TRANSFER: 0, CLICK: 0, DISCOUNT: 0 };
+    const methodOps = { CASH: [], CARD: [], TRANSFER: [], CLICK: [], DISCOUNT: [] };
+    const NOTE_RE = { CASH: /Naqd:\s*([\d.]+)/i, CARD: /Karta:\s*([\d.]+)/i, TRANSFER: /Bank:\s*([\d.]+)/i, CLICK: /Click:\s*([\d.]+)/i };
     for (const key of order) {
-      const notes = groups[key].notes || '';
-      for (const m in NOTE_RE) { const mt = notes.match(NOTE_RE[m]); if (mt) methods[m] += parseFloat(mt[1]) || 0; }
+      const g = groups[key];
+      const notes = g.notes || '';
+      for (const m in NOTE_RE) {
+        const mt = notes.match(NOTE_RE[m]);
+        const amt = mt ? parseFloat(mt[1]) || 0 : 0;
+        if (amt > 0.01) {
+          methods[m] += amt;
+          methodOps[m].push({ time: g.time, customer: g.customer, amount: Math.round(amt), source: 'Savdo' });
+        }
+      }
     }
-    for (const p of pays) { if (methods[p.method] !== undefined) methods[p.method] += parseFloat(p.amount) || 0; }
+    for (const p of pays) {
+      if (methods[p.method] === undefined) continue;
+      methods[p.method] += parseFloat(p.amount) || 0;
+      methodOps[p.method].push({ time: p.created_at, customer: p.customer_name || '—', amount: Math.round(parseFloat(p.amount) || 0), source: "Qarz to'lovi" });
+    }
+    // Skidka — savdo va qarz to'lovi paytida yozilgan DISCOUNT to'lovlari (to'g'ridan-to'g'ri payments'dan)
+    const discountRows = (await query(`
+      SELECT pm.amount, pm.created_at, COALESCE(c.name, s.customer_name) AS customer_name
+      FROM payments pm JOIN sales s ON pm.sale_id = s.id
+      LEFT JOIN customers c ON s.customer_id = c.id
+      WHERE DATE(pm.payment_date) = $1${sScope} AND pm.method = 'DISCOUNT'
+      ORDER BY pm.created_at`, params)).rows;
+    for (const d of discountRows) {
+      const amt = parseFloat(d.amount) || 0;
+      methods.DISCOUNT += amt;
+      methodOps.DISCOUNT.push({ time: d.created_at, customer: d.customer_name || '—', amount: Math.round(amt), source: 'Skidka' });
+    }
     Object.keys(methods).forEach(k => { methods[k] = Math.round(methods[k]); });
 
     return {
@@ -434,7 +460,8 @@ async function buildKassa(scope, date) {
         chiqim,                              // vozvrat — naqd qaytarilgan
         sof: savdo_naqd + qarz_tolov - chiqim, // sof kassa
       },
-      methods, // to'lov usullari bo'yicha jamlanma: { CASH, CARD, TRANSFER, PAYME, CLICK }
+      methods,   // to'lov usullari bo'yicha jamlanma: { CASH, CARD, TRANSFER, CLICK, DISCOUNT }
+      methodOps, // har usul bo'yicha operatsiyalar ro'yxati (bosilganda ko'rsatish uchun)
     };
 }
 

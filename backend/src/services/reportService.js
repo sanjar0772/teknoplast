@@ -1841,7 +1841,7 @@ const _kassaTime = (s) => {
 };
 const _kMoney = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n) || 0));
 const _opLabel = (o) => o.type === 'QARZ_TOLOV' ? "Qarz to'lovi" : o.type === 'VOZVRAT' ? 'Pul qaytarildi' : 'Savdo';
-const _METHOD_LABELS = [['CASH', 'Naqd'], ['CARD', 'Karta'], ['TRANSFER', 'Bank'], ['PAYME', 'Pay Me'], ['CLICK', 'Click']];
+const _METHOD_LABELS = [['CASH', 'Naqd'], ['CARD', 'Karta'], ['TRANSFER', 'Bank'], ['CLICK', 'Click'], ['DISCOUNT', 'Skidka']];
 
 async function generateKassaExcel(data, date) {
   const t = data.totals || {}; const ops = data.ops || []; const m = data.methods || {};
@@ -1877,7 +1877,8 @@ async function generateKassaExcel(data, date) {
   const mHdr = sh.addRow(['TO\'LOV USULLARI', '', '', '', '']); _applyHeaderStyle(mHdr, 'FF065F46');
   let mTotal = 0;
   _METHOD_LABELS.forEach(([k, label]) => {
-    const v = parseFloat(m[k]) || 0; mTotal += v;
+    const v = parseFloat(m[k]) || 0;
+    if (k !== 'DISCOUNT') mTotal += v; // skidka pul emas — jamiga qo'shilmaydi
     const r = sh.addRow(['', '', label, '', v]); r.getCell(5).numFmt = '#,##0';
   });
   const mtr = sh.addRow(['', '', 'JAMI (barcha usullar)', '', mTotal]); mtr.font = { bold: true }; mtr.getCell(5).numFmt = '#,##0';
@@ -1942,7 +1943,8 @@ async function generateKassaPDF(data, date) {
     doc.fontSize(9.5);
     let mTotal = 0;
     _METHOD_LABELS.forEach(([k, label]) => {
-      const v = parseFloat(m[k]) || 0; mTotal += v;
+      const v = parseFloat(m[k]) || 0;
+      if (k !== 'DISCOUNT') mTotal += v; // skidka pul emas — jamiga qo'shilmaydi
       doc.font('Arial').text(label + ':', M + 4, y, { continued: true, width: 300 });
       doc.text(_kMoney(v) + " so'm", { align: 'right', width: right - M - 4 });
       y = doc.y;

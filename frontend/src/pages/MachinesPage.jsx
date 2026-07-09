@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw, BarChart3, FileSpreadsheet, FileText, QrCode, Download, Users, Camera, Search, Layers, Pencil } from 'lucide-react';
+import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw, BarChart3, FileSpreadsheet, FileText, QrCode, Download, Users, Camera, Search, Layers, Pencil, Gauge, MapPin, Zap } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { machinesAPI, employeesAPI, productsAPI, moldsAPI } from '../services/api';
@@ -117,6 +117,18 @@ const STATUS = {
   WORKING: { label: 'Ishlayapti', cls: 'badge-green', icon: CheckCircle },
   SERVICE: { label: "Ta'mirda", cls: 'badge-yellow', icon: Wrench },
   BROKEN: { label: 'Buzilgan', cls: 'badge-red', icon: AlertTriangle },
+};
+
+// Stanok sog'lik holati (BROKEN/SERVICE) + ishlash holati (is_running) bo'yicha
+// kartaning yaxlit rang mavzusi. Eng muhim signal — hozir ISHLAB TURIBDIMI.
+const machineTheme = (m) => {
+  if (m.status === 'BROKEN')
+    return { key: 'broken',  label: 'Buzilgan',       bar: 'from-red-500 to-rose-600',        iconBg: 'bg-red-100',     iconColor: 'text-red-600',     ring: 'ring-red-100',     pill: 'bg-red-100 text-red-700',       dot: 'bg-red-500' };
+  if (m.status === 'SERVICE')
+    return { key: 'service', label: "Ta'mirda",       bar: 'from-amber-400 to-yellow-500',    iconBg: 'bg-amber-100',   iconColor: 'text-amber-600',   ring: 'ring-amber-100',   pill: 'bg-amber-100 text-amber-700',   dot: 'bg-amber-500' };
+  if (m.is_running)
+    return { key: 'running', label: 'Ishlab turibdi', bar: 'from-emerald-400 to-green-600',   iconBg: 'bg-emerald-100', iconColor: 'text-emerald-600', ring: 'ring-emerald-100', pill: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500', live: true };
+  return   { key: 'idle',    label: "To'xtatilgan",    bar: 'from-slate-300 to-slate-400',     iconBg: 'bg-slate-100',   iconColor: 'text-slate-500',   ring: 'ring-slate-100',   pill: 'bg-slate-100 text-slate-600',   dot: 'bg-slate-400' };
 };
 
 function Modal({ open, onClose, title, children }) {
@@ -1265,14 +1277,20 @@ export default function MachinesPage() {
 
   const canWrite = isOwner() || isProductionHead() || isCycleTime() || isKirimchi();
   const machines = data?.machines || [];
-  const working = machines.filter(m => m.status === 'WORKING').length;
-  const broken = machines.filter(m => m.status === 'BROKEN').length;
+  const running = machines.filter(m => m.is_running && m.status === 'WORKING').length;
+  const idle    = machines.filter(m => !m.is_running && m.status === 'WORKING').length;
+  const broken  = machines.filter(m => m.status === 'BROKEN').length;
   const service = machines.filter(m => m.status === 'SERVICE').length;
 
   return (
     <div className="space-y-6">
       <div className="page-header">
-        <h1 className="page-title">Mashinalar</h1>
+        <h1 className="page-title flex items-center gap-2">
+          Mashinalar
+          {machines.length > 0 && (
+            <span className="text-xs font-semibold text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">{machines.length} ta</span>
+          )}
+        </h1>
         <div className="flex gap-2">
           <button onClick={() => setPageScanOpen(true)}
             className="btn-sm bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-lg px-3 flex items-center gap-1">
@@ -1304,16 +1322,30 @@ export default function MachinesPage() {
         </div>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      {/* Jonli holat paneli — hozir nechta stanok ishlab turibdi / to'xtagan / ta'mirda / buzilgan */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Ishlayapti', count: working, color: 'text-green-600', bg: 'bg-green-50 border-green-200' },
-          { label: "Ta'mirda", count: service, color: 'text-yellow-600', bg: 'bg-yellow-50 border-yellow-200' },
-          { label: 'Buzilgan', count: broken, color: 'text-red-600', bg: 'bg-red-50 border-red-200' },
-        ].map(({ label, count, color, bg }) => (
-          <div key={label} className={`card-sm text-center border ${bg}`}>
-            <p className={`text-3xl font-bold ${color}`}>{count}</p>
-            <p className="text-sm text-gray-600">{label}</p>
+          { label: 'Ishlab turibdi', count: running, Icon: Zap,           color: 'text-emerald-600', bg: 'from-emerald-50', ring: 'border-emerald-100', live: true },
+          { label: "To'xtagan",      count: idle,    Icon: Pause,         color: 'text-slate-500',   bg: 'from-slate-50',   ring: 'border-slate-200' },
+          { label: "Ta'mirda",       count: service, Icon: Wrench,        color: 'text-amber-600',   bg: 'from-amber-50',   ring: 'border-amber-100' },
+          { label: 'Buzilgan',       count: broken,  Icon: AlertTriangle, color: 'text-red-600',     bg: 'from-red-50',     ring: 'border-red-100' },
+        ].map(({ label, count, Icon, color, bg, ring, live }) => (
+          <div key={label} className={`relative overflow-hidden rounded-2xl border ${ring} bg-gradient-to-br ${bg} to-white p-4`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className={`text-3xl font-bold leading-none ${color}`}>{count}</p>
+                <p className="text-xs text-gray-500 mt-1.5">{label}</p>
+              </div>
+              <div className={`relative w-10 h-10 rounded-xl bg-white/70 shadow-sm flex items-center justify-center ${color}`}>
+                <Icon size={18} />
+                {live && count > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-white" />
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         ))}
       </div>
@@ -1331,136 +1363,148 @@ export default function MachinesPage() {
             <p>Mashina yo'q</p>
           </div>
         ) : machines.map(m => {
-          const st = STATUS[m.status] || STATUS.WORKING;
-          const StIcon = st.icon;
+          const th = machineTheme(m);
           return (
-            <div key={m.id} className="card">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                    m.status === 'WORKING' ? 'bg-green-100' :
-                    m.status === 'BROKEN' ? 'bg-red-100' : 'bg-yellow-100'
-                  }`}>
-                    <Cog size={20} className={
-                      m.status === 'WORKING' ? 'text-green-600' :
-                      m.status === 'BROKEN' ? 'text-red-600' : 'text-yellow-600'
-                    } />
+            <div key={m.id}
+              className={`relative bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition hover:shadow-md hover:-translate-y-0.5 duration-200 ${th.live ? 'ring-1 ring-emerald-100' : ''}`}>
+              {/* Yuqori holat chizig'i */}
+              <div className={`h-1.5 w-full bg-gradient-to-r ${th.bar}`} />
+
+              <div className="p-5">
+                {/* Sarlavha */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`relative w-12 h-12 rounded-2xl flex items-center justify-center ${th.iconBg} ring-4 ${th.ring}`}>
+                      <Cog size={24} className={`${th.iconColor} ${th.live ? 'animate-gear' : ''}`} />
+                      {th.live && (
+                        <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-white" />
+                        </span>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-gray-900 text-base truncate">{m.name}</h3>
+                      <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                        <span className="font-medium text-gray-600">{m.type === 'MASHINA' ? 'Mashina' : 'Stanok'}</span>
+                        <span className="text-gray-300">·</span>
+                        <MapPin size={10} className="shrink-0" /><span className="truncate">{m.location || "Joyi yo'q"}</span>
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900">{m.name}</h3>
-                    <p className="text-xs text-gray-500">
-                      <span className="font-medium text-gray-600">{m.type === 'MASHINA' ? 'Mashina' : 'Stanok'}</span>
-                      {' · '}{m.location || 'Joyi ko\'rsatilmagan'}
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${th.pill}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${th.dot}`} /> {th.label}
+                    </span>
+                    {breakInfo.active && (
+                      <span className="badge bg-amber-100 text-amber-700 flex items-center gap-1"><Coffee size={11} /> Tushlik</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Ishga tushirish / to'xtatish — asosiy amal */}
+                {canWrite && (
+                  <button
+                    onClick={() => { if (m.is_running) { setPauseInitialKind('NOSOZ'); setPauseFor(m); } else { runningMutation.mutate({ id: m.id, is_running: 1 }); } }}
+                    disabled={runningMutation.isPending}
+                    className={`mt-4 w-full flex items-center justify-center gap-2 rounded-xl py-2.5 font-semibold text-sm transition ${
+                      m.is_running
+                        ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'
+                        : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'
+                    }`}>
+                    {m.is_running ? <><Pause size={16} fill="currentColor" /> To'xtatish</> : <><Play size={16} fill="currentColor" /> Ishga tushirish</>}
+                  </button>
+                )}
+
+                {/* To'xtatilgan bo'lsa — sababi */}
+                {!m.is_running && m.pause_reason && (
+                  <div className={`mt-3 text-xs rounded-xl border px-3 py-2 flex items-center gap-1.5 ${
+                    m.pause_status === 'BROKEN' ? 'bg-red-50 border-red-200 text-red-700'
+                    : m.pause_status === 'MOLD' ? 'bg-blue-50 border-blue-200 text-blue-700'
+                    : 'bg-yellow-50 border-yellow-200 text-yellow-700'
+                  }`}>
+                    {m.pause_status === 'MOLD' ? <RefreshCw size={12} className="shrink-0" /> : <Pause size={12} className="shrink-0" />}
+                    <span><span className="font-semibold">To'xtatildi:</span> {m.pause_reason}</span>
+                  </div>
+                )}
+
+                {/* Ma'lumot bloklari */}
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <div className="rounded-xl bg-gray-50 px-3 py-2 min-w-0">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-400 flex items-center gap-1"><Users size={11} /> Operator</p>
+                    <p className="text-sm font-semibold text-gray-800 truncate mt-0.5">
+                      {m.operator_name || '—'}
+                      {m.operator_name && m.operator_shift && <span className="text-[10px] font-normal text-gray-400"> · {shiftLabel(m.operator_shift)}</span>}
                     </p>
                   </div>
+                  <div className="rounded-xl bg-gray-50 px-3 py-2 min-w-0">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-400 flex items-center gap-1"><Gauge size={11} /> Kunlik quvvat</p>
+                    <p className="text-sm font-semibold text-gray-800 mt-0.5">{fmtN(m.daily_production_capacity || 0)} <span className="text-[10px] font-normal text-gray-400">dona</span></p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {canWrite && (
-                    <button
-                      onClick={() => { if (m.is_running) { setPauseInitialKind('NOSOZ'); setPauseFor(m); } else { runningMutation.mutate({ id: m.id, is_running: 1 }); } }}
-                      disabled={runningMutation.isPending}
-                      title={m.is_running ? "To'xtatish" : 'Ishga tushirish'}
-                      className={`w-8 h-8 rounded-full flex items-center justify-center transition shrink-0 ${
-                        m.is_running
-                          ? 'bg-blue-600 text-white hover:bg-blue-700'
-                          : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
-                      }`}>
-                      {m.is_running ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
-                    </button>
-                  )}
-                  {breakInfo.active && (
-                    <span className="badge bg-amber-100 text-amber-700 flex items-center gap-1"><Coffee size={11} /> Tushlik</span>
-                  )}
-                  <span className={st.cls}>{st.label}</span>
-                </div>
-              </div>
 
-              {/* To'xtatilgan bo'lsa — sababi */}
-              {!m.is_running && m.pause_reason && (
-                <div className={`mb-3 text-xs rounded-lg border px-2.5 py-1.5 flex items-center gap-1.5 ${
-                  m.pause_status === 'BROKEN' ? 'bg-red-50 border-red-200 text-red-700'
-                  : m.pause_status === 'MOLD' ? 'bg-blue-50 border-blue-200 text-blue-700'
-                  : 'bg-yellow-50 border-yellow-200 text-yellow-700'
-                }`}>
-                  {m.pause_status === 'MOLD' ? <RefreshCw size={12} className="shrink-0" /> : <Pause size={12} className="shrink-0" />}
-                  <span><span className="font-semibold">To'xtatildi:</span> {m.pause_reason}</span>
-                </div>
-              )}
-
-              <div className="space-y-1.5 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Operator:</span>
-                  <span>
-                    {m.operator_name || '—'}
-                    {m.operator_name && m.operator_shift && (
-                      <span className="text-xs text-gray-400"> ({shiftLabel(m.operator_shift)})</span>
-                    )}
-                  </span>
-                </div>
-                {m.current_mold_name && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Joriy kalip:</span>
-                    <span className="font-medium text-indigo-700">
-                      {m.current_mold_name}{m.current_mold_location ? ` (${m.current_mold_location})` : ''}
-                    </span>
+                {(m.current_mold_name || m.current_product_name) && (
+                  <div className="mt-2 rounded-xl bg-indigo-50 border border-indigo-100 px-3 py-2 flex items-center gap-2 min-w-0">
+                    <Layers size={15} className="text-indigo-500 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[10px] uppercase tracking-wide text-indigo-400">Joriy kalip</p>
+                      <p className="text-sm font-semibold text-indigo-700 truncate">
+                        {m.current_mold_name || m.current_product_name}{m.current_mold_location ? ` · ${m.current_mold_location}` : ''}
+                      </p>
+                    </div>
                   </div>
                 )}
-                {m.current_product_name && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Joriy qolip:</span>
-                    <span className="font-medium text-blue-700">{m.current_product_name}</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Kunlik quvvat:</span>
-                  <span>{m.daily_production_capacity || 0} dona</span>
-                </div>
+
                 {m.next_service_date && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Keyingi xizmat:</span>
-                    <span>{new Date(m.next_service_date).toLocaleDateString('uz-UZ')}</span>
+                  <div className="mt-2 text-xs text-gray-500 flex items-center gap-1.5 px-1">
+                    <Wrench size={11} className="shrink-0" /> Keyingi xizmat:
+                    <span className="font-medium text-gray-700">{new Date(m.next_service_date).toLocaleDateString('uz-UZ')}</span>
                   </div>
                 )}
-              </div>
 
-              <button onClick={() => setShiftFor(m)}
-                className="btn-sm w-full mt-3 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded-lg px-2 flex items-center gap-1.5 justify-center">
-                <Users size={14} /> Smena almashtirish
-              </button>
+                {/* Amallar */}
+                <div className="mt-4 pt-3 border-t border-gray-100 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => setShiftFor(m)}
+                      className="btn-sm bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded-lg px-2 py-2 flex items-center gap-1.5 justify-center">
+                      <Users size={14} /> Smena
+                    </button>
+                    <button onClick={() => setMoldAssignFor(m)}
+                      className="btn-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 py-2 flex items-center gap-1.5 justify-center">
+                      <Layers size={14} /> {m.current_mold_id ? 'Qolip alm.' : 'Kalip'}
+                    </button>
+                  </div>
 
-              <button onClick={() => setMoldAssignFor(m)}
-                className="btn-sm w-full mt-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 flex items-center gap-1.5 justify-center">
-                <Layers size={14} /> {m.current_mold_id ? 'Qolip almashtirish' : 'Kalip belgilash'}
-              </button>
+                  {canWrite && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={() => openEdit(m)} className="btn-secondary btn-sm py-2">Tahrirlash</button>
+                      <select
+                        value={m.status}
+                        onChange={e => statusMutation.mutate({ id: m.id, status: e.target.value })}
+                        className="select btn-sm py-2 text-xs"
+                      >
+                        <option value="WORKING">Ishlayapti</option>
+                        <option value="SERVICE">Ta'mirda</option>
+                        <option value="BROKEN">Buzilgan</option>
+                      </select>
+                    </div>
+                  )}
 
-              {canWrite && (
-                <div className="flex gap-2 mt-2">
-                  <button onClick={() => openEdit(m)} className="btn-secondary btn-sm flex-1">Tahrirlash</button>
-                  <select
-                    value={m.status}
-                    onChange={e => statusMutation.mutate({ id: m.id, status: e.target.value })}
-                    className="select btn-sm flex-1 text-xs"
-                  >
-                    <option value="WORKING">Ishlayapti</option>
-                    <option value="SERVICE">Ta'mirda</option>
-                    <option value="BROKEN">Buzilgan</option>
-                  </select>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button onClick={() => setCycleFor(m)}
+                      className="btn-sm bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg px-1 py-2 flex items-center gap-1 justify-center">
+                      <Timer size={13} /> Cycle
+                    </button>
+                    <button onClick={() => setDowntimeFor(m)}
+                      className="btn-sm bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-lg px-1 py-2 flex items-center gap-1 justify-center">
+                      <Wrench size={13} /> Holat
+                    </button>
+                    <button onClick={() => setQrMachine(m)}
+                      className="btn-sm bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200 rounded-lg px-1 py-2 flex items-center gap-1 justify-center">
+                      <QrCode size={13} /> QR
+                    </button>
+                  </div>
                 </div>
-              )}
-
-              <div className="flex gap-2 mt-2">
-                <button onClick={() => setCycleFor(m)}
-                  className="btn-sm flex-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg px-2 flex items-center gap-1 justify-center">
-                  <Timer size={13} /> Cycle-time
-                </button>
-                <button onClick={() => setDowntimeFor(m)}
-                  className="btn-sm flex-1 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-lg px-2 flex items-center gap-1 justify-center">
-                  <Wrench size={13} /> Holat/Nosozlik
-                </button>
-                <button onClick={() => setQrMachine(m)}
-                  className="btn-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 flex items-center gap-1 justify-center">
-                  <QrCode size={13} /> QR
-                </button>
               </div>
             </div>
           );

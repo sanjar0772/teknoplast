@@ -213,3 +213,7 @@
 .sidebar-link.active {
   @apply bg-blue-600 text-white hover:bg-blue-700 hover:text-white;
 }
+
+/* Mashinalar — ishlab turgan stanok tishli g'ildiragi sekin aylanadi */
+@keyframes gear-spin { to { transform: rotate(360deg); } }
+.animate-gear { animation: gear-spin 5s linear infinite; }

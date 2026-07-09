@@ -6,6 +6,26 @@
 
 const PAY_METHOD = { CASH: '💵 Naqd', CARD: '💳 Karta', TRANSFER: '🏦 Bank', PAYME: '📱 Pay Me', CLICK: '⚡ Click', DISCOUNT: '🏷️ Skidka', PURCHASE: '📥 Sexdan tovar', OTHER: 'Boshqa' };
 
+// Bitta "to'lov" bosilishi bir nechta qarzga (savdoga) taqsimlanib, bir nechta
+// payments qatoriga yozilishi mumkin (FIFO). Ularning barchasi bir xil payment_ref
+// bilan belgilanadi — shu bo'yicha guruhlab, BITTA operatsiya = BITTA qator qilamiz,
+// shunda kiritilgan summa (masalan 4 000 000) fakturada ham aynan shu summa bo'lib chiqadi.
+// Eski (payment_ref'siz) yozuvlar daqiqa+usul bo'yicha guruhlanadi.
+export function groupPaymentsByOperation(payments) {
+  const groups = {};
+  const order = [];
+  (payments || []).forEach(p => {
+    const amt = parseFloat(p.amount) || 0;
+    const key = p.payment_ref
+      || (p.created_at ? `${String(p.created_at).slice(0, 16)}|${p.method || ''}` : p.id);
+    if (!groups[key]) { groups[key] = { date: p.payment_date, methods: new Set(), amount: 0 }; order.push(key); }
+    const g = groups[key];
+    g.amount += amt;
+    if (p.method) g.methods.add(p.method);
+  });
+  return order.map(key => groups[key]);
+}
+
 export function buildCustomerLedger(detail) {
   if (!detail) return { rows: [], totals: { xarid: 0, tolov: 0, vozvrat: 0, qoldiq: 0 } };
   const retBySale = {};
@@ -36,24 +56,11 @@ export function buildCustomerLedger(detail) {
       });
     }
   });
-  // To'lovlarni OPERATSIYA bo'yicha jamlaymiz — bitta payment_ref (yangi yozuvlar) yoki
-  // bir xil daqiqa+usul (eski yozuvlar) bitta qator bo'ladi. Har operatsiya = 1 qator.
-  const payGroups = {};
-  const payOrder = [];
-  (detail.payments || []).forEach(p => {
-    const amt = parseFloat(p.amount) || 0;
-    tolov += amt;
-    const key = p.payment_ref
-      || (p.created_at ? `${String(p.created_at).slice(0, 16)}|${p.method || ''}` : p.id);
-    if (!payGroups[key]) { payGroups[key] = { date: p.payment_date, methods: new Set(), amount: 0 }; payOrder.push(key); }
-    const g = payGroups[key];
-    g.amount += amt;
-    const m = PAY_METHOD[p.method] || p.method;
-    if (m) g.methods.add(m);
-  });
-  payOrder.forEach(key => {
-    const g = payGroups[key];
-    rows.push({ date: g.date, type: "To'lov", label: [...g.methods].join(', ') || '—', sign: -1, amount: g.amount });
+  // To'lovlarni OPERATSIYA bo'yicha jamlaymiz — har operatsiya (bitta "To'lov" bosilishi) = 1 qator.
+  (detail.payments || []).forEach(p => { tolov += parseFloat(p.amount) || 0; });
+  groupPaymentsByOperation(detail.payments).forEach(g => {
+    const labels = [...g.methods].map(m => PAY_METHOD[m] || m);
+    rows.push({ date: g.date, type: "To'lov", label: labels.join(', ') || '—', sign: -1, amount: g.amount });
   });
   (detail.returns || []).forEach(r => {
     const amt = parseFloat(r.amount) || 0;

@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { X, Phone, Clock, CheckCircle, Coins, MessageSquare, Copy, Bot, Printer, Search, ChevronDown, ChevronRight, History, Plus, FileText, Wallet } from 'lucide-react';
 import { reportsAPI, salesAPI, ahmadAPI, customersAPI } from '../services/api';
-import { buildCustomerLedger } from '../utils/customerLedger';
+import { buildCustomerLedger, groupPaymentsByOperation } from '../utils/customerLedger';
 import CustomerFakturaModal from '../components/CustomerFakturaModal';
 import { COMPANY } from '../constants/company';
 
@@ -25,6 +25,9 @@ function PaymentHistoryModal({ group, onClose }) {
 
   if (!group) return null;
   const totalPaid = (data || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+  // Bitta to'lov bosilishi bir nechta qarzga taqsimlanib bir nechta qatorga yozilgan bo'lishi
+  // mumkin — operatsiya (payment_ref) bo'yicha jamlab, BITTA qator sifatida ko'rsatamiz.
+  const grouped = groupPaymentsByOperation(data);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center p-4 overflow-y-auto">
@@ -75,12 +78,12 @@ function PaymentHistoryModal({ group, onClose }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.map((p, i) => (
+                  {grouped.map((g, i) => (
                     <tr key={i} className="border-b border-gray-100">
                       <td className="py-1 text-gray-400">{i + 1}</td>
-                      <td className="py-1">{new Date(p.payment_date).toLocaleDateString('uz-UZ')}</td>
-                      <td className="py-1 text-gray-700">{METHOD_LABEL[p.method] || p.method}</td>
-                      <td className="py-1 text-right font-semibold text-green-700">{fmt(p.amount)} so'm</td>
+                      <td className="py-1">{new Date(g.date).toLocaleDateString('uz-UZ')}</td>
+                      <td className="py-1 text-gray-700">{[...g.methods].map(m => METHOD_LABEL[m] || m).join(', ')}</td>
+                      <td className="py-1 text-right font-semibold text-green-700">{fmt(g.amount)} so'm</td>
                     </tr>
                   ))}
                 </tbody>
@@ -207,11 +210,16 @@ function DebtFakturaModal({ group, onClose }) {
   group.items.forEach(it => ledger.push({
     date: it.sale_date, label: 'Qarz olindi', amount: parseFloat(it.total_amount) || 0,
   }));
-  (payments || []).forEach(p => ledger.push({
-    date: p.payment_date,
-    label: `To'lov${METHOD_LABEL[p.method] ? ' · ' + METHOD_LABEL[p.method] : ''}`,
-    amount: -(parseFloat(p.amount) || 0),
-  }));
+  // Bitta to'lov bosilishi bir nechta qarzga taqsimlanib bir nechta qatorga yozilishi mumkin —
+  // operatsiya (payment_ref) bo'yicha jamlab, kiritilgan summa aynan shu ko'rinishda chiqadi.
+  groupPaymentsByOperation(payments).forEach(g => {
+    const labels = [...g.methods].map(m => METHOD_LABEL[m] || m);
+    ledger.push({
+      date: g.date,
+      label: `To'lov${labels.length ? ' · ' + labels.join(', ') : ''}`,
+      amount: -g.amount,
+    });
+  });
   ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
   // Mijozning ortiqcha to'lovi (boshqa savdolardagi haqdorlik) — qarzni kamaytiradi
   if ((group.credit || 0) > 0.01) {

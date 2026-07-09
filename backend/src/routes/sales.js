@@ -357,8 +357,11 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), 
     }
 
     const saleDate = sale_date || todayUZB();
-    // Chegirma savdo summasidan OSHGAN qismi — mijozga HAQDOR (kredit) bo'lib yoziladi.
-    // Pul emas: DISCOUNT to'lov yozuvi sifatida saqlanadi, kassada pul deb sanalmaydi.
+    // Chegirma ikki qismga bo'linadi: 1) savdo summasigacha bo'lgan qism (discountAmount) —
+    // mahsulot narxiga TEGMAYDI, alohida DISCOUNT to'lovi sifatida qarzni kamaytiradi;
+    // 2) savdo summasidan OSHGAN qism (discountCredit) — mijozga HAQDOR (kredit) bo'lib yoziladi.
+    // Ikkalasi ham pul emas — DISCOUNT to'lov yozuvi sifatida saqlanadi, kassada pul deb sanalmaydi.
+    const discountAmount = Math.max(0, parseFloat(req.body.discount_amount) || 0);
     const discountCredit = Math.max(0, parseFloat(req.body.discount_credit) || 0);
     // To'lov summasi: agar reqPayment kelsa — undan foydalaniladi (jami summadan
     // OSHIB ketishi mumkin — oshiqcha pul mijozning haqdorligi sifatida saqlanadi).
@@ -366,14 +369,17 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), 
     const paidAmount = reqPayment !== undefined
       ? Math.max(0, parseFloat(reqPayment) || 0)
       : null;
+    // Status uchun real pul + chegirma birga hisobga olinadi — chegirma qarzni haqiqatan yopadi.
+    const effectiveForStatus = (paidAmount || 0) + discountAmount;
     const saleStatus = paidAmount !== null
-      ? (paidAmount >= preGrand ? 'PAID' : paidAmount > 0 ? 'PARTIALLY_PAID' : 'PENDING')
+      ? (effectiveForStatus >= preGrand - 0.01 ? 'PAID' : effectiveForStatus > 0 ? 'PARTIALLY_PAID' : 'PENDING')
       : (status || 'PENDING');
     const order_ref = await genOrderRef();
     const client = await require('../db').getClient();
     const created = [];
     let grandTotal = 0;
-    let distributedPaid = 0; // taqsimlangan to'lovni kuzatish (oxirgi qatorga qoldiqni berish uchun)
+    let distributedPaid = 0;     // taqsimlangan real pulni kuzatish (oxirgi qatorga qoldiqni berish uchun)
+    let distributedDiscount = 0; // taqsimlangan chegirmani kuzatish
     try {
       await client.query('BEGIN');
       for (let i = 0; i < items.length; i++) {
@@ -382,19 +388,24 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), 
         const price = parseFloat(it.unit_price);
         const total = qty * price;
         grandTotal += total;
-        // Har bir mahsulot uchun to'lov proporsional taqsimlanadi; oxirgi qator
-        // qoldiqni (shu jumladan oshiqcha to'lov/haqdorlikni) o'ziga oladi — jami aniq bo'lsin.
-        let itemPaid;
+        // Har bir mahsulot uchun to'lov va chegirma proporsional taqsimlanadi; oxirgi qator
+        // qoldiqni o'ziga oladi — jami aniq bo'lsin.
+        let itemRealPaid, itemDiscountShare;
         if (paidAmount !== null) {
           if (i === items.length - 1) {
-            itemPaid = Math.max(0, Math.round((paidAmount - distributedPaid) * 100) / 100);
+            itemRealPaid = Math.max(0, Math.round((paidAmount - distributedPaid) * 100) / 100);
+            itemDiscountShare = Math.max(0, Math.round((discountAmount - distributedDiscount) * 100) / 100);
           } else {
-            itemPaid = preGrand > 0 ? Math.round((total / preGrand) * paidAmount) : 0;
-            distributedPaid += itemPaid;
+            itemRealPaid = preGrand > 0 ? Math.round((total / preGrand) * paidAmount) : 0;
+            itemDiscountShare = preGrand > 0 ? Math.round((total / preGrand) * discountAmount) : 0;
+            distributedPaid += itemRealPaid;
+            distributedDiscount += itemDiscountShare;
           }
         } else {
-          itemPaid = saleStatus === 'PAID' ? total : 0;
+          itemRealPaid = saleStatus === 'PAID' ? total : 0;
+          itemDiscountShare = 0;
         }
+        const itemPaid = itemRealPaid + itemDiscountShare;
         const r = await client.query(
           `INSERT INTO sales (product_id, customer_id, quantity, unit_price, total_amount,
             customer_name, customer_phone, sale_date, status, payment_amount, notes, created_by, order_ref, rang, branch_id, delivery_type,
@@ -404,6 +415,13 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), 
            saleDate, saleStatus, itemPaid, notes || null, req.user.id, order_ref, it.rang || null, branchId, deliveryType,
            deliveryAddress, deliveryLat, deliveryLng]
         );
+        if (itemDiscountShare > 0.01) {
+          await client.query(
+            `INSERT INTO payments (sale_id, amount, method, payment_date, notes, created_by, payment_ref)
+             VALUES ($1,$2,'DISCOUNT',$3,$4,$5,$6)`,
+            [r.rows[0].id, itemDiscountShare, saleDate, 'Chegirma', req.user.id, order_ref]
+          );
+        }
         await client.query(
           'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW() WHERE id = $2',
           [qty, it.product_id]
@@ -436,8 +454,8 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), 
         action: 'SALE_BULK_CREATE', table: 'sales', recordId: order_ref,
         newValues: { count: created.length, grand_total: grandTotal, customer_id: customer_id || null, order_ref },
       });
-      // finalPaid'ga oshgan chegirma (haqdor) ham kiradi — balans hisobida payment_amount'da turibdi
-      const finalPaid = (paidAmount !== null ? paidAmount : (saleStatus === 'PAID' ? grandTotal : 0)) + discountCredit;
+      // finalPaid'ga chegirma (ikkala qismi ham) kiradi — balans hisobida payment_amount'da turibdi
+      const finalPaid = (paidAmount !== null ? paidAmount : (saleStatus === 'PAID' ? grandTotal : 0)) + discountAmount + discountCredit;
 
       // Mijozning umumiy balansi (eski qarzlar bilan): SUM(to'lov - summa).
       // Manfiy = qarzdor, musbat = haqdor. Savdodan oldingi/keyingi balansni qaytaramiz.

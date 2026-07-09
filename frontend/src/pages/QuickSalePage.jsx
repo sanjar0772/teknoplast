@@ -38,7 +38,6 @@ const freshSession = () => ({
   payCash: '',
   payCard: '',
   payBank: '',
-  payPayme: '',
   payClick: '',
   discount: '',
   discountMode: 'sum', // 'sum' = so'm, 'pct' = foiz
@@ -246,13 +245,13 @@ export default function QuickSalePage() {
         pay_cash: checkoutRef.current.payCash || 0,
         pay_card: checkoutRef.current.payCard || 0,
         pay_bank: checkoutRef.current.payBank || 0,
-        pay_payme: checkoutRef.current.payPayme || 0,
         pay_click: checkoutRef.current.payClick || 0,
         discount: checkoutRef.current.discount || 0,
         credit: checkoutRef.current.credit || 0,
         orig_total: checkoutRef.current.origTotal, // chegirmadan OLDINGI tovar summasi (chekdagi "Oraliq")
+        final_total: checkoutRef.current.finalTotal, // chegirmadan KEYINGI summa (chekdagi "JAMI")
       });
-      setSessions(ss => ss.map((ses, i) => i === idx ? { ...ses, cart: [], payCash: '', payCard: '', payBank: '', payPayme: '', payClick: '', discount: '' } : ses));
+      setSessions(ss => ss.map((ses, i) => i === idx ? { ...ses, cart: [], payCash: '', payCard: '', payBank: '', payClick: '', discount: '' } : ses));
       setSearch('');
       setDelivery(false);
       setDeliveryAddress('');
@@ -263,16 +262,15 @@ export default function QuickSalePage() {
   const cashAmt = parseFloat(s.payCash) || 0;
   const cardAmt = parseFloat(s.payCard) || 0;
   const bankAmt = parseFloat(s.payBank) || 0;
-  const paymeAmt = parseFloat(s.payPayme) || 0;
   const clickAmt = parseFloat(s.payClick) || 0;
-  const paidTotal = cashAmt + cardAmt + bankAmt + paymeAmt + clickAmt;
-  // Chegirma (skidka) — so'm yoki foiz. Savdo summasigacha bo'lgan qismi narxlarga
-  // taqsimlanadi; savdodan OSHGAN qismi mijozga HAQDOR (kredit) bo'lib yoziladi.
+  const paidTotal = cashAmt + cardAmt + bankAmt + clickAmt;
+  // Chegirma (skidka) — so'm yoki foiz. Mahsulot narxiga TEGMAYDI — alohida "chegirma"
+  // to'lovi sifatida qarzni kamaytiradi. Savdo summasidan OSHGAN qismi mijozga HAQDOR bo'ladi.
   const discountInput = parseFloat(s.discount) || 0;
   const discountRaw = s.discountMode === 'pct' ? grandTotal * discountInput / 100 : discountInput;
   const discountAmt = Math.min(Math.max(0, Math.round(discountRaw)), grandTotal);
   const discountExcess = Math.max(0, Math.round(discountRaw) - grandTotal); // savdodan oshgan chegirma → haqdor
-  const finalTotal = grandTotal - discountAmt; // chegirmadan keyingi yakuniy summa
+  const finalTotal = grandTotal - discountAmt; // chegirmadan keyingi yakuniy summa (faqat ko'rsatish uchun)
   const debtAmt = Math.max(0, finalTotal - paidTotal);
   const creditAmt = Math.max(0, paidTotal - finalTotal) + discountExcess; // oshiqcha to'lov + oshgan chegirma — mijoz haqdor bo'ladi
 
@@ -319,32 +317,16 @@ export default function QuickSalePage() {
       const avail = rowAvail(x);
       if (parseFloat(x.qty) > avail) return toast.error(`"${x.name}" — ${rangLabel(x.rang)}: faqat ${avail} dona bor`);
     }
-    // Chegirmani har bir mahsulot narxiga proporsional taqsimlaymiz (yig'indi = finalTotal).
-    // Oxirgi qator yaxlitlash qoldig'ini o'ziga oladi — jami aniq bo'lsin.
-    let itemsOut;
-    if (discountAmt > 0 && grandTotal > 0) {
-      let allocated = 0;
-      itemsOut = s.cart.map((x, i) => {
-        const qty = parseInt(x.qty);
-        const origTotal = qty * (parseFloat(x.price) || 0);
-        const itemTotal = (i === s.cart.length - 1)
-          ? (finalTotal - allocated)
-          : Math.round(origTotal * finalTotal / grandTotal);
-        if (i !== s.cart.length - 1) allocated += itemTotal;
-        return { product_id: x.id, quantity: qty, unit_price: qty > 0 ? itemTotal / qty : 0, rang: x.rang };
-      });
-    } else {
-      itemsOut = s.cart.map(x => ({ product_id: x.id, quantity: parseInt(x.qty), unit_price: parseFloat(x.price), rang: x.rang }));
-    }
+    // Mahsulot narxlari o'zgarishsiz yuboriladi — chegirma narxdan AYRILMAYDI,
+    // alohida "chegirma to'lovi" sifatida qarzni kamaytiradi (pastda ko'rsatiladi).
+    const itemsOut = s.cart.map(x => ({ product_id: x.id, quantity: parseInt(x.qty), unit_price: parseFloat(x.price), rang: x.rang }));
 
-    checkoutRef.current = { idx: activeIdx, customerId: s.customerId, payCash: cashAmt, payCard: cardAmt, payBank: bankAmt, payPayme: paymeAmt, payClick: clickAmt, credit: creditAmt, discount: discountAmt + discountExcess, origTotal: grandTotal };
-    // Chekда ko'rsatish uchun — chegirma qo'llangan (net) narxlar
+    checkoutRef.current = { idx: activeIdx, customerId: s.customerId, payCash: cashAmt, payCard: cardAmt, payBank: bankAmt, payClick: clickAmt, credit: creditAmt, discount: discountAmt + discountExcess, origTotal: grandTotal, finalTotal };
     lastCartRef.current = itemsOut.map((it, idx) => ({ name: s.cart[idx].name, qty: it.quantity, price: it.unit_price, unit: s.cart[idx].unit, rang: it.rang }));
     const noteParts = [];
     if (cashAmt > 0) noteParts.push(`Naqd: ${cashAmt}`);
     if (cardAmt > 0) noteParts.push(`Karta: ${cardAmt}`);
     if (bankAmt > 0) noteParts.push(`Bank: ${bankAmt}`);
-    if (paymeAmt > 0) noteParts.push(`Payme: ${paymeAmt}`);
     if (clickAmt > 0) noteParts.push(`Click: ${clickAmt}`);
     if (debtAmt > 0) noteParts.push(`Qarz: ${debtAmt}`);
     if (creditAmt > 0) noteParts.push(`Haqdor: ${creditAmt}`);
@@ -354,6 +336,7 @@ export default function QuickSalePage() {
       customer_id: s.customerId,
       sale_date: s.saleDate,
       payment_amount: paidTotal,
+      discount_amount: discountAmt,
       discount_credit: discountExcess,
       notes: `To'lov: ${noteParts.join(' · ')}`,
       items: itemsOut,
@@ -445,10 +428,10 @@ export default function QuickSalePage() {
                 </>
               )}
               <div className="flex justify-between font-bold text-[15px] pb-2 mb-2">
-                <span>JAMI:</span><span>{fmt(lastOrder.grand_total)} so'm</span>
+                <span>JAMI:</span><span>{fmt(lastOrder.final_total != null ? lastOrder.final_total : lastOrder.grand_total)} so'm</span>
               </div>
               {(() => {
-                const hasMixed = (lastOrder.pay_cash > 0) + (lastOrder.pay_card > 0) + (lastOrder.pay_bank > 0) + (lastOrder.pay_payme > 0) + (lastOrder.pay_click > 0) > 0;
+                const hasMixed = (lastOrder.pay_cash > 0) + (lastOrder.pay_card > 0) + (lastOrder.pay_bank > 0) + (lastOrder.pay_click > 0) > 0;
                 const chekDebt = Math.max(0, lastOrder.grand_total - lastOrder.paid_amount);
                 const chekCredit = lastOrder.credit > 0 ? lastOrder.credit : Math.max(0, lastOrder.paid_amount - lastOrder.grand_total);
                 if (!hasMixed && chekDebt <= 0 && chekCredit <= 0) return null;
@@ -467,11 +450,6 @@ export default function QuickSalePage() {
                     {lastOrder.pay_bank > 0 && (
                       <div className="flex justify-between text-purple-700">
                         <span>Bank:</span><span className="font-bold">{fmt(lastOrder.pay_bank)} so'm</span>
-                      </div>
-                    )}
-                    {lastOrder.pay_payme > 0 && (
-                      <div className="flex justify-between text-cyan-700">
-                        <span>Pay Me:</span><span className="font-bold">{fmt(lastOrder.pay_payme)} so'm</span>
                       </div>
                     )}
                     {lastOrder.pay_click > 0 && (
@@ -669,16 +647,26 @@ export default function QuickSalePage() {
                 />
               </div>
               <div>
-                <label className="text-[10px] text-cyan-600 font-medium flex items-center gap-1">📱 Pay Me</label>
-                <input
-                  type="number" min="0" step="1000"
-                  value={s.payPayme}
-                  onChange={e => setField('payPayme', e.target.value)}
-                  onFocus={e => e.target.select()}
-                  onWheel={e => e.currentTarget.blur()}
-                  placeholder="0"
-                  className="input text-xs py-1.5 border-cyan-200 focus:ring-cyan-400"
-                />
+                <label className="text-[10px] text-rose-600 font-medium flex items-center gap-1">
+                  <Tag size={11} /> Skidka
+                </label>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number" min="0"
+                    value={s.discount}
+                    onChange={e => setField('discount', e.target.value)}
+                    onFocus={e => e.target.select()}
+                    onWheel={e => e.currentTarget.blur()}
+                    placeholder="0"
+                    className="input text-xs py-1.5 border-rose-200 focus:ring-rose-400"
+                  />
+                  <div className="flex rounded-lg overflow-hidden border border-gray-200 flex-shrink-0">
+                    <button type="button" onClick={() => setField('discountMode', 'sum')}
+                      className={`px-1.5 py-1.5 text-[10px] font-medium ${s.discountMode !== 'pct' ? 'bg-rose-500 text-white' : 'bg-white text-gray-500'}`}>so'm</button>
+                    <button type="button" onClick={() => setField('discountMode', 'pct')}
+                      className={`px-1.5 py-1.5 text-[10px] font-medium ${s.discountMode === 'pct' ? 'bg-rose-500 text-white' : 'bg-white text-gray-500'}`}>%</button>
+                  </div>
+                </div>
               </div>
               <div>
                 <label className="text-[10px] text-indigo-600 font-medium flex items-center gap-1">⚡ Click</label>
@@ -703,10 +691,16 @@ export default function QuickSalePage() {
                 />
               </div>
             </div>
+            {(discountAmt > 0 || discountExcess > 0) && (
+              <div className="mt-1.5 text-[11px] space-x-2">
+                {discountAmt > 0 && <span className="text-rose-600 font-medium">−{fmt(discountAmt)} so'm chegirma</span>}
+                {discountExcess > 0 && <span className="text-blue-600 font-semibold">+{fmt(discountExcess)} so'm mijozga haqdor bo'ladi</span>}
+              </div>
+            )}
             {grandTotal > 0 && (
               <button
                 type="button"
-                onClick={() => { setField('payCash', String(finalTotal)); setField('payCard', ''); setField('payBank', ''); setField('payPayme', ''); setField('payClick', ''); }}
+                onClick={() => { setField('payCash', String(finalTotal)); setField('payCard', ''); setField('payBank', ''); setField('payClick', ''); }}
                 className="text-[10px] text-blue-500 hover:text-blue-700 mt-1"
               >
                 Hammasini naqd to'lash
@@ -809,29 +803,6 @@ export default function QuickSalePage() {
 
             {/* Jami, chegirma va yakunlash */}
             <div className="px-3 py-2 border-t border-gray-100 bg-gray-50 space-y-2">
-              {/* Chegirma (skidka) qatori */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <label className="text-[11px] text-gray-600 font-medium flex items-center gap-1">
-                  <Tag size={12} className="text-rose-500" /> Chegirma
-                </label>
-                <input
-                  type="number" min="0"
-                  value={s.discount}
-                  onChange={e => setField('discount', e.target.value)}
-                  onFocus={e => e.target.select()}
-                  onWheel={e => e.currentTarget.blur()}
-                  placeholder="0"
-                  className="input text-xs py-1 w-24"
-                />
-                <div className="flex rounded-lg overflow-hidden border border-gray-200">
-                  <button type="button" onClick={() => setField('discountMode', 'sum')}
-                    className={`px-2 py-1 text-[11px] font-medium ${s.discountMode !== 'pct' ? 'bg-rose-500 text-white' : 'bg-white text-gray-500'}`}>so'm</button>
-                  <button type="button" onClick={() => setField('discountMode', 'pct')}
-                    className={`px-2 py-1 text-[11px] font-medium ${s.discountMode === 'pct' ? 'bg-rose-500 text-white' : 'bg-white text-gray-500'}`}>%</button>
-                </div>
-                {discountAmt > 0 && <span className="text-[11px] text-rose-600 font-medium">−{fmt(discountAmt)} so'm</span>}
-                {discountExcess > 0 && <span className="text-[11px] text-blue-600 font-semibold">+{fmt(discountExcess)} so'm mijozga haqdor bo'ladi</span>}
-              </div>
               {/* Dostavka (yetkazib berish) — FAQAT filialda ko'rinadi (asosiy tizim/zavodda yo'q) */}
               {inBranch && (<>
               <button type="button" onClick={toggleDelivery}

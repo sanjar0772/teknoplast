@@ -435,25 +435,48 @@ async function buildKassa(scope, date) {
     // har usulga bosilganda o'sha operatsiyalar ro'yxati (methodOps) ochiladi.
     // Savdo: chek notes'idan ("To'lov: Naqd: X · Karta: Y ..."). Qarz to'lov: payments.method'dan.
     // Skidka — pul emas, kirim/sof kassaga qo'shilmaydi, lekin alohida ko'rsatiladi.
-    const methods = { CASH: 0, CARD: 0, TRANSFER: 0, CLICK: 0, DISCOUNT: 0 };
-    const methodOps = { CASH: [], CARD: [], TRANSFER: [], CLICK: [], DISCOUNT: [] };
-    const NOTE_RE = { CASH: /Naqd:\s*([\d.]+)/i, CARD: /Karta:\s*([\d.]+)/i, TRANSFER: /Bank:\s*([\d.]+)/i, CLICK: /Click:\s*([\d.]+)/i };
+    // PAYME — savdoda olib tashlangan, lekin qarz to'lovida (Qarzlar) hali ishlatilishi mumkin.
+    // OTHER (Boshqa) — moslashtiruvchi qoldiq: hech qaysi usulga tushmagan pul (masalan usuli
+    // noma'lum to'lov yoki notes'dagi summa paid_now'ga to'liq mos kelmasa). Shu tufayli
+    // "Jami (barcha usullar)" HAR DOIM "Kassaga kirdi"ga teng bo'ladi (ilgari farq bor edi).
+    const methods = { CASH: 0, CARD: 0, TRANSFER: 0, CLICK: 0, PAYME: 0, OTHER: 0, DISCOUNT: 0 };
+    const methodOps = { CASH: [], CARD: [], TRANSFER: [], CLICK: [], PAYME: [], OTHER: [], DISCOUNT: [] };
+    const NOTE_RE = { CASH: /Naqd:\s*([\d.]+)/i, CARD: /Karta:\s*([\d.]+)/i, TRANSFER: /Bank:\s*([\d.]+)/i, CLICK: /Click:\s*([\d.]+)/i, PAYME: /Payme:\s*([\d.]+)/i };
     for (const key of order) {
       const g = groups[key];
       const notes = g.notes || '';
+      const actual = Math.max(0, Math.round(g.paid_now || 0)); // shu savdodan HAQIQIY kirgan naqd (kirim ichida)
+      if (actual <= 0) continue; // to'liq qarzga — pul kirmagan
+      // notes'dagi e'lon qilingan usullar (Naqd/Karta/Bank/Click/Payme)
+      const declared = {}; let declaredSum = 0;
       for (const m in NOTE_RE) {
         const mt = notes.match(NOTE_RE[m]);
-        const amt = mt ? parseFloat(mt[1]) || 0 : 0;
-        if (amt > 0.01) {
-          methods[m] += amt;
-          methodOps[m].push({ time: g.time, customer: g.customer, amount: Math.round(amt), source: 'Savdo' });
-        }
+        const amt = mt ? Math.max(0, Math.round(parseFloat(mt[1]) || 0)) : 0;
+        if (amt > 0) { declared[m] = amt; declaredSum += amt; }
       }
+      const push = (mk, amt) => {
+        if (amt <= 0) return;
+        methods[mk] += amt;
+        methodOps[mk].push({ time: g.time, customer: g.customer, amount: amt, source: 'Savdo' });
+      };
+      if (declaredSum <= 0) { push('OTHER', actual); continue; } // usul noma'lum → Boshqa
+      // HAQIQIY naqdni (actual) e'lon qilingan usullar bo'yicha ANIQ taqsimlaymiz (yig'indi = actual).
+      // notes actual'dan oshsa proporsional kamaytiriladi; kam bo'lsa qolgani Boshqa'ga —
+      // shunda usullar yig'indisi doim savdo naqdiga teng bo'ladi (kassa mos keladi).
+      const cap = Math.min(actual, declaredSum);
+      const keys = Object.keys(declared);
+      let dist = 0;
+      keys.forEach((m, i) => {
+        const part = (i === keys.length - 1) ? (cap - dist) : Math.round(declared[m] * cap / declaredSum);
+        if (i !== keys.length - 1) dist += part;
+        push(m, part);
+      });
+      push('OTHER', actual - cap); // notes yetmasa — qolgani Boshqa
     }
     for (const p of pays) {
-      if (methods[p.method] === undefined) continue;
-      methods[p.method] += parseFloat(p.amount) || 0;
-      methodOps[p.method].push({ time: p.created_at, customer: p.customer_name || '—', amount: Math.round(parseFloat(p.amount) || 0), source: "Qarz to'lovi" });
+      const mk = methods[p.method] !== undefined && p.method !== 'DISCOUNT' ? p.method : 'OTHER';
+      methods[mk] += parseFloat(p.amount) || 0;
+      methodOps[mk].push({ time: p.created_at, customer: p.customer_name || '—', amount: Math.round(parseFloat(p.amount) || 0), source: "Qarz to'lovi" });
     }
     // Skidka — savdo va qarz to'lovi paytida yozilgan DISCOUNT to'lovlari (to'g'ridan-to'g'ri payments'dan)
     const discountRows = (await query(`

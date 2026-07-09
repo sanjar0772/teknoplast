@@ -73,15 +73,21 @@ export default function KassaPage() {
   const mOps = data?.methodOps || {};
   const isToday = date === localToday();
 
-  // To'lov usullari bo'yicha jamlanma (kassa oxirida) — bosilsa o'sha operatsiyalar ochiladi
+  // To'lov usullari bo'yicha jamlanma (kassa oxirida) — bosilsa o'sha operatsiyalar ochiladi.
+  // Naqd/Karta/Bank/Click doim ko'rinadi. Pay Me va Boshqa faqat puli bo'lsa ko'rinadi
+  // (Pay Me savdodan olib tashlangan, ammo qarz to'lovida bo'lishi mumkin). Skidka — pul emas.
   const METHODS = [
-    { key: 'CASH',     label: 'Naqd',    emoji: '💵' },
-    { key: 'CARD',     label: 'Karta',   emoji: '💳' },
-    { key: 'TRANSFER', label: 'Bank',    emoji: '🏦' },
-    { key: 'CLICK',    label: 'Click',   emoji: '📲' },
-    { key: 'DISCOUNT', label: 'Skidka',  emoji: '🏷️' },
+    { key: 'CASH',     label: 'Naqd',    emoji: '💵', always: true },
+    { key: 'CARD',     label: 'Karta',   emoji: '💳', always: true },
+    { key: 'TRANSFER', label: 'Bank',    emoji: '🏦', always: true },
+    { key: 'CLICK',    label: 'Click',   emoji: '📲', always: true },
+    { key: 'PAYME',    label: 'Pay Me',  emoji: '📱' },
+    { key: 'OTHER',    label: 'Boshqa',  emoji: '💰' },
+    { key: 'DISCOUNT', label: 'Skidka',  emoji: '🏷️', always: true },
   ];
-  const methodRows = METHODS.map(x => ({ ...x, value: parseFloat(m[x.key]) || 0 }));
+  const methodRows = METHODS
+    .map(x => ({ ...x, value: parseFloat(m[x.key]) || 0 }))
+    .filter(x => x.always || x.value > 0);
   // Skidka pul emas — "jami" summasiga qo'shilmaydi, faqat alohida ko'rsatiladi
   const methodsTotal = methodRows.filter(x => x.key !== 'DISCOUNT').reduce((s, x) => s + x.value, 0);
   const activeMethod = methodRows.find(x => x.key === methodFor);
@@ -210,7 +216,7 @@ export default function KassaPage() {
           <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-1.5">
             <Wallet size={15} className="text-gray-500" /> To'lov usullari bo'yicha
           </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {methodRows.map(x => (
               <button key={x.key} type="button" onClick={() => x.value > 0 && setMethodFor(x.key)}
                 disabled={x.value <= 0}

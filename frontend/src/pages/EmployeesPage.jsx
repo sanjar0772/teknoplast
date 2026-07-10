@@ -18,6 +18,9 @@ const SHIFTS = { '1-SMENA': '1-Smena', '2-SMENA': '2-Smena' };
 // STANOKCHI/DETALCHI — dona haqi (mahsulotga bog'liq). Qolganlari — oylik (belgilangan yoki foiz).
 const PIECE_RATE = ['STANOKCHI', 'DETALCHI'];
 const isPieceRate = (t) => PIECE_RATE.includes(t);
+// STANOKCHI va DETALCHI 2 smenada ishlaydi — smena (1-Smena / 2-Smena) tanlanadi.
+const HAS_SHIFT = ['STANOKCHI', 'DETALCHI'];
+const hasShift = (t) => HAS_SHIFT.includes(t);
 
 function BadgeCard({ emp }) {
   return (
@@ -44,7 +47,7 @@ function BadgeCard({ emp }) {
           }}>
             {TYPES[emp.type] || emp.type}
           </span>
-          {emp.type === 'STANOKCHI' && emp.shift && (
+          {hasShift(emp.type) && emp.shift && (
             <span style={{
               background: emp.shift === '2-SMENA' ? '#ede9fe' : '#e0f2fe',
               color: emp.shift === '2-SMENA' ? '#7c3aed' : '#0369a1',
@@ -128,7 +131,7 @@ export default function EmployeesPage() {
         ctx.fillStyle = '#111827'; ctx.font = 'bold 14px Arial';
         ctx.fillText(String(emp.name || '').slice(0, 26), x + bw / 2, y + 176);
         ctx.fillStyle = '#1d4ed8'; ctx.font = '11px Arial';
-        const t = (TYPES[emp.type] || emp.type) + (emp.type === 'STANOKCHI' && emp.shift ? ' · ' + (SHIFTS[emp.shift] || emp.shift) : '');
+        const t = (TYPES[emp.type] || emp.type) + (hasShift(emp.type) && emp.shift ? ' · ' + (SHIFTS[emp.shift] || emp.shift) : '');
         ctx.fillText(t, x + bw / 2, y + 195);
       });
       canvas.toBlob((b) => {
@@ -247,7 +250,7 @@ export default function EmployeesPage() {
           <option value="">Barcha turlar</option>
           {Object.entries(kirimchiOnly ? { STANOKCHI: TYPES.STANOKCHI, DETALCHI: TYPES.DETALCHI } : TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-        {filter.type === 'STANOKCHI' && (
+        {hasShift(filter.type) && (
           <select value={filter.shift || ''} onChange={e => setFilter(f => ({ ...f, shift: e.target.value }))} className="select w-36">
             <option value="">Barcha smenalar</option>
             {Object.entries(SHIFTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -273,7 +276,7 @@ export default function EmployeesPage() {
                 <td className="font-medium">{emp.name}</td>
                 <td><span className="badge-blue">{TYPES[emp.type] || emp.type}</span></td>
                 <td>
-                  {emp.type === 'STANOKCHI'
+                  {hasShift(emp.type)
                     ? <span className={`badge ${emp.shift === '2-SMENA' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
                         {SHIFTS[emp.shift] || emp.shift || '1-Smena'}
                       </span>
@@ -410,16 +413,16 @@ export default function EmployeesPage() {
               </div>
             )}
           </div>
-          {watchedType === 'STANOKCHI' && (
+          {hasShift(watchedType) && (
             <div>
               <label className="label">Smena *</label>
-              <select {...register('shift', { required: watchedType === 'STANOKCHI' })} className="select">
+              <select {...register('shift', { required: hasShift(watchedType) })} className="select">
                 <option value="1-SMENA">1-Smena (Ertalab)</option>
                 <option value="2-SMENA">2-Smena (Kechqurun)</option>
               </select>
             </div>
           )}
-          {watchedType !== 'STANOKCHI' && watchedType && (
+          {!hasShift(watchedType) && watchedType && (
             <input type="hidden" {...register('shift')} value="" />
           )}
           {/* Oylik — faqat dona haqi bo'lmagan turlar uchun (Bugalter, Sifat, Marketing, ...) */}

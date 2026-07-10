@@ -302,7 +302,7 @@ async function generateProductionRangeExcel(rows, startDate, endDate) {
       num: i + 1,
       name: r.name,
       product: r.product_name || '—',
-      shift: r.type === 'STANOKCHI' ? (shiftMap[r.shift] || r.shift || '—') : '—',
+      shift: (r.type === 'STANOKCHI' || r.type === 'DETALCHI') ? (shiftMap[r.shift] || r.shift || '—') : '—',
       work_days: r.work_days || 0,
       total_produced: parseFloat(r.total_produced || 0),
       total_earned: parseFloat(r.total_earned || 0),
@@ -370,7 +370,7 @@ async function generateProductionRangePDF(rows, startDate, endDate) {
       doc.text(String(i + 1), col.num, y, { width: 20 });
       doc.text(r.name || '—', col.name, y, { width: 105 });
       doc.text(r.product_name || '—', col.product, y, { width: 150 });
-      doc.text(r.type === 'STANOKCHI' ? (shiftMap[r.shift] || r.shift || '—') : '—', col.shift, y, { width: 42 });
+      doc.text((r.type === 'STANOKCHI' || r.type === 'DETALCHI') ? (shiftMap[r.shift] || r.shift || '—') : '—', col.shift, y, { width: 42 });
       doc.text(String(days), col.days, y, { width: 34 });
       doc.text(money(qty), col.qty, y, { width: 48 });
       doc.text(money(earned), col.earned, y, { width: right - col.earned, align: 'right' });

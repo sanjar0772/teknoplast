@@ -692,12 +692,6 @@ function MachineHubModal({ machine, canWrite, onClose, onAction }) {
               <span className="font-medium text-indigo-700">{machine.current_mold_name}</span>
             </div>
           )}
-          {machine.current_product_name && (
-            <div className="flex justify-between">
-              <span className="text-gray-500">Joriy qolip:</span>
-              <span className="font-medium text-blue-700">{machine.current_product_name}</span>
-            </div>
-          )}
         </div>
 
         <div className="grid grid-cols-2 gap-2 pt-1">
@@ -903,11 +897,15 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
   const rows = historyData?.mold_changes || [];
   const cycleRows = cycleData?.cycle_times || [];
 
-  // Yozib qidirish uchun bitta ro'yxatga birlashtirilgan variantlar (kalip + mahsulot/komponent)
+  // FAQAT BO'SH kaliplar ko'rsatiladi — boshqa stanokda o'rnatilgan kalip ro'yxatda
+  // ko'rinmaydi (bir kalip faqat bitta stanokda bo'ladi). Shu stanokdagi joriy kalip ham
+  // chiqmaydi (u allaqachon o'rnatilgan).
+  const freeMolds = molds.filter(mo => !mo.current_machine_id);
+  // Yozib qidirish uchun bitta ro'yxatga birlashtirilgan variantlar (bo'sh kalip + mahsulot/komponent)
   const candidates = [
-    ...molds.map(mo => ({
+    ...freeMolds.map(mo => ({
       key: `mold:${mo.id}`,
-      label: `🧩 ${mo.name}${mo.product_name ? ` (${mo.product_name})` : ''}${mo.current_machine_id && mo.current_machine_id !== machine.id ? ` — hozir: ${mo.current_machine_name}` : ''}`,
+      label: `🧩 ${mo.name}${mo.product_name ? ` (${mo.product_name})` : ''}`,
     })),
     ...products.map(p => ({
       key: `product:${p.id}`,
@@ -1443,13 +1441,13 @@ export default function MachinesPage() {
                   </div>
                 </div>
 
-                {(m.current_mold_name || m.current_product_name) && (
+                {m.current_mold_name && (
                   <div className="mt-2 rounded-xl bg-indigo-50 border border-indigo-100 px-3 py-2 flex items-center gap-2 min-w-0">
                     <Layers size={15} className="text-indigo-500 shrink-0" />
                     <div className="min-w-0">
                       <p className="text-[10px] uppercase tracking-wide text-indigo-400">Joriy kalip</p>
                       <p className="text-sm font-semibold text-indigo-700 truncate">
-                        {m.current_mold_name || m.current_product_name}{m.current_mold_location ? ` · ${m.current_mold_location}` : ''}
+                        {m.current_mold_name}{m.current_mold_location ? ` · ${m.current_mold_location}` : ''}
                       </p>
                     </div>
                   </div>

@@ -376,12 +376,16 @@ router.post('/:id/mold-changes', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_
     const customName = (mold_name || '').trim();
 
     // Mahsulot/komponent to'g'ridan-to'g'ri tanlangan bo'lsa — nom o'zi yozilgan bo'lsa
-    // har doim yangi kalip yaratamiz; bo'lmasa mahsulot uchun mavjud qolipni topamiz,
-    // topilmasa mahsulot nomi bilan yangi qolip yozib qo'yamiz.
+    // har doim yangi kalip yaratamiz; bo'lmasa mahsulot uchun BO'SH (hech qaysi stanokda
+    // o'rnatilmagan) kalipni topamiz; bo'sh topilmasa mahsulot nomi bilan yangi kalip yaratamiz.
+    // MUHIM: boshqa stanokda ishlab turgan kalipni "ko'chirib" olmaymiz.
     if (!toMoldId && product_id) {
       if (!customName) {
         const existing = await query(
-          'SELECT id FROM molds WHERE product_id = $1 AND is_active = true ORDER BY created_at LIMIT 1',
+          `SELECT mo.id FROM molds mo
+           WHERE mo.product_id = $1 AND mo.is_active = true
+             AND NOT EXISTS (SELECT 1 FROM machines mm WHERE mm.current_mold_id = mo.id)
+           ORDER BY mo.created_at LIMIT 1`,
           [product_id]
         );
         if (existing.rows.length) toMoldId = existing.rows[0].id;

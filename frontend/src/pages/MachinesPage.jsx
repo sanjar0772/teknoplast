@@ -901,13 +901,17 @@ function MoldAssignModal({ machine, canWrite, onClose }) {
   // ko'rinmaydi (bir kalip faqat bitta stanokda bo'ladi). Shu stanokdagi joriy kalip ham
   // chiqmaydi (u allaqachon o'rnatilgan).
   const freeMolds = molds.filter(mo => !mo.current_machine_id);
-  // Yozib qidirish uchun bitta ro'yxatga birlashtirilgan variantlar (bo'sh kalip + mahsulot/komponent)
+  // Biror stanokda o'rnatilgan kalipga tegishli MAHSULOTLAR ham ro'yxatdan chiqmaydi —
+  // o'sha mahsulot allaqachon stanokka o'rnatilgan, boshqa stanokka qo'yib bo'lmaydi.
+  const busyProductIds = new Set(molds.filter(mo => mo.current_machine_id).map(mo => mo.product_id));
+  const freeProducts = products.filter(p => !busyProductIds.has(p.id));
+  // Yozib qidirish uchun bitta ro'yxatga birlashtirilgan variantlar (bo'sh kalip + bo'sh mahsulot/komponent)
   const candidates = [
     ...freeMolds.map(mo => ({
       key: `mold:${mo.id}`,
       label: `🧩 ${mo.name}${mo.product_name ? ` (${mo.product_name})` : ''}`,
     })),
-    ...products.map(p => ({
+    ...freeProducts.map(p => ({
       key: `product:${p.id}`,
       label: `📦 ${p.name}${p.kind === 'KOMPONENT' ? ' (komponent)' : ''}`,
     })),

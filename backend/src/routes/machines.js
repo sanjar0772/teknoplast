@@ -380,6 +380,16 @@ router.post('/:id/mold-changes', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_
     // o'rnatilmagan) kalipni topamiz; bo'sh topilmasa mahsulot nomi bilan yangi kalip yaratamiz.
     // MUHIM: boshqa stanokda ishlab turgan kalipni "ko'chirib" olmaymiz.
     if (!toMoldId && product_id) {
+      // Bu mahsulotning kalipi allaqachon BOSHQA stanokda o'rnatilgan bo'lsa — rad etamiz
+      // (bir mahsulot/kalip faqat bitta stanokda bo'ladi; ro'yxatda ham ko'rinmaydi).
+      const onOther = await query(
+        `SELECT mm.name FROM machines mm JOIN molds mo ON mm.current_mold_id = mo.id
+         WHERE mo.product_id = $1 AND mm.id <> $2 LIMIT 1`,
+        [product_id, req.params.id]
+      );
+      if (onOther.rows.length) {
+        return res.status(400).json({ error: `Bu mahsulot allaqachon "${onOther.rows[0].name}" stanogida o'rnatilgan` });
+      }
       if (!customName) {
         const existing = await query(
           `SELECT mo.id FROM molds mo

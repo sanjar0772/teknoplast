@@ -222,7 +222,7 @@ router.put('/:id/running', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME',
     }
 
     // Pause — sababga qarab
-    const pauseKind = req.body.pause_kind || 'NOSOZ'; // NOSOZ | BUZILGAN | QOLIP
+    const pauseKind = req.body.pause_kind || 'NOSOZ'; // NOSOZ | BUZILGAN | QOLIP | HODIM
     const reason = (req.body.reason || '').trim() || null;
     const moldMinutes = (req.body.mold_minutes != null && req.body.mold_minutes !== '')
       ? parseFloat(req.body.mold_minutes) : null;
@@ -232,11 +232,13 @@ router.put('/:id/running', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME',
       return res.status(400).json({ error: "Almashtirilayotgan qolipni (mahsulotni) tanlang" });
     }
 
-    // Downtime statusi + stanok sog'lik holati (QOLIP — sog'lik holatiga tegmaydi)
+    // Downtime statusi + stanok sog'lik holati (QOLIP/HODIM — sog'lik holatiga tegmaydi)
     let dtStatus = 'SERVICE', machineStatus = null;
     if (pauseKind === 'BUZILGAN') { dtStatus = 'BROKEN'; machineStatus = 'BROKEN'; }
     else if (pauseKind === 'NOSOZ') { dtStatus = 'SERVICE'; machineStatus = 'SERVICE'; }
     else if (pauseKind === 'QOLIP') { dtStatus = 'MOLD'; machineStatus = null; }
+    // HODIM — hodim yetishmaydi: stanok sog'lom, faqat to'xtagan (holati o'zgarmaydi)
+    else if (pauseKind === 'HODIM') { dtStatus = 'HODIM'; machineStatus = null; }
 
     let upd;
     if (machineStatus) {

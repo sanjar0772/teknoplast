@@ -605,6 +605,7 @@ function PauseReasonModal({ machine, pending, onConfirm, onClose, initialKind })
     { v: 'NOSOZ',    label: 'Nosoz',             Icon: Wrench,        on: 'border-yellow-400 bg-yellow-50 text-yellow-700' },
     { v: 'BUZILGAN', label: 'Buzilgan',          Icon: AlertTriangle, on: 'border-red-400 bg-red-50 text-red-700' },
     { v: 'QOLIP',    label: 'Qalip almashmoqda', Icon: RefreshCw,     on: 'border-blue-400 bg-blue-50 text-blue-700' },
+    { v: 'HODIM',    label: 'Hodim yetishmaydi', Icon: Users,         on: 'border-orange-400 bg-orange-50 text-orange-700' },
   ];
 
   const pickMold = (mo) => { setMoldProductId(mo.product_id); setSelectedMoldName(mo.name); };
@@ -614,9 +615,10 @@ function PauseReasonModal({ machine, pending, onConfirm, onClose, initialKind })
     if (kind === 'QOLIP' && !(parseFloat(moldMin) >= 0)) return toast.error("Qalip almashish vaqtini kiriting (daqiqa)");
     const moldProductName = products.find(p => p.id === moldProductId)?.name || '';
     const moldLabel = selectedMoldName ? `${selectedMoldName} (${moldProductName})` : moldProductName;
+    const defaultReason = { NOSOZ: 'Nosoz', BUZILGAN: 'Buzilgan', HODIM: 'Hodim yetishmaydi' };
     const composed = kind === 'QOLIP'
       ? `Qalip almashmoqda${moldLabel ? ` → ${moldLabel}` : ''}${moldMin ? ` (~${moldMin} daqiqa)` : ''}${reason ? ' — ' + reason : ''}`
-      : (reason || (kind === 'BUZILGAN' ? 'Buzilgan' : 'Nosoz'));
+      : (reason || defaultReason[kind] || 'Nosoz');
     onConfirm({ pause_kind: kind, reason: composed, mold_minutes: kind === 'QOLIP' ? moldMin : null, product_id: kind === 'QOLIP' ? moldProductId : null });
   };
 
@@ -624,7 +626,7 @@ function PauseReasonModal({ machine, pending, onConfirm, onClose, initialKind })
     <Modal open onClose={onClose} title={`⏸ To'xtatish — ${machine.name}`}>
       <div className="space-y-4">
         <p className="text-sm text-gray-500">Stanok nima sababdan to'xtatildi?</p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {opts.map(({ v, label, Icon, on }) => (
             <button key={v} onClick={() => setKind(v)}
               className={`flex flex-col items-center gap-1.5 py-3 px-1 rounded-xl border text-xs font-medium transition text-center ${

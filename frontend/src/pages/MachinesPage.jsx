@@ -1724,6 +1724,11 @@ export default function MachinesPage() {
                       <QrCode size={13} /> QR
                     </button>
                   </div>
+
+                  <button onClick={() => setRegimeFor(m)}
+                    className="btn-sm w-full bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200 rounded-lg px-2 py-2 flex items-center gap-1.5 justify-center">
+                    <Gauge size={14} /> Texnologik rejim
+                  </button>
                 </div>
               </div>
             </div>

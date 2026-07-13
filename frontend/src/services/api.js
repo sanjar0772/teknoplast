@@ -246,6 +246,10 @@ export const machinesAPI = {
   getStats: (params) => api.get('/machines/stats', { params }),
   statsExcel: (params) => api.get('/machines/stats/excel', { params, responseType: 'blob' }),
   statsPdf: (params) => api.get('/machines/stats/pdf', { params, responseType: 'blob' }),
+  getRegime: (id) => api.get(`/machines/${id}/regime`),
+  saveRegime: (id, data) => api.put(`/machines/${id}/regime`, data),
+  getRegimes: () => api.get('/machines/regimes'),
+  importRegimes: () => api.post('/machines/regimes/import'),
 };
 
 // Qaliplar (molds)

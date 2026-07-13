@@ -14,6 +14,30 @@ const fmtN = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(
 const localDay = (d = new Date()) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const monthStart = () => localDay().slice(0, 8) + '01';
 
+// Texnologik rejim maydonlari (Excel: 15.05.2026 smena kartasi)
+const REGIME_LABELS = {
+  tpa_type: 'TPA turi', detal_number: 'Detal №', detal_name: 'Detal nomi', material: 'Xom-ashyo',
+  drying_temp: 'Quritish t°', zone1: '1-zona', zone2: '2-zona', zone3: '3-zona', zone4: '4-zona',
+  zone5: '5-zona', zone6: '6-zona', zone7: '7-zona', zone8: '8-zona', chiller_temp: 'Chiller t°',
+  injection_speed: 'Quyish tezligi (sek)', cooling_time: 'Sovutish (sek)', hold_time: 'Hold (sek)',
+  pressure1: 'Bosim 1', pressure2: 'Bosim 2', pressure3: 'Bosim 3', pressure4: 'Bosim 4', pressure5: 'Bosim 5',
+  material_loading: 'Yuklanish (mm)', cycle_time: 'Sikl (sek)',
+};
+const REGIME_GROUPS = [
+  { title: 'Umumiy', keys: ['tpa_type', 'detal_number', 'detal_name', 'material'] },
+  { title: 'Harorat (°C)', keys: ['drying_temp', 'zone1', 'zone2', 'zone3', 'zone4', 'zone5', 'zone6', 'zone7', 'zone8', 'chiller_temp'] },
+  { title: 'Vaqt · bosim · sikl', keys: ['injection_speed', 'cooling_time', 'hold_time', 'pressure1', 'pressure2', 'pressure3', 'pressure4', 'pressure5', 'material_loading', 'cycle_time'] },
+];
+// Smena kartasi jadval ustunlari (qisqa sarlavha bilan)
+const REGIME_CARD_COLS = [
+  ['tpa_type', 'TPA turi'], ['detal_name', 'Detal'], ['material', 'Xom-ashyo'], ['drying_temp', 'Qurit.'],
+  ['zone1', '1'], ['zone2', '2'], ['zone3', '3'], ['zone4', '4'], ['zone5', '5'], ['zone6', '6'], ['zone7', '7'], ['zone8', '8'],
+  ['injection_speed', 'Quyish'], ['cooling_time', 'Sovut.'], ['hold_time', 'Hold'],
+  ['pressure1', 'B1'], ['pressure2', 'B2'], ['pressure3', 'B3'], ['pressure4', 'B4'], ['pressure5', 'B5'],
+  ['material_loading', 'Yuk.'], ['chiller_temp', 'Chill.'], ['cycle_time', 'Sikl'],
+];
+const rv = (v) => (v === null || v === undefined || v === '') ? '—' : v;
+
 // Stanoklar ishlab chiqarish statistikasi — davr tanlab, ekranda ko'rish + Excel/PDF yuklab olish
 function MachineStatsPanel() {
   const [start, setStart] = useState(monthStart());
@@ -722,6 +746,10 @@ function MachineHubModal({ machine, canWrite, onClose, onAction }) {
             className="btn-sm bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200 rounded-lg px-2 py-2.5 flex items-center gap-1.5 justify-center">
             <Timer size={14} /> Cycle-time
           </button>
+          <button onClick={() => onAction('regime')}
+            className="btn-sm col-span-2 bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200 rounded-lg px-2 py-2.5 flex items-center gap-1.5 justify-center">
+            <Gauge size={14} /> Texnologik rejim
+          </button>
           <button onClick={() => onAction('qr')}
             className="btn-sm col-span-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 py-2.5 flex items-center gap-1.5 justify-center">
             <QrCode size={14} /> QR kodni ko'rish
@@ -729,6 +757,169 @@ function MachineHubModal({ machine, canWrite, onClose, onAction }) {
         </div>
       </div>
     </Modal>
+  );
+}
+
+// Bitta stanok texnologik rejimini ko'rish/tahrirlash
+function RegimeModal({ machine, canWrite, onClose }) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({});
+  const { data, isLoading } = useQuery({
+    queryKey: ['machine-regime', machine.id],
+    queryFn: () => machinesAPI.getRegime(machine.id).then(r => r.data),
+  });
+  useEffect(() => {
+    const rg = data?.regime;
+    const f = {};
+    Object.keys(REGIME_LABELS).forEach(k => { f[k] = rg?.[k] ?? ''; });
+    setForm(f);
+  }, [data]);
+  const saveMut = useMutation({
+    mutationFn: () => machinesAPI.saveRegime(machine.id, form),
+    onSuccess: () => {
+      toast.success('Texnologik rejim saqlandi');
+      qc.invalidateQueries({ queryKey: ['machine-regime', machine.id] });
+      qc.invalidateQueries({ queryKey: ['machine-regimes'] });
+      onClose();
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Saqlashda xato'),
+  });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  return (
+    <Modal open onClose={onClose} title={`⚙️ Texnologik rejim — ${machine.name}`}>
+      {isLoading ? (
+        <div className="py-8 text-center text-gray-400">Yuklanmoqda...</div>
+      ) : (
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+          {REGIME_GROUPS.map(g => (
+            <div key={g.title}>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{g.title}</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {g.keys.map(k => (
+                  <div key={k}>
+                    <label className="block text-[11px] text-gray-500 mb-0.5">{REGIME_LABELS[k]}</label>
+                    <input
+                      value={form[k] ?? ''}
+                      onChange={e => set(k, e.target.value)}
+                      disabled={!canWrite}
+                      className="input py-1.5 text-sm disabled:bg-gray-50 disabled:text-gray-500"
+                      placeholder="—"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div className="flex gap-2 pt-2">
+            <button onClick={onClose} className="btn-secondary flex-1">Yopish</button>
+            {canWrite && (
+              <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending} className="btn-primary flex-1">
+                {saveMut.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// Smena kartasi — barcha stanoklar rejimi jadvali (sana + smena + tekshirdi), chop etiladi
+function ShiftCardModal({ onClose }) {
+  const [date, setDate] = useState(localDay());
+  const [shift, setShift] = useState('1-smena');
+  const [checkedBy, setCheckedBy] = useState('');
+  const { data, isLoading } = useQuery({
+    queryKey: ['machine-regimes'],
+    queryFn: () => machinesAPI.getRegimes().then(r => r.data),
+  });
+  useEffect(() => { if (data?.checked_by) setCheckedBy(prev => prev || data.checked_by); }, [data]);
+  const regimes = data?.regimes || [];
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-start justify-center p-3 overflow-y-auto">
+      <div className="absolute inset-0 bg-black/50 no-print" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-[1100px] my-6 p-5">
+        <style>{`@media print {
+          body * { visibility: hidden !important; }
+          .regime-print, .regime-print * { visibility: visible !important; }
+          .regime-print { position: absolute; left: 0; top: 0; width: 100%; }
+          .no-print { display: none !important; }
+          @page { size: A4 landscape; margin: 8mm; }
+        }`}</style>
+
+        <div className="flex items-center justify-between mb-4 no-print">
+          <h3 className="font-bold text-gray-900">📋 Smena kartasi — Texnologik rejim</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+        </div>
+
+        <div className="flex flex-wrap gap-3 mb-4 no-print">
+          <div>
+            <label className="block text-xs text-gray-500 mb-0.5">Sana</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input py-1.5 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-0.5">Smena</label>
+            <select value={shift} onChange={e => setShift(e.target.value)} className="select py-1.5 text-sm">
+              <option value="1-smena">1-smena</option>
+              <option value="2-smena">2-smena</option>
+            </select>
+          </div>
+          <div className="flex-1 min-w-[160px]">
+            <label className="block text-xs text-gray-500 mb-0.5">Tekshirdi</label>
+            <input value={checkedBy} onChange={e => setCheckedBy(e.target.value)} className="input py-1.5 text-sm" placeholder="F.I.Sh." />
+          </div>
+          <div className="flex items-end">
+            <button onClick={() => window.print()} className="btn-primary btn-sm flex items-center gap-1">
+              <FileText size={14} /> Chop etish
+            </button>
+          </div>
+        </div>
+
+        <div className="regime-print">
+          <div className="text-center mb-2">
+            <div className="text-lg font-bold text-blue-700">TEKNOPLAST</div>
+            <div className="text-sm font-semibold">Texnologik rejim kartasi</div>
+            <div className="text-xs text-gray-600">Sana: {date} &nbsp;·&nbsp; Smena: {shift}</div>
+          </div>
+          {isLoading ? (
+            <div className="py-8 text-center text-gray-400 no-print">Yuklanmoqda...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-[10px]" style={{ minWidth: 900 }}>
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border border-gray-300 px-1 py-1">№</th>
+                    <th className="border border-gray-300 px-1 py-1 text-left">Stanok</th>
+                    {REGIME_CARD_COLS.map(([k, lbl]) => (
+                      <th key={k} className="border border-gray-300 px-1 py-1 whitespace-nowrap">{lbl}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {regimes.map((r, i) => (
+                    <tr key={r.machine_id} className="text-center">
+                      <td className="border border-gray-300 px-1 py-1 font-semibold">{i + 1}</td>
+                      <td className="border border-gray-300 px-1 py-1 text-left whitespace-nowrap font-medium">{r.machine_name}</td>
+                      {REGIME_CARD_COLS.map(([k]) => (
+                        <td key={k} className="border border-gray-300 px-1 py-1">{rv(r[k])}</td>
+                      ))}
+                    </tr>
+                  ))}
+                  {!regimes.length && (
+                    <tr><td colSpan={REGIME_CARD_COLS.length + 2} className="border border-gray-300 py-4 text-center text-gray-400">Stanok topilmadi</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="flex justify-end mt-4 text-xs">
+            <div>Tekshirdi: <span className="font-semibold">{checkedBy || '—'}</span> &nbsp;·&nbsp; Imzo: ______________</div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1095,6 +1286,8 @@ export default function MachinesPage() {
   const [moldAssignFor, setMoldAssignFor] = useState(null); // kalip belgilash modali (qaysi stanok)
   const [pauseInitialKind, setPauseInitialKind] = useState('NOSOZ'); // pause modali qaysi sabab bilan ochilsin
   const [hubMachine, setHubMachine] = useState(null); // stanok QR skanerlanganda ochiladigan amallar markazi
+  const [regimeFor, setRegimeFor] = useState(null);   // texnologik rejim modali (qaysi stanok)
+  const [shiftCardOpen, setShiftCardOpen] = useState(false); // smena kartasi (barcha rejim)
   const [pageScanOpen, setPageScanOpen] = useState(false); // sahifa darajasidagi stanok QR skaneri
   const [pageScanManual, setPageScanManual] = useState('');
   const pageScannerRef = useRef(null);
@@ -1153,6 +1346,8 @@ export default function MachinesPage() {
       setDowntimeFor(m);
     } else if (key === 'cycle') {
       setCycleFor(m);
+    } else if (key === 'regime') {
+      setRegimeFor(m);
     } else if (key === 'qr') {
       setQrMachine(m);
     }
@@ -1261,6 +1456,18 @@ export default function MachinesPage() {
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
+  // Texnologik rejimni Excel (15.05.2026) dan stanoklarga № bo'yicha import qilish
+  const importRegimesMut = useMutation({
+    mutationFn: () => machinesAPI.importRegimes(),
+    onSuccess: (res) => {
+      const d = res.data || {};
+      toast.success(`${d.imported || 0} ta stanokka rejim yuklandi`);
+      qc.invalidateQueries({ queryKey: ['machine-regimes'] });
+      qc.invalidateQueries({ queryKey: ['machine-regime'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Import xato'),
+  });
+
   const { register, handleSubmit, reset, setValue } = useForm();
 
   const openEdit = (m) => {
@@ -1306,6 +1513,17 @@ export default function MachinesPage() {
             className="btn-sm bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg px-3 flex items-center gap-1">
             <Layers size={14} /> Qaliplar
           </button>
+          <button onClick={() => setShiftCardOpen(true)}
+            className="btn-sm bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200 rounded-lg px-3 flex items-center gap-1">
+            <Gauge size={14} /> Smena kartasi
+          </button>
+          {(isOwner() || isProductionHead()) && (
+            <button onClick={() => { if (window.confirm("Excel (15.05.2026) rejimini stanoklarga № bo'yicha yuklaysizmi? Mavjud rejimlar yangilanadi.")) importRegimesMut.mutate(); }}
+              disabled={importRegimesMut.isPending}
+              className="btn-sm bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200 rounded-lg px-3 flex items-center gap-1">
+              <Download size={14} /> {importRegimesMut.isPending ? 'Yuklanmoqda...' : 'Rejim import'}
+            </button>
+          )}
           {canWrite && (
             <button onClick={() => setChoosing(true)} className="btn-primary btn-sm">
               <Plus size={14} /> Qo'shish
@@ -1616,6 +1834,16 @@ export default function MachinesPage() {
       )}
 
       {moldsOpen && <MoldsModal canWrite={canWrite} onClose={() => setMoldsOpen(false)} />}
+
+      {regimeFor && (
+        <RegimeModal
+          machine={machines.find(x => x.id === regimeFor.id) || regimeFor}
+          canWrite={canWrite}
+          onClose={() => setRegimeFor(null)}
+        />
+      )}
+
+      {shiftCardOpen && <ShiftCardModal onClose={() => setShiftCardOpen(false)} />}
 
       {moldAssignFor && (
         <MoldAssignModal

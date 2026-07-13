@@ -975,6 +975,22 @@ if (USE_PG) {
         changed_by TEXT REFERENCES users(id),
         changed_at TEXT DEFAULT (datetime('now'))
       )`,
+      // Stanok texnologik rejimi — har stanokka bitta doimiy rejim (harorat zonalari,
+      // bosim, quyish/sovutish/hold vaqti, sikl va h.k). Smena kartasi shundan chop etiladi.
+      // Parametrlar MATN — Excel'da "-", "2.35", "19 s" kabi aralash qiymatlar bo'ladi.
+      `CREATE TABLE IF NOT EXISTS machine_regimes (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        machine_id TEXT NOT NULL REFERENCES machines(id),
+        tpa_type TEXT, detal_number TEXT, detal_name TEXT, material TEXT, drying_temp TEXT,
+        zone1 TEXT, zone2 TEXT, zone3 TEXT, zone4 TEXT, zone5 TEXT, zone6 TEXT, zone7 TEXT, zone8 TEXT,
+        injection_speed TEXT, cooling_time TEXT, hold_time TEXT,
+        pressure1 TEXT, pressure2 TEXT, pressure3 TEXT, pressure4 TEXT, pressure5 TEXT,
+        material_loading TEXT, chiller_temp TEXT, cycle_time TEXT,
+        updated_by TEXT REFERENCES users(id),
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(machine_id)
+      )`,
     ];
     for (const m of migrations) {
       try {

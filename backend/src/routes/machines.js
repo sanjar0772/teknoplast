@@ -3,9 +3,44 @@ const { body, validationResult } = require('express-validator');
 const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
+const { REGIME_FIELDS, REGIME_SEED, REGIME_SEED_CHECKED_BY } = require('../data/regimeSeed');
 
 const router = express.Router();
 router.use(authenticate);
+
+// Stanoklarni "raqam" bo'yicha tartiblash — nomdagi birinchi sonni olamiz.
+// (SQLite ORDER BY name matn tartibi beradi: 1,10,11,2 ... — bu esa 1,2,...,10,11 bo'lsin.)
+function machineNo(name) {
+  const m = String(name || '').match(/\d+/);
+  return m ? parseInt(m[0], 10) : Number.MAX_SAFE_INTEGER;
+}
+function byMachineNo(a, b) {
+  return machineNo(a) - machineNo(b) || String(a).localeCompare(String(b));
+}
+
+// Texnologik rejimni upsert qilamiz (SELECT → UPDATE/INSERT; RETURNING/ON CONFLICT quirk'idan qochamiz)
+async function upsertRegime(machineId, body, userId) {
+  const vals = REGIME_FIELDS.map((f) => {
+    const v = body[f];
+    return (v === undefined || v === null) ? null : String(v);
+  });
+  const existing = await query('SELECT id FROM machine_regimes WHERE machine_id = $1', [machineId]);
+  if (existing.rows.length) {
+    const setClause = REGIME_FIELDS.map((f, i) => `${f}=$${i + 1}`).join(', ');
+    await query(
+      `UPDATE machine_regimes SET ${setClause}, updated_by=$${REGIME_FIELDS.length + 1}, updated_at=NOW()
+       WHERE machine_id=$${REGIME_FIELDS.length + 2}`,
+      [...vals, userId, machineId]
+    );
+  } else {
+    const cols = ['machine_id', ...REGIME_FIELDS, 'updated_by'];
+    const placeholders = cols.map((_, i) => `$${i + 1}`).join(',');
+    await query(
+      `INSERT INTO machine_regimes (${cols.join(',')}) VALUES (${placeholders})`,
+      [machineId, ...vals, userId]
+    );
+  }
+}
 
 // GET /api/machines
 router.get('/', async (req, res, next) => {
@@ -427,6 +462,61 @@ router.post('/:id/mold-changes', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_
       [req.params.id, fromMoldId, toMoldId, (note || '').trim() || null, req.user.id]
     );
     res.status(201).json({ mold_change: ins.rows[0] });
+  } catch (err) { next(err); }
+});
+
+// ── Texnologik rejim (harorat zonalari, bosim, sikl...) ───────────────────
+// GET /api/machines/regimes — barcha stanoklar rejimi (smena kartasi uchun), № bo'yicha tartiblangan
+router.get('/regimes', async (req, res, next) => {
+  try {
+    const branchClause = req.user.branch_id ? ' AND m.branch_id = $1' : ' AND m.branch_id IS NULL';
+    const params = req.user.branch_id ? [req.user.branch_id] : [];
+    const regimeCols = REGIME_FIELDS.map((f) => `r.${f}`).join(', ');
+    const r = await query(
+      `SELECT m.id AS machine_id, m.name AS machine_name, ${regimeCols}
+       FROM machines m LEFT JOIN machine_regimes r ON r.machine_id = m.id
+       WHERE m.is_active = true${branchClause}`,
+      params
+    );
+    const rows = r.rows.sort((a, b) => byMachineNo(a.machine_name, b.machine_name));
+    res.json({ regimes: rows, checked_by: REGIME_SEED_CHECKED_BY });
+  } catch (err) { next(err); }
+});
+
+// POST /api/machines/regimes/import — Excel (15.05.2026) 26 qatorini stanoklarga № bo'yicha yuklaydi
+router.post('/regimes/import', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, next) => {
+  try {
+    const branchClause = req.user.branch_id ? ' AND branch_id = $1' : ' AND branch_id IS NULL';
+    const params = req.user.branch_id ? [req.user.branch_id] : [];
+    const mr = await query(`SELECT id, name FROM machines WHERE is_active = true${branchClause}`, params);
+    const machines = mr.rows.sort((a, b) => byMachineNo(a.name, b.name));
+    let imported = 0;
+    for (let i = 0; i < REGIME_SEED.length && i < machines.length; i++) {
+      await upsertRegime(machines[i].id, REGIME_SEED[i], req.user.id);
+      imported++;
+    }
+    try { const dbm = require('../db'); if (dbm.saveDB) await dbm.saveDB(); } catch (e) { /* PG'da saveDB yo'q */ }
+    res.json({ imported, machines: machines.length, rows: REGIME_SEED.length });
+  } catch (err) { next(err); }
+});
+
+// GET /api/machines/:id/regime — bitta stanok rejimi
+router.get('/:id/regime', async (req, res, next) => {
+  try {
+    const r = await query('SELECT * FROM machine_regimes WHERE machine_id = $1', [req.params.id]);
+    res.json({ regime: r.rows[0] || null });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/machines/:id/regime — rejimni saqlash (upsert)
+router.put('/:id/regime', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME', 'KIRIMCHI'), async (req, res, next) => {
+  try {
+    const machineId = req.params.id;
+    const mm = await query('SELECT id FROM machines WHERE id = $1', [machineId]);
+    if (!mm.rows.length) return res.status(404).json({ error: 'Stanok topilmadi' });
+    await upsertRegime(machineId, req.body, req.user.id);
+    const out = await query('SELECT * FROM machine_regimes WHERE machine_id = $1', [machineId]);
+    res.json({ regime: out.rows[0] });
   } catch (err) { next(err); }
 });
 

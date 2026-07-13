@@ -1458,17 +1458,6 @@ export default function MachinesPage() {
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
-  // Texnologik rejimni Excel (15.05.2026) dan stanoklarga № bo'yicha import qilish
-  const importRegimesMut = useMutation({
-    mutationFn: () => machinesAPI.importRegimes(),
-    onSuccess: (res) => {
-      const d = res.data || {};
-      toast.success(`${d.imported || 0} ta stanokka rejim yuklandi`);
-      qc.invalidateQueries({ queryKey: ['machine-regimes'] });
-      qc.invalidateQueries({ queryKey: ['machine-regime'] });
-    },
-    onError: (e) => toast.error(e.response?.data?.error || 'Import xato'),
-  });
 
   const { register, handleSubmit, reset, setValue } = useForm();
 
@@ -1519,13 +1508,6 @@ export default function MachinesPage() {
             className="btn-sm bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200 rounded-lg px-3 flex items-center gap-1">
             <Gauge size={14} /> Smena kartasi
           </button>
-          {(isOwner() || isProductionHead()) && (
-            <button onClick={() => { if (window.confirm("Excel (15.05.2026) rejimini stanoklarga № bo'yicha yuklaysizmi? Mavjud rejimlar yangilanadi.")) importRegimesMut.mutate(); }}
-              disabled={importRegimesMut.isPending}
-              className="btn-sm bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200 rounded-lg px-3 flex items-center gap-1">
-              <Download size={14} /> {importRegimesMut.isPending ? 'Yuklanmoqda...' : 'Rejim import'}
-            </button>
-          )}
           {canWrite && (
             <button onClick={() => setChoosing(true)} className="btn-primary btn-sm">
               <Plus size={14} /> Qo'shish

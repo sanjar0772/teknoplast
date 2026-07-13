@@ -1063,7 +1063,7 @@ function MoldsModal({ canWrite, onClose }) {
               <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                 placeholder="Nomi/kodi (masalan: QP-014)" className="input text-sm" />
               <select value={form.product_id} onChange={e => setForm(f => ({ ...f, product_id: e.target.value }))} className="select text-sm">
-                <option value="">Mahsulot tanlang...</option>
+                <option value="">Mahsulot (ixtiyoriy)...</option>
                 {products.map(p => <option key={p.id} value={p.id}>{p.name}{p.kind === 'KOMPONENT' ? ' — Komponent' : ''}</option>)}
               </select>
               <input type="number" min="1" value={form.cavity_count} onChange={e => setForm(f => ({ ...f, cavity_count: e.target.value }))}
@@ -1083,7 +1083,6 @@ function MoldsModal({ canWrite, onClose }) {
               <button
                 onClick={() => {
                   if (!form.name.trim()) return toast.error('Nomini kiriting');
-                  if (!form.product_id) return toast.error('Mahsulotni tanlang');
                   saveMut.mutate();
                 }}
                 disabled={saveMut.isPending} className="btn-primary btn-sm flex-1">

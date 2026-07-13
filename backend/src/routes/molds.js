@@ -48,10 +48,10 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/molds — yangi qolip qo'shish
+// POST /api/molds — yangi qolip qo'shish (mahsulot IXTIYORIY — ishlab chiqarilmayotgan/ro'yxatda
+// yo'q mahsulot qolipini ham kiritib, texnologik rejimini yozib qo'yish uchun)
 router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME', 'KIRIMCHI'), [
   body('name').notEmpty().trim(),
-  body('product_id').notEmpty(),
 ], async (req, res, next) => {
   try {
     const errors = validationResult(req);
@@ -61,7 +61,7 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME', 'KIRIMCHI
     const result = await query(
       `INSERT INTO molds (name, product_id, cavity_count, status, location, notes, branch_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [name, product_id, cavity_count || null, ['AKTIV', 'TAMIRDA', 'NOSOZ'].includes(status) ? status : 'AKTIV',
+      [name, product_id || null, cavity_count || null, ['AKTIV', 'TAMIRDA', 'NOSOZ'].includes(status) ? status : 'AKTIV',
        location || null, notes || null, req.user.branch_id || null]
     );
     res.status(201).json({ mold: result.rows[0] });
@@ -75,7 +75,7 @@ router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME', 'KIRIMC
     const result = await query(
       `UPDATE molds SET name=$1, product_id=$2, cavity_count=$3, status=$4, location=$5, notes=$6, updated_at=NOW()
        WHERE id=$7 RETURNING *`,
-      [name, product_id, cavity_count || null, ['AKTIV', 'TAMIRDA', 'NOSOZ'].includes(status) ? status : 'AKTIV',
+      [name, product_id || null, cavity_count || null, ['AKTIV', 'TAMIRDA', 'NOSOZ'].includes(status) ? status : 'AKTIV',
        location || null, notes || null, req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Qolip topilmadi' });

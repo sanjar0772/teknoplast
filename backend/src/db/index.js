@@ -222,6 +222,7 @@ if (USE_PG) {
       relaxEmployeesTypeConstraint(); // type CHECK ni olib tashlaydi (yangi turlar uchun)
       relaxProductionUniqueConstraint(); // bir kunda ko'p mahsulot kiritish uchun UNIQUE cheklovni olib tashlaydi
       relaxPaymentsMethodConstraint(); // to'lov usuli CHECK ni olib tashlaydi (PAYME/CLICK/DISCOUNT uchun)
+      relaxMoldsProductNotNull(); // qolip mahsulotini ixtiyoriy qiladi (rejim uchun mahsulotsiz qolip)
       backfillProductMeta();   // nomdan rang/razmer/base_name to'ldiradi (kirill mahsulotlar uchun)
       saveDBSync();
     } else {
@@ -554,6 +555,56 @@ if (USE_PG) {
       try { _db.run('ROLLBACK'); } catch {}
       try { _db.run('PRAGMA foreign_keys = ON'); } catch {}
       console.error('❌ relaxPaymentsMethodConstraint xato:', e.message);
+    }
+  }
+
+  // molds.product_id ustunida NOT NULL bor edi — qolipni ro'yxatga qo'shishda mahsulot
+  // MAJBURIY bo'lardi. Egasi ishlab chiqarilmayotgan (ro'yxatda yo'q) mahsulot qolipini ham
+  // kiritib, texnologik rejimini yozib qo'ymoqchi. Shuning uchun product_id ni ixtiyoriy
+  // (NULL bo'lsa mumkin) qilamiz. FK saqlanadi (NULL FK tekshirilmaydi). Ma'lumot yo'qolmaydi.
+  function relaxMoldsProductNotNull() {
+    try {
+      const result = _db.exec("SELECT sql FROM sqlite_master WHERE type='table' AND name='molds'");
+      if (!result || !result[0]) return;
+      const tableSql = result[0].values[0][0];
+      if (!/product_id\s+TEXT\s+NOT\s+NULL/i.test(tableSql)) return; // allaqachon ixtiyoriy — shart emas
+
+      console.log('🔧 molds.product_id NOT NULL cheklovi olib tashlanmoqda (mahsulotsiz qolip uchun)...');
+
+      const info = _db.exec('PRAGMA table_info(molds)');
+      const existingCols = (info && info[0]) ? info[0].values.map(r => r[1]) : [];
+
+      _db.run('PRAGMA foreign_keys = OFF');
+      _db.run('BEGIN');
+
+      _db.run(`CREATE TABLE molds_new (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        name TEXT NOT NULL,
+        product_id TEXT REFERENCES products(id),
+        cavity_count INTEGER,
+        status TEXT DEFAULT 'AKTIV',
+        location TEXT,
+        notes TEXT,
+        is_active INTEGER DEFAULT 1,
+        branch_id TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )`);
+
+      const targetCols = ['id','name','product_id','cavity_count','status','location','notes','is_active','branch_id','created_at','updated_at'];
+      const common = targetCols.filter(c => existingCols.includes(c));
+      const colList = common.join(',');
+      _db.run(`INSERT INTO molds_new (${colList}) SELECT ${colList} FROM molds`);
+      _db.run('DROP TABLE molds');
+      _db.run('ALTER TABLE molds_new RENAME TO molds');
+
+      _db.run('COMMIT');
+      _db.run('PRAGMA foreign_keys = ON');
+      console.log('✅ molds.product_id endi ixtiyoriy — mahsulotsiz qolip qo\'shsa bo\'ladi');
+    } catch (e) {
+      try { _db.run('ROLLBACK'); } catch {}
+      try { _db.run('PRAGMA foreign_keys = ON'); } catch {}
+      console.error('❌ relaxMoldsProductNotNull xato:', e.message);
     }
   }
 
@@ -953,7 +1004,7 @@ if (USE_PG) {
       `CREATE TABLE IF NOT EXISTS molds (
         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
         name TEXT NOT NULL,
-        product_id TEXT NOT NULL REFERENCES products(id),
+        product_id TEXT REFERENCES products(id),
         cavity_count INTEGER,
         status TEXT DEFAULT 'AKTIV',
         location TEXT,

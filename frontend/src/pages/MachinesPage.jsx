@@ -827,6 +827,81 @@ function RegimeModal({ machine, canWrite, onClose }) {
   );
 }
 
+// Bitta qolip (kalip) texnologik rejimini ko'rish/tahrirlash — yangi oynada
+// (rejim qolipga tegishli: qaysi stanokka o'rnatilsa ham bir xil parametrlar bilan chiqadi)
+function MoldRegimeModal({ mold, canWrite, onClose }) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({});
+  const { data, isLoading } = useQuery({
+    queryKey: ['mold-regime', mold.id],
+    queryFn: () => moldsAPI.getRegime(mold.id).then(r => r.data),
+  });
+  useEffect(() => {
+    const rg = data?.regime;
+    const f = {};
+    Object.keys(REGIME_LABELS).forEach(k => { f[k] = rg?.[k] ?? ''; });
+    setForm(f);
+  }, [data]);
+  const saveMut = useMutation({
+    mutationFn: () => moldsAPI.saveRegime(mold.id, form),
+    onSuccess: () => {
+      toast.success('Qolip texnologik rejimi saqlandi');
+      qc.invalidateQueries({ queryKey: ['mold-regime', mold.id] });
+      onClose();
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Saqlashda xato'),
+  });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold">⚙️ Texnologik rejim — {mold.name}</h3>
+          <button onClick={onClose}><X size={20} className="text-gray-400" /></button>
+        </div>
+        {isLoading ? (
+          <div className="py-8 text-center text-gray-400">Yuklanmoqda...</div>
+        ) : (
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+            {mold.product_name && (
+              <div className="text-xs text-gray-500">Mahsulot: <b className="text-gray-700">{mold.product_name}</b>{mold.cavity_count ? ` · ${mold.cavity_count} ko'ylik` : ''}</div>
+            )}
+            {REGIME_GROUPS.map(g => (
+              <div key={g.title}>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{g.title}</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {g.keys.map(k => (
+                    <div key={k}>
+                      <label className="block text-[11px] text-gray-500 mb-0.5">{REGIME_LABELS[k]}</label>
+                      <input
+                        value={form[k] ?? ''}
+                        onChange={e => set(k, e.target.value)}
+                        disabled={!canWrite}
+                        className="input py-1.5 text-sm disabled:bg-gray-50 disabled:text-gray-500"
+                        placeholder="—"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div className="flex gap-2 pt-2">
+              <button onClick={onClose} className="btn-secondary flex-1">Yopish</button>
+              {canWrite && (
+                <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending} className="btn-primary flex-1">
+                  {saveMut.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Smena kartasi — barcha stanoklar rejimi jadvali (sana + smena + tekshirdi), chop etiladi
 function ShiftCardModal({ onClose }) {
   const [date, setDate] = useState(localDay());
@@ -936,6 +1011,7 @@ const MOLD_STATUS = {
 function MoldsModal({ canWrite, onClose }) {
   const qc = useQueryClient();
   const [editId, setEditId] = useState(null);
+  const [regimeMold, setRegimeMold] = useState(null); // texnologik rejim oynasi (qaysi qolip)
   const [form, setForm] = useState({ name: '', product_id: '', cavity_count: '', status: 'AKTIV', location: '', notes: '' });
 
   const { data: moldsData, isLoading } = useQuery({
@@ -977,6 +1053,7 @@ function MoldsModal({ canWrite, onClose }) {
   };
 
   return (
+    <>
     <Modal open onClose={onClose} title="🧩 Qaliplar">
       <div className="space-y-4">
         {canWrite && (
@@ -1037,13 +1114,20 @@ function MoldsModal({ canWrite, onClose }) {
                       <div className="text-xs text-indigo-600 truncate">📍 {mo.current_machine_name}'da o'rnatilgan</div>
                     )}
                   </div>
-                  {canWrite && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => startEdit(mo)} className="text-blue-500 hover:text-blue-700 p-1"><Pencil size={14} /></button>
-                      <button onClick={() => { if (window.confirm(`"${mo.name}" o'chirilsinmi?`)) delMut.mutate(mo.id); }}
-                        className="text-gray-300 hover:text-red-500 p-1"><Trash2 size={14} /></button>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => setRegimeMold(mo)}
+                      className="text-indigo-600 hover:text-indigo-800 p-1 flex items-center gap-0.5 text-xs font-medium"
+                      title="Texnologik rejim">
+                      <Gauge size={14} /> Rejim
+                    </button>
+                    {canWrite && (
+                      <>
+                        <button onClick={() => startEdit(mo)} className="text-blue-500 hover:text-blue-700 p-1"><Pencil size={14} /></button>
+                        <button onClick={() => { if (window.confirm(`"${mo.name}" o'chirilsinmi?`)) delMut.mutate(mo.id); }}
+                          className="text-gray-300 hover:text-red-500 p-1"><Trash2 size={14} /></button>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1051,6 +1135,10 @@ function MoldsModal({ canWrite, onClose }) {
         </div>
       </div>
     </Modal>
+    {regimeMold && (
+      <MoldRegimeModal mold={regimeMold} canWrite={canWrite} onClose={() => setRegimeMold(null)} />
+    )}
+    </>
   );
 }
 

@@ -991,6 +991,22 @@ if (USE_PG) {
         updated_at TEXT DEFAULT (datetime('now')),
         UNIQUE(machine_id)
       )`,
+      // Qolip (kalip) texnologik rejimi — rejim aslida qolipga tegishli (qaysi stanokka
+      // o'rnatilishidan qat'i nazar bir xil). Har qolipga bitta doimiy rejim. Maydonlar
+      // machine_regimes bilan bir xil (MATN — "-", "2.35", "19 s" kabi aralash qiymatlar).
+      `CREATE TABLE IF NOT EXISTS mold_regimes (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        mold_id TEXT NOT NULL REFERENCES molds(id),
+        tpa_type TEXT, detal_number TEXT, detal_name TEXT, material TEXT, drying_temp TEXT,
+        zone1 TEXT, zone2 TEXT, zone3 TEXT, zone4 TEXT, zone5 TEXT, zone6 TEXT, zone7 TEXT, zone8 TEXT,
+        injection_speed TEXT, cooling_time TEXT, hold_time TEXT,
+        pressure1 TEXT, pressure2 TEXT, pressure3 TEXT, pressure4 TEXT, pressure5 TEXT,
+        material_loading TEXT, chiller_temp TEXT, cycle_time TEXT,
+        updated_by TEXT REFERENCES users(id),
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(mold_id)
+      )`,
     ];
     for (const m of migrations) {
       try {

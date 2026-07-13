@@ -258,6 +258,8 @@ export const moldsAPI = {
   create: (data) => api.post('/molds', data),
   update: (id, data) => api.put(`/molds/${id}`, data),
   remove: (id) => api.delete(`/molds/${id}`),
+  getRegime: (id) => api.get(`/molds/${id}/regime`),
+  saveRegime: (id, data) => api.put(`/molds/${id}/regime`, data),
 };
 
 // Reports

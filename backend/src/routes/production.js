@@ -27,6 +27,48 @@ async function insertProductionRow(client, {
   return r.rows[0];
 }
 
+// Mahsulot IKKI BOSQICHLI (yarim tayyor → tayyor) ekanmi: yarim tayyor narxi (stanokchi yoki detalchi) bor.
+async function productIsTwoStage(cq, product_id) {
+  const pr = await cq('SELECT stanokchi_semi_rate, detalchi_rate FROM products WHERE id=$1', [product_id]);
+  if (!pr.rows.length) return false;
+  const p = pr.rows[0];
+  return (parseFloat(p.stanokchi_semi_rate) || 0) > 0 || (parseFloat(p.detalchi_rate) || 0) > 0;
+}
+
+// Yarim tayyor (ishlab chiqarish) ombordagi mavjud dona
+async function availableWip(cq, product_id) {
+  const r = await cq('SELECT COALESCE(semi_stock_quantity,0) AS wip FROM products WHERE id=$1', [product_id]);
+  return r.rows.length ? (parseFloat(r.rows[0].wip) || 0) : 0;
+}
+
+// Ombor effekti — sign: +1 (tasdiqlash/qo'llash), -1 (qaytarish/o'chirish).
+//  SEMI_FINISHED → yarim tayyor (ishlab chiqarish) ombori (semi_stock_quantity).
+//  FINISHED      → tayyor ombor (stock_quantity + rang buckets); mahsulot ikki bosqichli bo'lsa
+//                  yarim tayyor ombordan ayiriladi (tayyorlash uchun yarim tayyor sarflanadi).
+//  KOMPONENT/boshqa → tayyor stock (mavjud xatti-harakat).
+async function applyStockEffect(cq, { product_id, quantity_produced, production_type, rang }, sign) {
+  const qty = parseFloat(quantity_produced) || 0;
+  if (!product_id || qty <= 0) return;
+  const q = sign * qty;
+  const ptype = production_type || 'FINISHED';
+
+  if (ptype === 'SEMI_FINISHED') {
+    await cq('UPDATE products SET semi_stock_quantity = GREATEST(0, COALESCE(semi_stock_quantity,0) + $1), updated_at=NOW() WHERE id=$2', [q, product_id]);
+    return;
+  }
+  if (ptype === 'FINISHED') {
+    if (await productIsTwoStage(cq, product_id)) {
+      await cq('UPDATE products SET semi_stock_quantity = GREATEST(0, COALESCE(semi_stock_quantity,0) - $1), updated_at=NOW() WHERE id=$2', [q, product_id]);
+    }
+    await cq('UPDATE products SET stock_quantity = GREATEST(0, stock_quantity + $1), updated_at=NOW() WHERE id=$2', [q, product_id]);
+    await addColorStock(cq, product_id, rang, q);
+    return;
+  }
+  // KOMPONENT yoki boshqa
+  await cq('UPDATE products SET stock_quantity = GREATEST(0, stock_quantity + $1), updated_at=NOW() WHERE id=$2', [q, product_id]);
+  await addColorStock(cq, product_id, rang, q);
+}
+
 // GET /api/production — kunlik ishlab chiqarish
 router.get('/', async (req, res, next) => {
   try {
@@ -284,6 +326,14 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
       calculated_amount = quantity_produced * daily_tariff;
     }
 
+    // "Oshiqcha tayyor" bloki: ikki bosqichli mahsulotni yarim tayyor ombordan ko'p tayyor qilib bo'lmaydi
+    if (product_id && ptype === 'FINISHED' && await productIsTwoStage(query, product_id)) {
+      const wip = await availableWip(query, product_id);
+      if ((parseFloat(quantity_produced) || 0) > wip) {
+        return res.status(400).json({ error: `Yarim tayyor omborda faqat ${wip} dona bor — ${quantity_produced} dona tayyor qilib bo'lmaydi. Avval yarim tayyor qiling.` });
+      }
+    }
+
     const month = production_date.slice(0, 7);
 
     const client = await require('../db').getClient();
@@ -329,6 +379,31 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async 
       if (!entry.employee_id) continue;
       if (!byEmployee.has(entry.employee_id)) byEmployee.set(entry.employee_id, []);
       byEmployee.get(entry.employee_id).push(entry);
+    }
+
+    // "Oshiqcha tayyor" bloki (tranzaksiyadan oldin): ikki bosqichli mahsulotni yarim tayyor
+    // ombordan ko'p tayyor qilib bo'lmaydi. Bir so'rovdagi bir nechta qator ham hisobga olinadi.
+    const wipUsed = new Map();
+    for (const [emp_id, items] of byEmployee) {
+      const empRow = await query('SELECT type FROM employees WHERE id=$1 AND is_active=true', [emp_id]);
+      const etype = empRow.rows[0]?.type;
+      for (const entry of items) {
+        if (!entry.product_id) continue;
+        let ptype = entry.production_type || 'FINISHED';
+        if (etype === 'DETALCHI' && ptype !== 'KOMPONENT') ptype = 'SEMI_FINISHED';
+        const pk = await query('SELECT kind, name FROM products WHERE id=$1', [entry.product_id]);
+        if ((pk.rows[0]?.kind) === 'KOMPONENT') ptype = 'KOMPONENT';
+        if (ptype !== 'FINISHED') continue;
+        if (!(await productIsTwoStage(query, entry.product_id))) continue;
+        const wip = await availableWip(query, entry.product_id);
+        const used = wipUsed.get(entry.product_id) || 0;
+        const q = parseFloat(entry.quantity_produced) || 0;
+        if (q > wip - used) {
+          const pname = pk.rows[0]?.name || 'mahsulot';
+          return res.status(400).json({ error: `Yarim tayyor omborda "${pname}" faqat ${wip} dona — bundan ko'p tayyor qilib bo'lmaydi. Avval yarim tayyor qiling.` });
+        }
+        wipUsed.set(entry.product_id, used + q);
+      }
     }
 
     const client = await require('../db').getClient();
@@ -491,22 +566,21 @@ router.put('/approve-day', requireRole('OWNER', 'SALES_HEAD'), async (req, res, 
     const client = await require('../db').getClient();
     try {
       await client.query('BEGIN');
-      for (const row of pending.rows) {
+      // Yarim tayyorni AVVAL tasdiqlaymiz — shu kuni tayyor ham bo'lsa, yarim ombor to'lgan bo'lsin
+      const ordered = [...pending.rows].sort((a, b) =>
+        (a.production_type === 'SEMI_FINISHED' ? 0 : 1) - (b.production_type === 'SEMI_FINISHED' ? 0 : 1));
+      for (const row of ordered) {
         if (row.product_id) {
           // Komponent deb belgilangan bo'lsa — mahsulotni komponent (ishlab chiqarish ombori)
-          // turiga biriktiramiz. Shunda u ham Komponentlar sahifasida, ham Ishlab chiqarish
-          // omborida ko'rinadi (ikkalasi ham kind='KOMPONENT' bo'yicha filtrlaydi).
+          // turiga biriktiramiz (Komponentlar/Ishlab chiqarish omborida ko'rinsin).
           if (row.production_type === 'KOMPONENT') {
             await client.query(
               "UPDATE products SET kind='KOMPONENT', updated_at=NOW() WHERE id=$1 AND COALESCE(kind,'') <> 'KOMPONENT'",
               [row.product_id]
             );
           }
-          await client.query(
-            'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at=NOW() WHERE id=$2',
-            [row.quantity_produced, row.product_id]
-          );
-          await addColorStock(client.query, row.product_id, row.rang, row.quantity_produced);
+          // Yarim → yarim ombor; Tayyor → tayyor ombor (ikki bosqichli bo'lsa yarim ombordan ayiriladi)
+          await applyStockEffect(client.query, row, +1);
         }
         await client.query(
           `UPDATE employee_production SET approval_status='APPROVED', approved_by=$1, approved_at=NOW() WHERE id=$2`,
@@ -562,17 +636,13 @@ router.put('/reject-day', requireRole('OWNER', 'SALES_HEAD'), async (req, res, n
 // DELETE /api/production/all — BARCHA kunlik ishlab chiqarish yozuvlarini o'chirish (faqat OWNER)
 router.delete('/all', requireRole('OWNER'), async (req, res, next) => {
   try {
-    const existing = await query('SELECT id, product_id, quantity_produced, approval_status, rang FROM employee_production', []);
+    const existing = await query('SELECT id, product_id, quantity_produced, approval_status, rang, production_type FROM employee_production', []);
     const client = await require('../db').getClient();
     try {
       await client.query('BEGIN');
       for (const row of existing.rows) {
         if (row.product_id && row.quantity_produced > 0 && row.approval_status === 'APPROVED') {
-          await client.query(
-            'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at=NOW() WHERE id=$2',
-            [row.quantity_produced, row.product_id]
-          );
-          await addColorStock(client.query, row.product_id, row.rang, -row.quantity_produced);
+          await applyStockEffect(client.query, row, -1);
         }
       }
       await client.query('DELETE FROM employee_production');
@@ -599,13 +669,9 @@ router.delete('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async
     const client = await require('../db').getClient();
     try {
       await client.query('BEGIN');
-      // Faqat APPROVED yozuvlar uchun ombor qaytariladi
+      // Faqat APPROVED yozuvlar uchun ombor qaytariladi (yarim → yarim ombor, tayyor → tayyor ombor)
       if (row.product_id && row.quantity_produced > 0 && row.approval_status === 'APPROVED') {
-        await client.query(
-          'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at=NOW() WHERE id=$2',
-          [row.quantity_produced, row.product_id]
-        );
-        await addColorStock(client.query, row.product_id, row.rang, -row.quantity_produced);
+        await applyStockEffect(client.query, row, -1);
       }
       await client.query('DELETE FROM employee_production WHERE id=$1', [req.params.id]);
       await client.query('COMMIT');
@@ -652,13 +718,9 @@ router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async (r
 
       // Faqat tasdiqlangan (APPROVED) yozuv omborga ta'sir qilgan — uni to'g'rilaymiz
       if (wasApproved) {
-        // 1) Eski effektni qaytaramiz
+        // 1) Eski effektni qaytaramiz (eski turi bo'yicha: yarim/tayyor)
         if (old.product_id && old.quantity_produced > 0) {
-          await client.query(
-            'UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at=NOW() WHERE id=$2',
-            [old.quantity_produced, old.product_id]
-          );
-          await addColorStock(client.query, old.product_id, old.rang, -old.quantity_produced);
+          await applyStockEffect(client.query, old, -1);
         }
         // 2) Yangi effektni qo'llaymiz
         if (newProductId && newQty > 0) {
@@ -668,11 +730,7 @@ router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async (r
               [newProductId]
             );
           }
-          await client.query(
-            'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at=NOW() WHERE id=$2',
-            [newQty, newProductId]
-          );
-          await addColorStock(client.query, newProductId, newRang, newQty);
+          await applyStockEffect(client.query, { product_id: newProductId, quantity_produced: newQty, production_type: newType, rang: newRang }, +1);
         }
       }
 

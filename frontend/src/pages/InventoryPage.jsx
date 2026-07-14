@@ -517,6 +517,11 @@ export default function InventoryPage() {
                       <td>{p.type}</td>
                       <td className={`font-bold ${p.stock_quantity < 10 ? 'text-red-600' : 'text-green-700'}`}>
                         {p.stock_quantity} {p.unit}
+                        {parseFloat(p.semi_stock_quantity) > 0 && (
+                          <span className="block text-[11px] font-medium text-amber-600 mt-0.5">
+                            🔧 Yarim tayyor: {p.semi_stock_quantity}
+                          </span>
+                        )}
                       </td>
                       <td>{fmt(p.price)} so'm</td>
                       <td className="font-semibold">{fmt(p.stock_quantity * p.price)} so'm</td>

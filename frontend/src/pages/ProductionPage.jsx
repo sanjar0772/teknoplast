@@ -263,8 +263,7 @@ export default function ProductionPage() {
     if (product) {
       item.prodSearch = product.name;
       item.product_id = product.id;
-      if (product.kind === 'KOMPONENT') item.production_type = 'KOMPONENT';
-      else if (emp?.type === 'DETALCHI') item.production_type = 'SEMI_FINISHED';
+      item.production_type = defaultPtype(product, emp?.type);
       item.tarif = emp ? autoTarif(emp.id, product.id, item.production_type) : '';
     } else if (emp?.type === 'DETALCHI') {
       item.production_type = 'SEMI_FINISHED';
@@ -333,15 +332,25 @@ export default function ProductionPage() {
     return emp.daily_tariff || '';
   };
 
+  // Mahsulot "yarim tayyor tabiatli"mi: TAYYOR narxi yo'q (0), lekin yarim tayyor narxi bor.
+  const num = (v) => parseFloat(v) || 0;
+  const isSemiProduct = (p) => !!p && p.kind !== 'KOMPONENT' && num(p.stanokchi_rate) === 0
+    && (num(p.stanokchi_semi_rate) > 0 || num(p.detalchi_rate) > 0);
+  // Mahsulot + xodim turiga qarab ishlab chiqarish turini avtomatik aniqlaymiz.
+  const defaultPtype = (p, empType) => {
+    if (p?.kind === 'KOMPONENT') return 'KOMPONENT';
+    if (empType === 'DETALCHI') return 'SEMI_FINISHED';
+    if (isSemiProduct(p)) return 'SEMI_FINISHED'; // yarim tayyor mahsulot → avtomatik yarim
+    return 'FINISHED';
+  };
+
   const updateEntryEmp = (i, empId) => {
     setEntries(prev => prev.map((e, idx) => {
       if (idx !== i) return e;
       const emp = empMap[empId];
       const items = e.items.map(item => {
         const next = { ...item };
-        if (prodMap[next.product_id]?.kind === 'KOMPONENT') next.production_type = 'KOMPONENT';
-        else if (emp?.type === 'DETALCHI') next.production_type = 'SEMI_FINISHED';
-        else if (emp?.type === 'STANOKCHI' && !next.production_type) next.production_type = 'FINISHED';
+        next.production_type = defaultPtype(prodMap[next.product_id], emp?.type);
         next.tarif = autoTarif(empId, next.product_id, next.production_type);
         return next;
       });
@@ -360,13 +369,9 @@ export default function ProductionPage() {
           next.product_id = match ? match.id : '';
           next.rang = match ? (match.rang || '') : '';
           if (match) {
-            // Komponent tanlansa — turi avtomatik 'KOMPONENT'
-            if (match.kind === 'KOMPONENT') {
-              next.production_type = 'KOMPONENT';
-            } else if (item.production_type === 'KOMPONENT') {
-              // Oldin komponent edi, endi tayyor mahsulot — turni tiklaymiz
-              next.production_type = empMap[e.employee_id]?.type === 'DETALCHI' ? 'SEMI_FINISHED' : 'FINISHED';
-            }
+            // Mahsulotga qarab turini avtomatik aniqlaymiz: komponent → KOMPONENT,
+            // yarim tayyor tabiatli mahsulot → SEMI_FINISHED, aks holda TAYYOR.
+            next.production_type = defaultPtype(match, empMap[e.employee_id]?.type);
             next.tarif = autoTarif(e.employee_id, match.id, next.production_type);
           }
         }

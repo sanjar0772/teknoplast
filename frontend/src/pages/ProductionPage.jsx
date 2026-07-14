@@ -318,11 +318,14 @@ export default function ProductionPage() {
 
   // Dona haqi — stanokchi/detalchi BIR XIL: Tayyor→tayyor narx; Yarim→yarim narx
   // (yarim narx belgilanmagan bo'lsa eski detalchi narxiga tushadi — pul buzilmaydi).
+  // Yarim tayyor tabiatli mahsulotni (tayyor narxi 0) TAYYOR deb belgilaganda ham narx
+  // chiqishi uchun: tayyor narx bo'lmasa yarim/detalchi narxiga tushamiz.
   const pieceRate = (p, ptype) => {
     const n = (v) => parseFloat(v) || 0;
     if (!p) return 0;
     if (ptype === 'SEMI_FINISHED') return n(p.stanokchi_semi_rate) > 0 ? n(p.stanokchi_semi_rate) : n(p.detalchi_rate);
-    return n(p.stanokchi_rate);
+    if (n(p.stanokchi_rate) > 0) return n(p.stanokchi_rate);
+    return n(p.stanokchi_semi_rate) > 0 ? n(p.stanokchi_semi_rate) : n(p.detalchi_rate);
   };
 
   const autoTarif = (empId, prodId, ptype) => {

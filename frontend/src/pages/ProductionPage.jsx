@@ -317,15 +317,16 @@ export default function ProductionPage() {
   };
 
   // Dona haqi — ishchi TURIGA qarab (mahsulotdagi alohida narxlar):
-  //  DETALCHI → detalchi_rate (o'z narxi).
-  //  STANOKCHI → Yarim: stanokchi_semi_rate; Tayyor: stanokchi_rate
-  //              (tayyor narx belgilanmagan bo'lsa BO'SH qolmasin — yarim narxga tushadi).
+  //  DETALCHI → detalchi_rate (to'liq detal narxi).
+  //  STANOKCHI → Yarim: stanokchi_semi_rate (yarim narx). Tayyor: stanokchi_rate; alohida
+  //              tayyor narx belgilanmagan bo'lsa detalchi (to'liq) narxiga tushadi — YARIM
+  //              narxga (300) EMAS. Shunda Tayyor ≠ Yarim va bo'sh ham qolmaydi.
   const pieceRate = (p, ptype, empType) => {
     const n = (v) => parseFloat(v) || 0;
     if (!p) return 0;
     if (empType === 'DETALCHI') return n(p.detalchi_rate);
     if (ptype === 'SEMI_FINISHED') return n(p.stanokchi_semi_rate);
-    return n(p.stanokchi_rate) > 0 ? n(p.stanokchi_rate) : n(p.stanokchi_semi_rate);
+    return n(p.stanokchi_rate) > 0 ? n(p.stanokchi_rate) : n(p.detalchi_rate);
   };
 
   const autoTarif = (empId, prodId, ptype) => {

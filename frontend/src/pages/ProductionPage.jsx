@@ -316,17 +316,16 @@ export default function ProductionPage() {
     scannerRef.current = null;
   };
 
-  // Dona haqi — stanokchi/detalchi BIR XIL.
-  //  Yarim  → yarim narx (stanokchi_semi_rate, belgilanmagan bo'lsa detalchi_rate).
-  //  Tayyor → tayyor narx (stanokchi_rate). Agar alohida tayyor narx belgilanmagan bo'lsa,
-  //           BO'SH qoldirmasdan mavjud narxga (yarim/detalchi) tushamiz. Tayyorga alohida
-  //           narx belgilansa — o'sha chiqadi (yarimдан farqli). Maydon tahrirlanadi ham.
-  const pieceRate = (p, ptype) => {
+  // Dona haqi — ishchi TURIGA qarab (mahsulotdagi alohida narxlar):
+  //  DETALCHI → detalchi_rate (o'z narxi).
+  //  STANOKCHI → Yarim: stanokchi_semi_rate; Tayyor: stanokchi_rate
+  //              (tayyor narx belgilanmagan bo'lsa BO'SH qolmasin — yarim narxga tushadi).
+  const pieceRate = (p, ptype, empType) => {
     const n = (v) => parseFloat(v) || 0;
     if (!p) return 0;
-    if (ptype === 'SEMI_FINISHED') return n(p.stanokchi_semi_rate) > 0 ? n(p.stanokchi_semi_rate) : n(p.detalchi_rate);
-    if (n(p.stanokchi_rate) > 0) return n(p.stanokchi_rate);
-    return n(p.stanokchi_semi_rate) > 0 ? n(p.stanokchi_semi_rate) : n(p.detalchi_rate);
+    if (empType === 'DETALCHI') return n(p.detalchi_rate);
+    if (ptype === 'SEMI_FINISHED') return n(p.stanokchi_semi_rate);
+    return n(p.stanokchi_rate) > 0 ? n(p.stanokchi_rate) : n(p.stanokchi_semi_rate);
   };
 
   const autoTarif = (empId, prodId, ptype) => {
@@ -336,7 +335,7 @@ export default function ProductionPage() {
     if (p && p.kind === 'KOMPONENT') return p.price || '';
     if (!emp) return '';
     if ((emp.type === 'STANOKCHI' || emp.type === 'DETALCHI') && p) {
-      const r = pieceRate(p, ptype);
+      const r = pieceRate(p, ptype, emp.type);
       return r > 0 ? r : '';
     }
     return emp.daily_tariff || '';
@@ -414,7 +413,7 @@ export default function ProductionPage() {
     if (item.tarif !== '' && parseFloat(item.tarif) >= 0) return qty * parseFloat(item.tarif);
     const p = prodMap[item.product_id];
     if (emp.type === 'STANOKCHI' || emp.type === 'DETALCHI') {
-      return qty * pieceRate(p, item.production_type);
+      return qty * pieceRate(p, item.production_type, emp.type);
     }
     return qty * (emp.daily_tariff || 0);
   };

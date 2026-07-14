@@ -41,17 +41,16 @@ async function availableWip(cq, product_id) {
   return r.rows.length ? (parseFloat(r.rows[0].wip) || 0) : 0;
 }
 
-// Dona haqi — stanokchi/detalchi BIR XIL.
-//  Yarim  → stanokchi_semi_rate (belgilanmagan bo'lsa detalchi_rate).
-//  Tayyor → stanokchi_rate; alohida tayyor narx belgilanmagan bo'lsa BO'SH qoldirmasdan
-//           mavjud narxga (yarim/detalchi) tushamiz. Tayyorga alohida narx belgilansa —
-//           o'sha chiqadi (yarimдан farqli). Front bilan bir xil.
-function pieceRate(product, ptype) {
+// Dona haqi — ishchi TURIGA qarab (mahsulotdagi alohida narxlar):
+//  DETALCHI  → detalchi_rate (o'z narxi).
+//  STANOKCHI → Yarim: stanokchi_semi_rate; Tayyor: stanokchi_rate (tayyor narx belgilanmagan
+//              bo'lsa BO'SH qolmasin — yarim narxga tushadi). Front bilan bir xil.
+function pieceRate(product, ptype, empType) {
   const n = (v) => parseFloat(v) || 0;
   if (!product) return 0;
-  if (ptype === 'SEMI_FINISHED') return n(product.stanokchi_semi_rate) > 0 ? n(product.stanokchi_semi_rate) : n(product.detalchi_rate);
-  if (n(product.stanokchi_rate) > 0) return n(product.stanokchi_rate);
-  return n(product.stanokchi_semi_rate) > 0 ? n(product.stanokchi_semi_rate) : n(product.detalchi_rate);
+  if (empType === 'DETALCHI') return n(product.detalchi_rate);
+  if (ptype === 'SEMI_FINISHED') return n(product.stanokchi_semi_rate);
+  return n(product.stanokchi_rate) > 0 ? n(product.stanokchi_rate) : n(product.stanokchi_semi_rate);
 }
 
 // Ombor effekti — sign: +1 (tasdiqlash/qo'llash), -1 (qaytarish/o'chirish).
@@ -325,7 +324,7 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
         daily_tariff = product.price || 0;
         calculated_amount = quantity_produced * daily_tariff;
       } else if (employee_type === 'STANOKCHI' || employee_type === 'DETALCHI') {
-        daily_tariff = pieceRate(product, ptype);
+        daily_tariff = pieceRate(product, ptype, employee_type);
         calculated_amount = quantity_produced * daily_tariff;
       } else {
         calculated_amount = quantity_produced * daily_tariff;
@@ -445,7 +444,7 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async 
               daily_tariff = product.price || 0;
               calculated_amount = entry.quantity_produced * daily_tariff;
             } else if (employee_type === 'STANOKCHI' || employee_type === 'DETALCHI') {
-              daily_tariff = pieceRate(product, ptype);
+              daily_tariff = pieceRate(product, ptype, employee_type);
               calculated_amount = entry.quantity_produced * daily_tariff;
             } else {
               calculated_amount = entry.quantity_produced * daily_tariff;

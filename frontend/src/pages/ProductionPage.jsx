@@ -255,7 +255,9 @@ export default function ProductionPage() {
     if (!machine) { toast.error('Stanok topilmadi — QR mos kelmadi'); return; }
 
     const emp = machine.operator_id ? empMap[machine.operator_id] : null;
-    const product = machine.current_product_id ? prodMap[machine.current_product_id] : null;
+    // Joriy mahsulot: to'g'ridan-to'g'ri current_product_id, bo'lmasa o'rnatilgan qolip mahsuloti
+    const productId = machine.current_product_id || machine.current_mold_product_id || null;
+    const product = productId ? prodMap[productId] : null;
 
     const item = newItem();
     if (product) {

@@ -718,6 +718,12 @@ function MachineHubModal({ machine, canWrite, onClose, onAction }) {
               <span className="font-medium text-indigo-700">{machine.current_mold_name}</span>
             </div>
           )}
+          {(machine.current_product_name || machine.current_mold_product_name) && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">Chiqarayotgan mahsulot:</span>
+              <span className="font-medium text-emerald-700">{machine.current_product_name || machine.current_mold_product_name}</span>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-2 pt-1">
@@ -1742,6 +1748,11 @@ export default function MachinesPage() {
                       <p className="text-sm font-semibold text-indigo-700 truncate">
                         {m.current_mold_name}{m.current_mold_location ? ` · ${m.current_mold_location}` : ''}
                       </p>
+                      {(m.current_product_name || m.current_mold_product_name) && (
+                        <p className="text-[11px] text-emerald-700 truncate mt-0.5">
+                          🏷 {m.current_product_name || m.current_mold_product_name}
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}

@@ -48,6 +48,7 @@ router.get('/', async (req, res, next) => {
     const result = await query(`
       SELECT m.*, e.name as operator_name, e.shift as operator_shift, p.name as current_product_name,
         cm.name AS current_mold_name, cm.status AS current_mold_status, cm.location AS current_mold_location, cm.cavity_count AS current_mold_cavity_count,
+        cm.product_id AS current_mold_product_id, pmld.name AS current_mold_product_name,
         (SELECT d.status FROM machine_downtime d WHERE d.machine_id = m.id AND d.ended_at IS NULL ORDER BY d.started_at DESC LIMIT 1) AS pause_status,
         (SELECT d.reason FROM machine_downtime d WHERE d.machine_id = m.id AND d.ended_at IS NULL ORDER BY d.started_at DESC LIMIT 1) AS pause_reason,
         (SELECT d.mold_minutes FROM machine_downtime d WHERE d.machine_id = m.id AND d.ended_at IS NULL ORDER BY d.started_at DESC LIMIT 1) AS pause_mold_minutes
@@ -55,6 +56,7 @@ router.get('/', async (req, res, next) => {
       LEFT JOIN employees e ON m.operator_id = e.id
       LEFT JOIN products p ON m.current_product_id = p.id
       LEFT JOIN molds cm ON m.current_mold_id = cm.id
+      LEFT JOIN products pmld ON cm.product_id = pmld.id
       WHERE m.is_active = true${req.user.branch_id ? ' AND m.branch_id = $1' : ' AND m.branch_id IS NULL'} ORDER BY m.name
     `, req.user.branch_id ? [req.user.branch_id] : []);
     res.json({ machines: result.rows });
@@ -448,15 +450,19 @@ router.post('/:id/mold-changes', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_
       }
     }
 
+    // Qolip biriktirilganda stanokning "joriy mahsuloti" ham qolip mahsulotiga tenglashadi
+    // (QR skanerda va ishlab chiqarishda nima chiqarayotgani ko'rinsin). Yechilganda — NULL.
+    let newProductId = null;
     if (toMoldId) {
-      const mo = await query('SELECT id FROM molds WHERE id = $1 AND is_active = true', [toMoldId]);
+      const mo = await query('SELECT id, product_id FROM molds WHERE id = $1 AND is_active = true', [toMoldId]);
       if (!mo.rows.length) return res.status(400).json({ error: 'Qolip topilmadi' });
+      newProductId = mo.rows[0].product_id || null;
       // Boshqa stanokda o'rnatilgan bo'lsa — u yerdan avtomatik yechiladi
       await query('UPDATE machines SET current_mold_id = NULL, updated_at = NOW() WHERE current_mold_id = $1 AND id <> $2', [toMoldId, req.params.id]);
     }
     if (!toMoldId && !fromMoldId) return res.status(400).json({ error: 'Stanokda hech qanday kalip biriktirilmagan' });
 
-    await query('UPDATE machines SET current_mold_id = $1, updated_at = NOW() WHERE id = $2', [toMoldId, req.params.id]);
+    await query('UPDATE machines SET current_mold_id = $1, current_product_id = $2, updated_at = NOW() WHERE id = $3', [toMoldId, newProductId, req.params.id]);
 
     const ins = await query(
       `INSERT INTO machine_mold_changes (machine_id, from_mold_id, to_mold_id, note, changed_by)

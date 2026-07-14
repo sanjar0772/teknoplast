@@ -91,9 +91,18 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
 });
 
 // PUT /api/employees/:id
-router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, next) => {
+router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async (req, res, next) => {
   try {
     const { name, type, hourly_tariff, phone, address, is_active, shift } = req.body;
+    // KIRIMCHI faqat Stanokchi/Detalchi xodimni tahrirlaydi (mavjud turi ham, yangi turi ham shu ikkisi bo'lishi shart)
+    if (req.user.role === 'KIRIMCHI') {
+      const cur = await query('SELECT type FROM employees WHERE id=$1', [req.params.id]);
+      if (!cur.rows.length) return res.status(404).json({ error: 'Xodim topilmadi' });
+      const allowed = ['STANOKCHI', 'DETALCHI'];
+      if (!allowed.includes(cur.rows[0].type) || !allowed.includes(type)) {
+        return res.status(403).json({ error: 'Kirimchi faqat Stanokchi yoki Detalchi xodimni tahrirlaydi' });
+      }
+    }
     const daily_tariff = Number(req.body.daily_tariff) || 0; // kunlik tarif olib tashlandi
     const salary_type = req.body.salary_type === 'PERCENT' ? 'PERCENT' : 'FIXED';
     const monthly_salary = Number(req.body.monthly_salary) || 0;

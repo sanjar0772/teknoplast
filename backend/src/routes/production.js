@@ -41,14 +41,17 @@ async function availableWip(cq, product_id) {
   return r.rows.length ? (parseFloat(r.rows[0].wip) || 0) : 0;
 }
 
-// Dona haqi — stanokchi/detalchi BIR XIL. Tayyor va Yarim ALOHIDA narx (ikki xil):
-// Tayyor → stanokchi_rate; Yarim → stanokchi_semi_rate (belgilanmagan bo'lsa detalchi_rate).
-// Tayyor narx alohida belgilanadi — yarimga tenglashmaydi (front bilan bir xil).
+// Dona haqi — stanokchi/detalchi BIR XIL.
+//  Yarim  → stanokchi_semi_rate (belgilanmagan bo'lsa detalchi_rate).
+//  Tayyor → stanokchi_rate; alohida tayyor narx belgilanmagan bo'lsa BO'SH qoldirmasdan
+//           mavjud narxga (yarim/detalchi) tushamiz. Tayyorga alohida narx belgilansa —
+//           o'sha chiqadi (yarimдан farqli). Front bilan bir xil.
 function pieceRate(product, ptype) {
   const n = (v) => parseFloat(v) || 0;
   if (!product) return 0;
   if (ptype === 'SEMI_FINISHED') return n(product.stanokchi_semi_rate) > 0 ? n(product.stanokchi_semi_rate) : n(product.detalchi_rate);
-  return n(product.stanokchi_rate);
+  if (n(product.stanokchi_rate) > 0) return n(product.stanokchi_rate);
+  return n(product.stanokchi_semi_rate) > 0 ? n(product.stanokchi_semi_rate) : n(product.detalchi_rate);
 }
 
 // Ombor effekti — sign: +1 (tasdiqlash/qo'llash), -1 (qaytarish/o'chirish).

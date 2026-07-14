@@ -316,14 +316,17 @@ export default function ProductionPage() {
     scannerRef.current = null;
   };
 
-  // Dona haqi — stanokchi/detalchi BIR XIL. Tayyor va Yarim ALOHIDA narx (ikki xil):
-  // Tayyor → tayyor narx (stanokchi_rate); Yarim → yarim narx (stanokchi_semi_rate,
-  // belgilanmagan bo'lsa detalchi_rate). Tayyor narx alohida belgilanadi — yarimga tenglashmaydi.
+  // Dona haqi — stanokchi/detalchi BIR XIL.
+  //  Yarim  → yarim narx (stanokchi_semi_rate, belgilanmagan bo'lsa detalchi_rate).
+  //  Tayyor → tayyor narx (stanokchi_rate). Agar alohida tayyor narx belgilanmagan bo'lsa,
+  //           BO'SH qoldirmasdan mavjud narxga (yarim/detalchi) tushamiz. Tayyorga alohida
+  //           narx belgilansa — o'sha chiqadi (yarimдан farqli). Maydon tahrirlanadi ham.
   const pieceRate = (p, ptype) => {
     const n = (v) => parseFloat(v) || 0;
     if (!p) return 0;
     if (ptype === 'SEMI_FINISHED') return n(p.stanokchi_semi_rate) > 0 ? n(p.stanokchi_semi_rate) : n(p.detalchi_rate);
-    return n(p.stanokchi_rate);
+    if (n(p.stanokchi_rate) > 0) return n(p.stanokchi_rate);
+    return n(p.stanokchi_semi_rate) > 0 ? n(p.stanokchi_semi_rate) : n(p.detalchi_rate);
   };
 
   const autoTarif = (empId, prodId, ptype) => {

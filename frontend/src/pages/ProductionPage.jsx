@@ -80,9 +80,9 @@ export default function ProductionPage() {
 
   // Stanokchi/Detalchi xodimlar ro'yxati (davr statistikasi uchun)
   // Smena filtri faqat Stanokchiga ta'sir qiladi — Detalchilar har doim hammasi ko'rinadi
-  const stanokchiList = (employees?.employees || []).filter(e => e.type === 'STANOKCHI' && (!shiftFilter || e.shift === shiftFilter));
-  const detalchiList = (employees?.employees || []).filter(e => e.type === 'DETALCHI');
-  const piecemealEmployees = [...stanokchiList, ...detalchiList];
+  // Stanokchi va detalchi bir xil funksiya (ikkalasi ham tayyor/yarim chiqaradi) — bitta ro'yxat
+  const piecemealEmployees = (employees?.employees || []).filter(e =>
+    (e.type === 'STANOKCHI' || e.type === 'DETALCHI') && (!shiftFilter || e.shift === shiftFilter));
   const allSelected = piecemealEmployees.length > 0 && selectedEmpIds.length === piecemealEmployees.length;
 
   // Birinchi yuklanganda hammasini belgilab qo'yamiz
@@ -231,7 +231,6 @@ export default function ProductionPage() {
       // Modal allaqachon ochiq bo'lsa — yangi qator qo'shamiz (dublikat bo'lmasin)
       if (showBulk && prev.some(e => e.employee_id === emp.id)) return prev;
       const entry = { employee_id: emp.id, items: [newItem()] };
-      if (emp.type === 'DETALCHI') entry.items[0].production_type = 'SEMI_FINISHED';
       return showBulk ? [...prev, entry] : [entry];
     });
     setShowBulk(true);
@@ -263,10 +262,8 @@ export default function ProductionPage() {
     if (product) {
       item.prodSearch = product.name;
       item.product_id = product.id;
-      item.production_type = defaultPtype(product, emp?.type);
+      item.production_type = defaultPtype(product);
       item.tarif = emp ? autoTarif(emp.id, product.id, item.production_type) : '';
-    } else if (emp?.type === 'DETALCHI') {
-      item.production_type = 'SEMI_FINISHED';
     }
 
     setEntries(prev => {
@@ -319,16 +316,25 @@ export default function ProductionPage() {
     scannerRef.current = null;
   };
 
+  // Dona haqi — stanokchi/detalchi BIR XIL: Tayyor→tayyor narx; Yarim→yarim narx
+  // (yarim narx belgilanmagan bo'lsa eski detalchi narxiga tushadi — pul buzilmaydi).
+  const pieceRate = (p, ptype) => {
+    const n = (v) => parseFloat(v) || 0;
+    if (!p) return 0;
+    if (ptype === 'SEMI_FINISHED') return n(p.stanokchi_semi_rate) > 0 ? n(p.stanokchi_semi_rate) : n(p.detalchi_rate);
+    return n(p.stanokchi_rate);
+  };
+
   const autoTarif = (empId, prodId, ptype) => {
     const emp = empMap[empId];
     const p = prodMap[prodId];
     // Komponent — narxi xodimga bog'liq emas: tanlanishi bilanoq darrov chiqadi
     if (p && p.kind === 'KOMPONENT') return p.price || '';
     if (!emp) return '';
-    if (emp.type === 'STANOKCHI' && p) {
-      return ptype === 'SEMI_FINISHED' ? (p.stanokchi_semi_rate || '') : (p.stanokchi_rate || '');
+    if ((emp.type === 'STANOKCHI' || emp.type === 'DETALCHI') && p) {
+      const r = pieceRate(p, ptype);
+      return r > 0 ? r : '';
     }
-    if (emp.type === 'DETALCHI' && p) return p.detalchi_rate || '';
     return emp.daily_tariff || '';
   };
 
@@ -336,10 +342,9 @@ export default function ProductionPage() {
   const num = (v) => parseFloat(v) || 0;
   const isSemiProduct = (p) => !!p && p.kind !== 'KOMPONENT' && num(p.stanokchi_rate) === 0
     && (num(p.stanokchi_semi_rate) > 0 || num(p.detalchi_rate) > 0);
-  // Mahsulot + xodim turiga qarab ishlab chiqarish turini avtomatik aniqlaymiz.
-  const defaultPtype = (p, empType) => {
+  // Mahsulotga qarab ishlab chiqarish turini avtomatik aniqlaymiz (stanokchi/detalchi bir xil).
+  const defaultPtype = (p) => {
     if (p?.kind === 'KOMPONENT') return 'KOMPONENT';
-    if (empType === 'DETALCHI') return 'SEMI_FINISHED';
     if (isSemiProduct(p)) return 'SEMI_FINISHED'; // yarim tayyor mahsulot → avtomatik yarim
     return 'FINISHED';
   };
@@ -347,10 +352,9 @@ export default function ProductionPage() {
   const updateEntryEmp = (i, empId) => {
     setEntries(prev => prev.map((e, idx) => {
       if (idx !== i) return e;
-      const emp = empMap[empId];
       const items = e.items.map(item => {
         const next = { ...item };
-        next.production_type = defaultPtype(prodMap[next.product_id], emp?.type);
+        next.production_type = defaultPtype(prodMap[next.product_id]);
         next.tarif = autoTarif(empId, next.product_id, next.production_type);
         return next;
       });
@@ -371,7 +375,7 @@ export default function ProductionPage() {
           if (match) {
             // Mahsulotga qarab turini avtomatik aniqlaymiz: komponent → KOMPONENT,
             // yarim tayyor tabiatli mahsulot → SEMI_FINISHED, aks holda TAYYOR.
-            next.production_type = defaultPtype(match, empMap[e.employee_id]?.type);
+            next.production_type = defaultPtype(match);
             next.tarif = autoTarif(e.employee_id, match.id, next.production_type);
           }
         }
@@ -405,11 +409,9 @@ export default function ProductionPage() {
     const qty = parseFloat(item.quantity_produced) || 0;
     if (item.tarif !== '' && parseFloat(item.tarif) >= 0) return qty * parseFloat(item.tarif);
     const p = prodMap[item.product_id];
-    if (emp.type === 'STANOKCHI') {
-      const rate = item.production_type === 'SEMI_FINISHED' ? (p?.stanokchi_semi_rate || 0) : (p?.stanokchi_rate || 0);
-      return qty * rate;
+    if (emp.type === 'STANOKCHI' || emp.type === 'DETALCHI') {
+      return qty * pieceRate(p, item.production_type);
     }
-    if (emp.type === 'DETALCHI') return qty * (p?.detalchi_rate || 0);
     return qty * (emp.daily_tariff || 0);
   };
 
@@ -420,10 +422,8 @@ export default function ProductionPage() {
       e.items
         .filter(item => e.employee_id && parseFloat(item.quantity_produced) > 0)
         .map(item => {
-          const emp = empMap[e.employee_id];
           let production_type = item.production_type || 'FINISHED';
           if (item.production_type === 'KOMPONENT' || prodMap[item.product_id]?.kind === 'KOMPONENT') production_type = 'KOMPONENT';
-          else if (emp?.type === 'DETALCHI') production_type = 'SEMI_FINISHED';
           return {
             employee_id: e.employee_id,
             product_id: item.product_id,
@@ -664,37 +664,19 @@ export default function ProductionPage() {
             <span className="text-sm font-medium text-gray-700">Hammasini belgilash</span>
           </label>
           {!piecemealEmployees.length ? (
-            <span className="text-sm text-gray-400">Stanokchi/Detalchi xodim topilmadi</span>
+            <span className="text-sm text-gray-400">Ishlab chiqaruvchi xodim topilmadi</span>
           ) : (
-            <div className="space-y-2">
-              {stanokchiList.length > 0 && (
-                <div>
-                  <p className="text-xs text-gray-400 mb-1">Stanokchilar {shiftFilter && `(${shiftFilter === '1-SMENA' ? '1-Smena' : '2-Smena'})`}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {stanokchiList.map(emp => (
-                      <label key={emp.id}
-                        className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-sm cursor-pointer ${selectedEmpIds.includes(emp.id) ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
-                        <input type="checkbox" checked={selectedEmpIds.includes(emp.id)} onChange={() => toggleOneEmp(emp.id)} className="w-3.5 h-3.5" />
-                        {emp.name} <span className="text-xs opacity-60">({emp.shift === '2-SMENA' ? '2-Smena' : '1-Smena'})</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {detalchiList.length > 0 && (
-                <div>
-                  <p className="text-xs text-gray-400 mb-1">Detalchilar (hammasi)</p>
-                  <div className="flex flex-wrap gap-2">
-                    {detalchiList.map(emp => (
-                      <label key={emp.id}
-                        className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-sm cursor-pointer ${selectedEmpIds.includes(emp.id) ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
-                        <input type="checkbox" checked={selectedEmpIds.includes(emp.id)} onChange={() => toggleOneEmp(emp.id)} className="w-3.5 h-3.5" />
-                        {emp.name}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Ishlab chiqaruvchilar {shiftFilter && `(${shiftFilter === '1-SMENA' ? '1-Smena' : '2-Smena'})`}</p>
+              <div className="flex flex-wrap gap-2">
+                {piecemealEmployees.map(emp => (
+                  <label key={emp.id}
+                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-sm cursor-pointer ${selectedEmpIds.includes(emp.id) ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
+                    <input type="checkbox" checked={selectedEmpIds.includes(emp.id)} onChange={() => toggleOneEmp(emp.id)} className="w-3.5 h-3.5" />
+                    {emp.name} {emp.shift && <span className="text-xs opacity-60">({emp.shift === '2-SMENA' ? '2-Smena' : '1-Smena'})</span>}
+                  </label>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -971,14 +953,9 @@ export default function ProductionPage() {
                           </div>
                           {/* Tur — Tayyor / Yarim / Komponent (qo'lda tanlash mumkin) */}
                           <div className="col-span-2">
-                            {isStanokchi ? (
+                            {(isStanokchi || isDetalchi) ? (
                               <select value={item.production_type || 'FINISHED'} onChange={e => updateItem(i, j, 'production_type', e.target.value)} className="select text-sm w-full">
                                 <option value="FINISHED">Tayyor</option>
-                                <option value="SEMI_FINISHED">Yarim</option>
-                                <option value="KOMPONENT">🔧 Komponent</option>
-                              </select>
-                            ) : isDetalchi ? (
-                              <select value={item.production_type || 'SEMI_FINISHED'} onChange={e => updateItem(i, j, 'production_type', e.target.value)} className="select text-sm w-full">
                                 <option value="SEMI_FINISHED">Yarim</option>
                                 <option value="KOMPONENT">🔧 Komponent</option>
                               </select>

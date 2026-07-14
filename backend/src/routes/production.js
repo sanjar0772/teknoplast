@@ -41,6 +41,15 @@ async function availableWip(cq, product_id) {
   return r.rows.length ? (parseFloat(r.rows[0].wip) || 0) : 0;
 }
 
+// Dona haqi — stanokchi/detalchi BIR XIL: Tayyor→stanokchi_rate; Yarim→stanokchi_semi_rate
+// (belgilanmagan bo'lsa detalchi_rate — eski pul buzilmaydi).
+function pieceRate(product, ptype) {
+  const n = (v) => parseFloat(v) || 0;
+  if (!product) return 0;
+  if (ptype === 'SEMI_FINISHED') return n(product.stanokchi_semi_rate) > 0 ? n(product.stanokchi_semi_rate) : n(product.detalchi_rate);
+  return n(product.stanokchi_rate);
+}
+
 // Ombor effekti — sign: +1 (tasdiqlash/qo'llash), -1 (qaytarish/o'chirish).
 //  SEMI_FINISHED → yarim tayyor (ishlab chiqarish) ombori (semi_stock_quantity).
 //  FINISHED      → tayyor ombor (stock_quantity + rang buckets); mahsulot ikki bosqichli bo'lsa
@@ -295,10 +304,9 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
     let calculated_amount = 0;
     let daily_tariff = emp.rows[0].daily_tariff;
 
-    // Ishlab chiqarish turi: STANOKCHI tayyor/yarim tanlaydi; DETALCHI doim yarim tayyor.
+    // Ishlab chiqarish turi: stanokchi/detalchi bir xil — tayyor/yarim tanlaydi (kelgan qiymat).
     // Komponent (KOMPONENT) — turdan qat'i nazar saqlanadi.
     let ptype = production_type || 'FINISHED';
-    if (employee_type === 'DETALCHI' && ptype !== 'KOMPONENT') ptype = 'SEMI_FINISHED';
 
     // Agar Kirimchi tomonidan maxsus tarif berilgan bo'lsa — uni ishlatamiz
     if (custom_tariff && parseFloat(custom_tariff) > 0) {
@@ -312,12 +320,8 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), [
         ptype = 'KOMPONENT';
         daily_tariff = product.price || 0;
         calculated_amount = quantity_produced * daily_tariff;
-      } else if (employee_type === 'STANOKCHI') {
-        const rate = ptype === 'SEMI_FINISHED' ? product.stanokchi_semi_rate : product.stanokchi_rate;
-        daily_tariff = rate || 0;
-        calculated_amount = quantity_produced * daily_tariff;
-      } else if (employee_type === 'DETALCHI') {
-        daily_tariff = product.detalchi_rate || 0;
+      } else if (employee_type === 'STANOKCHI' || employee_type === 'DETALCHI') {
+        daily_tariff = pieceRate(product, ptype);
         calculated_amount = quantity_produced * daily_tariff;
       } else {
         calculated_amount = quantity_produced * daily_tariff;
@@ -384,13 +388,10 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async 
     // "Oshiqcha tayyor" bloki (tranzaksiyadan oldin): ikki bosqichli mahsulotni yarim tayyor
     // ombordan ko'p tayyor qilib bo'lmaydi. Bir so'rovdagi bir nechta qator ham hisobga olinadi.
     const wipUsed = new Map();
-    for (const [emp_id, items] of byEmployee) {
-      const empRow = await query('SELECT type FROM employees WHERE id=$1 AND is_active=true', [emp_id]);
-      const etype = empRow.rows[0]?.type;
+    for (const [, items] of byEmployee) {
       for (const entry of items) {
         if (!entry.product_id) continue;
         let ptype = entry.production_type || 'FINISHED';
-        if (etype === 'DETALCHI' && ptype !== 'KOMPONENT') ptype = 'SEMI_FINISHED';
         const pk = await query('SELECT kind, name FROM products WHERE id=$1', [entry.product_id]);
         if ((pk.rows[0]?.kind) === 'KOMPONENT') ptype = 'KOMPONENT';
         if (ptype !== 'FINISHED') continue;
@@ -423,10 +424,9 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async 
           let daily_tariff = empDailyTariff;
           let calculated_amount = 0;
 
-          // Ishlab chiqarish turi: STANOKCHI tayyor/yarim; DETALCHI doim yarim tayyor.
+          // Ishlab chiqarish turi: stanokchi/detalchi bir xil — tayyor/yarim (kelgan qiymat).
           // Komponent (KOMPONENT) — turdan qat'i nazar saqlanadi.
           let ptype = entry.production_type || 'FINISHED';
-          if (employee_type === 'DETALCHI' && ptype !== 'KOMPONENT') ptype = 'SEMI_FINISHED';
 
           // Agar Kirimchi maxsus tarif bergan bo'lsa — uni ishlatamiz
           if (entry.daily_tariff && parseFloat(entry.daily_tariff) > 0) {
@@ -440,12 +440,8 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async 
               ptype = 'KOMPONENT';
               daily_tariff = product.price || 0;
               calculated_amount = entry.quantity_produced * daily_tariff;
-            } else if (employee_type === 'STANOKCHI') {
-              const rate = ptype === 'SEMI_FINISHED' ? product.stanokchi_semi_rate : product.stanokchi_rate;
-              daily_tariff = rate || 0;
-              calculated_amount = entry.quantity_produced * daily_tariff;
-            } else if (employee_type === 'DETALCHI') {
-              daily_tariff = product.detalchi_rate || 0;
+            } else if (employee_type === 'STANOKCHI' || employee_type === 'DETALCHI') {
+              daily_tariff = pieceRate(product, ptype);
               calculated_amount = entry.quantity_produced * daily_tariff;
             } else {
               calculated_amount = entry.quantity_produced * daily_tariff;

@@ -479,7 +479,9 @@ function ShiftChangeModal({ machine, employees, canWrite, onClose }) {
     onSuccess: (_res, operatorId) => {
       const emp = (employeesRef.current?.employees || []).find(e => e.id === operatorId);
       toast.success(`✅ Smena almashtirildi — ${emp?.name || ''}`);
-      setToOperator(''); setNote(''); setScannedEmp(null);
+      setNote('');
+      setToOperator(operatorId);
+      if (emp) setScannedEmp(emp);
       qc.invalidateQueries({ queryKey: ['machine-shift-changes', machine.id] });
       qc.invalidateQueries({ queryKey: ['machines'] });
     },

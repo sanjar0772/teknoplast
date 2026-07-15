@@ -252,6 +252,13 @@ export const machinesAPI = {
   importRegimes: () => api.post('/machines/regimes/import'),
 };
 
+// Drobilka (maydalagich) — brak topshirish / maydalash jurnali
+export const drobilkaAPI = {
+  getAll: () => api.get('/drobilka'),
+  create: (data) => api.post('/drobilka', data),
+  remove: (id) => api.delete(`/drobilka/${id}`),
+};
+
 // Qaliplar (molds)
 export const moldsAPI = {
   getAll: () => api.get('/molds'),

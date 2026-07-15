@@ -1064,6 +1064,22 @@ if (USE_PG) {
       `ALTER TABLE employee_production ADD COLUMN brak_kg REAL DEFAULT 0`,
       // Stanok ishga tushgan vaqt — "qachondan beri ishlayapti" jonli hisoblagich uchun
       `ALTER TABLE machines ADD COLUMN run_started_at TEXT`,
+      // Drobilka (maydalagich) jurnali — stanoklardan chiqqan brak drobilkaga topshiriladi
+      // (TOPSHIRISH), keyin maydalab qayta ishlatiladigan material olinadi (MAYDALASH).
+      // Kutayotgan brak = SUM(TOPSHIRISH.kg) − SUM(MAYDALASH.kg).
+      `CREATE TABLE IF NOT EXISTS drobilka_entries (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        entry_type TEXT NOT NULL DEFAULT 'TOPSHIRISH',
+        kg REAL NOT NULL DEFAULT 0,
+        product_id TEXT REFERENCES products(id),
+        machine_id TEXT REFERENCES machines(id),
+        employee_id TEXT REFERENCES employees(id),
+        note TEXT,
+        entry_date TEXT DEFAULT (date('now')),
+        created_by TEXT REFERENCES users(id),
+        branch_id TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      )`,
     ];
     for (const m of migrations) {
       try {

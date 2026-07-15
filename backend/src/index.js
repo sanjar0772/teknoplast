@@ -54,6 +54,7 @@ app.use('/api/salary-slip', require('./routes/salary-slip'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/machines', require('./routes/machines'));
 app.use('/api/molds', require('./routes/molds'));
+app.use('/api/drobilka', require('./routes/drobilka'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/ahmad', require('./routes/ahmad'));
@@ -68,7 +69,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'ishga-tushirishda-sozlama-sorash', commit: 'v198' });
+  res.json({ version: 'drobilka-brak-maydalash', commit: 'v199' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

@@ -2,10 +2,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw, BarChart3, FileSpreadsheet, FileText, QrCode, Download, Users, Camera, Search, Layers, Pencil, Gauge, MapPin, Zap } from 'lucide-react';
+import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw, BarChart3, FileSpreadsheet, FileText, QrCode, Download, Users, Camera, Search, Layers, Pencil, Gauge, MapPin, Zap, Recycle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { machinesAPI, employeesAPI, productsAPI, moldsAPI } from '../services/api';
+import { machinesAPI, employeesAPI, productsAPI, moldsAPI, drobilkaAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
 const fmtN = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
@@ -979,6 +979,168 @@ function StartProductionModal({ machine, canWrite, onStart, onAssignMold, starti
   );
 }
 
+// Drobilka (maydalagich) — stanoklardan chiqqan braklarni topshirish va maydalash jurnali.
+// Kutayotgan brak = topshirilgan − maydalangan (drobilkada qayta ishlashni kutayotgan brak).
+function DrobilkaModal({ canWrite, machines, onClose }) {
+  const qc = useQueryClient();
+  const [type, setType] = useState('TOPSHIRISH'); // TOPSHIRISH | MAYDALASH
+  const [kg, setKg] = useState('');
+  const [machineId, setMachineId] = useState('');
+  const [productId, setProductId] = useState('');
+  const [note, setNote] = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['drobilka'],
+    queryFn: () => drobilkaAPI.getAll().then(r => r.data),
+  });
+  const { data: prodData } = useQuery({
+    queryKey: ['products-all-for-drobilka'],
+    queryFn: () => productsAPI.getAll({ is_active: 'all' }).then(r => r.data),
+  });
+
+  const createMut = useMutation({
+    mutationFn: () => drobilkaAPI.create({
+      entry_type: type, kg: parseFloat(kg),
+      machine_id: machineId || undefined, product_id: productId || undefined,
+      note: note || undefined,
+    }),
+    onSuccess: () => {
+      toast.success(type === 'TOPSHIRISH' ? 'Brak topshirildi' : 'Maydalash qayd etildi');
+      setKg(''); setNote('');
+      qc.invalidateQueries({ queryKey: ['drobilka'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+  const delMut = useMutation({
+    mutationFn: (id) => drobilkaAPI.remove(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['drobilka'] }); },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+
+  const s = data?.summary || { topshirilgan: 0, maydalangan: 0, kutayotgan: 0, production_brak: 0 };
+  const entries = data?.entries || [];
+  const products = (prodData?.products || []);
+  const kgFmt = (n) => new Intl.NumberFormat('uz-UZ', { maximumFractionDigits: 1 }).format(parseFloat(n || 0));
+
+  const submit = () => {
+    if (!(parseFloat(kg) > 0)) return toast.error('Kg kiriting (musbat son)');
+    createMut.mutate();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-10 overflow-y-auto">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h3 className="font-bold flex items-center gap-2 text-cyan-700"><Recycle size={18} /> Drobilka — brak maydalash</h3>
+          <button onClick={onClose}><X size={20} className="text-gray-400" /></button>
+        </div>
+
+        <div className="px-6 py-4 space-y-4 max-h-[75vh] overflow-y-auto">
+          {/* Jamlanma */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5 text-center">
+              <p className="text-2xl font-bold text-amber-600 leading-none">{kgFmt(s.kutayotgan)}</p>
+              <p className="text-[11px] text-gray-500 mt-1">Kutayotgan brak (kg)</p>
+            </div>
+            <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 text-center">
+              <p className="text-2xl font-bold text-slate-600 leading-none">{kgFmt(s.topshirilgan)}</p>
+              <p className="text-[11px] text-gray-500 mt-1">Jami topshirilgan (kg)</p>
+            </div>
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2.5 text-center">
+              <p className="text-2xl font-bold text-emerald-600 leading-none">{kgFmt(s.maydalangan)}</p>
+              <p className="text-[11px] text-gray-500 mt-1">Jami maydalangan (kg)</p>
+            </div>
+          </div>
+          {s.production_brak > 0 && (
+            <p className="text-[11px] text-gray-400 -mt-1">
+              Ishlab chiqarishda qayd etilgan jami brak: <b className="text-gray-600">{kgFmt(s.production_brak)} kg</b>
+            </p>
+          )}
+
+          {/* Yangi yozuv */}
+          {canWrite && (
+            <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3 space-y-2.5">
+              <div className="flex rounded-lg overflow-hidden border border-gray-200 w-full">
+                <button type="button" onClick={() => setType('TOPSHIRISH')}
+                  className={`flex-1 py-2 text-xs font-semibold flex items-center justify-center gap-1 ${type === 'TOPSHIRISH' ? 'bg-amber-500 text-white' : 'bg-white text-gray-500'}`}>
+                  <Download size={13} /> Brak topshirish
+                </button>
+                <button type="button" onClick={() => setType('MAYDALASH')}
+                  className={`flex-1 py-2 text-xs font-semibold flex items-center justify-center gap-1 ${type === 'MAYDALASH' ? 'bg-emerald-600 text-white' : 'bg-white text-gray-500'}`}>
+                  <Recycle size={13} /> Maydalash
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-0.5">Miqdor (kg) *</label>
+                  <input type="number" min="0" step="0.1" value={kg} onChange={e => setKg(e.target.value)}
+                    onFocus={e => e.target.select()} placeholder="0" className="input py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-0.5">Stanok (ixtiyoriy)</label>
+                  <select value={machineId} onChange={e => setMachineId(e.target.value)} className="select py-1.5 text-sm">
+                    <option value="">—</option>
+                    {(machines || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-0.5">Mahsulot (ixtiyoriy)</label>
+                  <select value={productId} onChange={e => setProductId(e.target.value)} className="select py-1.5 text-sm">
+                    <option value="">—</option>
+                    {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-0.5">Izoh (ixtiyoriy)</label>
+                  <input value={note} onChange={e => setNote(e.target.value)} placeholder="—" className="input py-1.5 text-sm" />
+                </div>
+              </div>
+              <button onClick={submit} disabled={createMut.isPending}
+                className={`w-full py-2.5 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2 ${type === 'TOPSHIRISH' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-700'} disabled:opacity-60`}>
+                {type === 'TOPSHIRISH' ? <Download size={15} /> : <Recycle size={15} />}
+                {createMut.isPending ? 'Saqlanmoqda...' : (type === 'TOPSHIRISH' ? 'Brak topshirish' : 'Maydalashni qayd etish')}
+              </button>
+            </div>
+          )}
+
+          {/* Tarix */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tarix</p>
+            {isLoading ? (
+              <p className="text-center text-gray-400 py-6 text-sm">Yuklanmoqda...</p>
+            ) : !entries.length ? (
+              <p className="text-center text-gray-400 py-6 text-sm">Hali yozuv yo'q</p>
+            ) : (
+              <div className="space-y-1.5">
+                {entries.map(en => (
+                  <div key={en.id} className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${en.entry_type === 'TOPSHIRISH' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-800">
+                        {en.entry_type === 'TOPSHIRISH' ? 'Topshirildi' : 'Maydalandi'} · <span className={en.entry_type === 'TOPSHIRISH' ? 'text-amber-600' : 'text-emerald-600'}>{kgFmt(en.kg)} kg</span>
+                      </p>
+                      <p className="text-[11px] text-gray-400 truncate">
+                        {[en.machine_name, en.product_name, en.note].filter(Boolean).join(' · ') || '—'}
+                        {en.created_at && <span> · {fmtDT(en.created_at)}</span>}
+                      </p>
+                    </div>
+                    {canWrite && (
+                      <button onClick={() => { if (confirm(`${kgFmt(en.kg)} kg yozuvini o'chirasizmi?`)) delMut.mutate(en.id); }}
+                        className="text-gray-300 hover:text-red-500 shrink-0"><Trash2 size={15} /></button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Bitta qolip (kalip) texnologik rejimini ko'rish/tahrirlash — yangi oynada
 // (rejim qolipga tegishli: qaysi stanokka o'rnatilsa ham bir xil parametrlar bilan chiqadi)
 function MoldRegimeModal({ mold, canWrite, onClose }) {
@@ -1533,6 +1695,7 @@ export default function MachinesPage() {
   const [pageScanManual, setPageScanManual] = useState('');
   const [statusFilter, setStatusFilter] = useState('');   // yuqoridagi holat kartasi bosilganda filtr
   const [startFor, setStartFor] = useState(null);         // ishga tushirishdan oldin sozlama so'rash modali
+  const [drobilkaOpen, setDrobilkaOpen] = useState(false); // drobilka (brak maydalash) modali
   const pageScannerRef = useRef(null);
 
   const stopPageScan = () => {
@@ -1756,6 +1919,10 @@ export default function MachinesPage() {
           <button onClick={() => setMoldsOpen(true)}
             className="btn-sm bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg px-3 flex items-center gap-1">
             <Layers size={14} /> Qaliplar
+          </button>
+          <button onClick={() => setDrobilkaOpen(true)}
+            className="btn-sm bg-cyan-50 text-cyan-700 hover:bg-cyan-100 border border-cyan-200 rounded-lg px-3 flex items-center gap-1">
+            <Recycle size={14} /> Drobilka
           </button>
           <button onClick={() => setShiftCardOpen(true)}
             className="btn-sm bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200 rounded-lg px-3 flex items-center gap-1">
@@ -2140,6 +2307,8 @@ export default function MachinesPage() {
       )}
 
       {moldsOpen && <MoldsModal canWrite={canWrite} onClose={() => setMoldsOpen(false)} />}
+
+      {drobilkaOpen && <DrobilkaModal canWrite={canWrite} machines={machines} onClose={() => setDrobilkaOpen(false)} />}
 
       {regimeFor && (
         <RegimeModal

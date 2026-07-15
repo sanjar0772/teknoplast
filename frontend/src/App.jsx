@@ -23,6 +23,7 @@ import ComponentsPage from './pages/ComponentsPage';
 import SmartProductsPage from './pages/SmartProductsPage';
 import InventoryPage from './pages/InventoryPage';
 import MachinesPage from './pages/MachinesPage';
+import DrobilkaPage from './pages/DrobilkaPage';
 import BranchesPage from './pages/BranchesPage';
 import TaroziPage from './pages/TaroziPage';
 import ReportsPage from './pages/ReportsPage';
@@ -75,6 +76,7 @@ export default function App() {
           <Route path="products-grid" element={<SmartProductsPage />} />
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="machines" element={<MachinesPage />} />
+          <Route path="drobilka" element={<DrobilkaPage />} />
           <Route path="branches" element={<BranchesPage />} />
           <Route path="tarozi" element={<TaroziPage />} />
           <Route path="tarozi-cheklar" element={<TaroziChekPage />} />

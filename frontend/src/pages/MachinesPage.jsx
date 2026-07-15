@@ -458,6 +458,7 @@ function ShiftChangeModal({ machine, employees, canWrite, onClose }) {
   const [toOperator, setToOperator] = useState('');
   const [note, setNote] = useState('');
   const [scanOpen, setScanOpen] = useState(false);
+  const [scannedEmp, setScannedEmp] = useState(null);
   const scannerRef = useRef(null);
   // Kamera dekodlash callback'i faqat scanOpen o'zgarganda qayta ro'yxatdan o'tadi (pastdagi
   // effekt), shuning uchun `employees` to'g'ridan-to'g'ri undan foydalansa — ro'yxat
@@ -476,13 +477,13 @@ function ShiftChangeModal({ machine, employees, canWrite, onClose }) {
   const changeMut = useMutation({
     mutationFn: (operatorId) => machinesAPI.changeShift(machine.id, { to_operator_id: operatorId, note }),
     onSuccess: (_res, operatorId) => {
-      const emp = (employees?.employees || []).find(e => e.id === operatorId);
-      toast.success(`Smena almashtirildi${emp ? ` — ${emp.name}` : ''}`);
-      setToOperator(''); setNote('');
+      const emp = (employeesRef.current?.employees || []).find(e => e.id === operatorId);
+      toast.success(`✅ Smena almashtirildi — ${emp?.name || ''}`);
+      setToOperator(''); setNote(''); setScannedEmp(null);
       qc.invalidateQueries({ queryKey: ['machine-shift-changes', machine.id] });
       qc.invalidateQueries({ queryKey: ['machines'] });
     },
-    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+    onError: (e) => { toast.error(e.response?.data?.error || 'Xato'); setScannedEmp(null); },
   });
 
   const stopScan = () => {
@@ -501,7 +502,9 @@ function ShiftChangeModal({ machine, employees, canWrite, onClose }) {
     scanHandledRef.current = true;
     stopScan();
     setScanOpen(false);
-    changeMut.mutate(id);
+    setToOperator(id);      // dropdown'da ko'rinsin
+    setScannedEmp(emp);     // yashil karta ko'rinsin
+    changeMut.mutate(id);   // avtomatik saqlash
   };
 
   useEffect(() => {
@@ -538,19 +541,34 @@ function ShiftChangeModal({ machine, employees, canWrite, onClose }) {
           {machine.operator_shift && <span className="text-xs text-gray-400"> ({shiftLabel(machine.operator_shift)})</span>}
         </div>
 
+        {/* QR skanerlangan hodim — yashil karta */}
+        {scannedEmp && (
+          <div className="flex items-center gap-3 bg-green-50 border border-green-300 rounded-xl px-4 py-3">
+            <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 text-green-600 font-bold text-sm">
+              {scannedEmp.name?.[0] || '?'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-green-900 text-sm">{scannedEmp.name}</div>
+              <div className="text-xs text-green-600">
+                {changeMut.isPending ? 'Saqlanmoqda...' : 'Smenaga biriktirildi ✓'}
+              </div>
+            </div>
+          </div>
+        )}
+
         {canWrite && (
           <div className="space-y-2">
             {scanOpen ? (
               <div className="space-y-2">
                 <div id="machine-shift-qr-reader" className="w-full rounded-xl overflow-hidden bg-black" style={{ minHeight: 200 }} />
                 <p className="text-xs text-gray-400 text-center flex items-center justify-center gap-1">
-                  <Camera size={12} /> Kamerani stanokchi QR begikiga to'g'rilang — o'qilishi bilan smena almashadi
+                  <Camera size={12} /> Hodimning QR begigini skanerlang — avtomatik belgilanadi
                 </p>
                 <button onClick={() => { stopScan(); setScanOpen(false); }} className="btn-secondary w-full">Bekor</button>
               </div>
             ) : (
               <>
-                <button onClick={() => setScanOpen(true)}
+                <button onClick={() => { setScannedEmp(null); setToOperator(''); setScanOpen(true); }}
                   className="btn-sm w-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 py-2 flex items-center gap-1.5 justify-center">
                   <QrCode size={14} /> QR begikni skanerlash (tezkor)
                 </button>
@@ -559,7 +577,7 @@ function ShiftChangeModal({ machine, employees, canWrite, onClose }) {
                 </div>
                 <div>
                   <label className="label text-xs">Yangi operator (smenaga kiruvchi) *</label>
-                  <select value={toOperator} onChange={e => setToOperator(e.target.value)} className="select">
+                  <select value={toOperator} onChange={e => { setToOperator(e.target.value); setScannedEmp(null); }} className="select">
                     <option value="">Tanlang...</option>
                     {(employees?.employees || []).map(e => (
                       <option key={e.id} value={e.id}>{e.name}{e.shift ? ` (${shiftLabel(e.shift)})` : ''}</option>

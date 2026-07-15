@@ -2,20 +2,21 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Boxes, Search, Edit3, Warehouse } from 'lucide-react';
+import { Plus, X, Boxes, Search, Edit3, Warehouse, FlaskConical, Scale } from 'lucide-react';
 import clsx from 'clsx';
 import { productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import { RANGLAR, RANG_COLORS } from '../constants/colors';
+import { parseSom } from '../utils/money';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
-function Modal({ open, onClose, title, children, wide }) {
+function Modal({ open, onClose, title, children, wide, xl }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className={clsx('relative bg-white rounded-2xl shadow-2xl w-full p-6', wide ? 'max-w-lg' : 'max-w-md')}>
+      <div className={clsx('relative bg-white rounded-2xl shadow-2xl w-full p-6 max-h-[85vh] overflow-y-auto', xl ? 'max-w-2xl' : wide ? 'max-w-lg' : 'max-w-md')}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-gray-900">{title}</h3>
           <button onClick={onClose}><X size={20} className="text-gray-400" /></button>
@@ -35,10 +36,41 @@ export default function ComponentsPage() {
   const [stockModal, setStockModal] = useState(null);
   const [stockForm, setStockForm] = useState({ quantity: 0, operation: 'add' });
   const [q, setQ] = useState('');
+  const [recipeModal, setRecipeModal] = useState(null); // { id, name } — komponent retsepti
+  const [recipeAddForm, setRecipeAddForm] = useState({ raw_material_id: '', qty_per_unit: '', unit: 'g', note: '' });
 
   const { data, isLoading } = useQuery({
     queryKey: ['products'],
     queryFn: () => productsAPI.getAll({ is_active: 'all' }).then(r => r.data),
+  });
+
+  // Retsept (xom ashyo tarkibi) — mahsulotlardagi bilan bir xil tizim
+  const { data: rawMats } = useQuery({
+    queryKey: ['raw-materials-list'],
+    queryFn: () => productsAPI.getRawMaterials().then(r => r.data),
+    enabled: !!recipeModal,
+  });
+  const { data: recipeData } = useQuery({
+    queryKey: ['product-recipe', recipeModal?.id],
+    queryFn: () => productsAPI.getRecipe(recipeModal.id).then(r => r.data),
+    enabled: !!recipeModal,
+  });
+  const addRecipeMutation = useMutation({
+    mutationFn: ({ product_id, ...d }) => productsAPI.addRecipeItem(product_id, d),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['product-recipe', recipeModal?.id] });
+      setRecipeAddForm({ raw_material_id: '', qty_per_unit: '', unit: 'g', note: '' });
+      toast.success('Ingredient qo\'shildi');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+  const removeRecipeMutation = useMutation({
+    mutationFn: ({ product_id, raw_material_id }) => productsAPI.removeRecipeItem(product_id, raw_material_id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['product-recipe', recipeModal?.id] });
+      toast.success('Olib tashlandi');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
   const components = useMemo(() => {
@@ -175,6 +207,7 @@ export default function ComponentsPage() {
                   <th className="text-left px-4 py-2.5 font-medium text-gray-600 text-xs">Nomi</th>
                   <th className="text-left px-3 py-2.5 font-medium text-gray-600 text-xs">Turi</th>
                   <th className="text-left px-3 py-2.5 font-medium text-gray-600 text-xs">Rangi</th>
+                  <th className="text-right px-3 py-2.5 font-medium text-gray-600 text-xs">Vazni</th>
                   <th className="text-right px-3 py-2.5 font-medium text-gray-600 text-xs">Narxi</th>
                   <th className="text-right px-3 py-2.5 font-medium text-gray-600 text-xs">Omborda</th>
                   <th className="text-center px-3 py-2.5 font-medium text-gray-600 text-xs">Holat</th>
@@ -197,6 +230,11 @@ export default function ComponentsPage() {
                         </span>
                       ) : <span className="text-gray-300">—</span>}
                     </td>
+                    <td className="px-3 py-2.5 text-right">
+                      {parseFloat(p.weight) > 0
+                        ? <span className="inline-flex items-center gap-1 font-medium text-gray-700"><Scale size={12} className="text-gray-400" /> {p.weight} gr</span>
+                        : <span className="text-gray-300">—</span>}
+                    </td>
                     <td className="px-3 py-2.5 text-right font-semibold">{fmt(p.price)} so'm</td>
                     <td className="px-3 py-2.5 text-right">
                       <span className={clsx('font-bold', parseFloat(p.stock_quantity) < 10 ? 'text-red-600' : 'text-green-700')}>
@@ -210,6 +248,12 @@ export default function ComponentsPage() {
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex gap-1.5 justify-end">
+                        {canWrite && (
+                          <button onClick={() => setRecipeModal({ id: p.id, name: p.name })} title="Retsept (xom ashyo)"
+                            className="btn-sm bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded px-2 py-1 flex items-center gap-1">
+                            <FlaskConical size={12} /> Retsept
+                          </button>
+                        )}
                         {canWrite && (
                           <button onClick={() => setStockModal(p)} title="Ombor"
                             className="btn-sm bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded px-2 py-1 flex items-center gap-1">
@@ -259,19 +303,25 @@ export default function ComponentsPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Narxi (so'm) *</label>
-              <input {...register('price', { required: true, setValueAs: v => parseFloat(String(v).replace(/\s/g,'').replace(/,/g,'')) || 0 })} type="text" inputMode="decimal" className="input" placeholder="masalan: 5 000" />
+              <input {...register('price', { required: true, setValueAs: parseSom })} type="text" inputMode="numeric" className="input" placeholder="masalan: 5 000" />
             </div>
             <div>
               <label className="label">Boshlang'ich ombor</label>
               <input {...register('stock_quantity')} type="number" min="0" defaultValue={0} className="input" />
             </div>
           </div>
-          <div>
-            <label className="label">Rangi</label>
-            <select {...register('rang')} className="select">
-              <option value="">— Rangsiz —</option>
-              {RANGLAR.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Rangi</label>
+              <select {...register('rang')} className="select">
+                <option value="">— Rangsiz —</option>
+                {RANGLAR.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Vazni (gramm)</label>
+              <input {...register('weight')} type="number" min="0" step="0.1" className="input" placeholder="masalan: 55" />
+            </div>
           </div>
           <div>
             <label className="label">Tavsif</label>
@@ -330,6 +380,134 @@ export default function ComponentsPage() {
           </div>
         </Modal>
       )}
+
+      {/* Retsept (xom ashyo) — komponent uchun, katta va aniq ko'rinishda */}
+      {recipeModal && (() => {
+        const recipe = recipeData?.recipe || [];
+        const totalGr = recipe.reduce((s, it) => s + (it.unit === 'kg' ? (parseFloat(it.qty_per_unit) || 0) * 1000 : (parseFloat(it.qty_per_unit) || 0)), 0);
+        const closeRecipe = () => { setRecipeModal(null); setRecipeAddForm({ raw_material_id: '', qty_per_unit: '', unit: 'g', note: '' }); };
+        return (
+          <Modal open onClose={closeRecipe} xl
+            title={`🧪 Retsept — ${recipeModal.name}`}>
+            <div className="space-y-5">
+              {/* Jamlanma — 1 dona komponent uchun */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white px-4 py-3.5 text-center">
+                  <p className="text-3xl font-bold text-emerald-700 leading-none">
+                    {new Intl.NumberFormat('uz-UZ', { maximumFractionDigits: 1 }).format(totalGr)}
+                    <span className="text-sm font-semibold text-emerald-500 ml-1">g</span>
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1.5">1 dona uchun jami xom ashyo</p>
+                </div>
+                <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white px-4 py-3.5 text-center">
+                  <p className="text-3xl font-bold text-indigo-700 leading-none">{recipe.length}</p>
+                  <p className="text-xs text-gray-500 mt-1.5">Ingredient turi</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-500 -mt-2">
+                1 dona komponent uchun kerakli xom ashyo miqdori. Ishlab chiqarish tasdiqlanganda ombordan avtomatik ayiriladi.
+              </p>
+
+              {/* Hozirgi retsept */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                  <FlaskConical size={15} className="text-emerald-600" /> Hozirgi retsept
+                </h4>
+                {!recipe.length ? (
+                  <div className="text-center py-8 bg-gray-50 rounded-xl">
+                    <FlaskConical size={30} className="mx-auto mb-2 text-gray-300" />
+                    <p className="text-sm text-gray-400">Hali ingredient qo'shilmagan</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {recipe.map(item => (
+                      <div key={item.raw_material_id} className="flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
+                        <div className="min-w-0">
+                          <div className="font-semibold text-[15px] text-gray-900 truncate">{item.raw_material_name}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {item.note && <span className="mr-2">({item.note})</span>}
+                            ombor: {item.stock_balance} kg
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="text-lg font-bold text-emerald-700 whitespace-nowrap">{item.qty_per_unit} {item.unit}<span className="text-xs font-normal text-gray-400">/dona</span></span>
+                          {canWrite && (
+                            <button
+                              onClick={() => removeRecipeMutation.mutate({ product_id: recipeModal.id, raw_material_id: item.raw_material_id })}
+                              disabled={removeRecipeMutation.isPending}
+                              className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+                              <X size={17} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Ingredient qo'shish */}
+              {canWrite && (
+                <div className="rounded-2xl border border-gray-100 bg-gray-50/60 p-4 space-y-3">
+                  <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><Plus size={15} className="text-emerald-600" /> Ingredient qo'shish</h4>
+                  <select
+                    value={recipeAddForm.raw_material_id}
+                    onChange={e => setRecipeAddForm(f => ({ ...f, raw_material_id: e.target.value }))}
+                    className="select">
+                    <option value="">— Xom ashyo tanlang —</option>
+                    {(rawMats?.raw_materials || []).filter(r => r.is_active !== 0).map(r => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                  <div className="grid grid-cols-[1fr_90px] sm:grid-cols-[130px_90px_1fr] gap-2">
+                    <input
+                      type="number" min="0" step="any"
+                      placeholder="Miqdor"
+                      value={recipeAddForm.qty_per_unit}
+                      onChange={e => setRecipeAddForm(f => ({ ...f, qty_per_unit: e.target.value }))}
+                      onFocus={e => e.target.select()}
+                      className="input" />
+                    <select
+                      value={recipeAddForm.unit}
+                      onChange={e => setRecipeAddForm(f => ({ ...f, unit: e.target.value }))}
+                      className="select">
+                      <option value="g">g</option>
+                      <option value="kg">kg</option>
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Izoh (ixtiyoriy)"
+                      value={recipeAddForm.note}
+                      onChange={e => setRecipeAddForm(f => ({ ...f, note: e.target.value }))}
+                      className="input col-span-2 sm:col-span-1" />
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (!recipeAddForm.raw_material_id) return toast.error('Xom ashyo tanlang');
+                      if (!recipeAddForm.qty_per_unit || parseFloat(recipeAddForm.qty_per_unit) <= 0) return toast.error('Miqdor kiriting');
+                      addRecipeMutation.mutate({
+                        product_id: recipeModal.id,
+                        raw_material_id: recipeAddForm.raw_material_id,
+                        qty_per_unit: parseFloat(recipeAddForm.qty_per_unit),
+                        unit: recipeAddForm.unit,
+                        note: recipeAddForm.note || null,
+                      });
+                    }}
+                    disabled={addRecipeMutation.isPending}
+                    className="w-full py-2.5 rounded-xl font-semibold text-sm text-white bg-emerald-600 hover:bg-emerald-700 flex items-center justify-center gap-2 disabled:opacity-60">
+                    <Plus size={15} /> {addRecipeMutation.isPending ? 'Saqlanmoqda...' : 'Qo\'shish'}
+                  </button>
+                </div>
+              )}
+
+              <div className="flex justify-end">
+                <button onClick={closeRecipe} className="btn-secondary">Yopish</button>
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }

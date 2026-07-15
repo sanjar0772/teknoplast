@@ -727,14 +727,21 @@ export default function ProductsPage({ embedded = false }) {
               </>
             )}
           </div>
-          <div>
-            <label className="label">Xom ashyo</label>
-            <select {...register('raw_material_id')} className="select">
-              <option value="">Tanlang (ixtiyoriy)</option>
-              {rawMats?.raw_materials?.map(rm => (
-                <option key={rm.id} value={rm.id}>{rm.name} ({rm.stock_balance} {rm.unit})</option>
-              ))}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Xom ashyo</label>
+              <select {...register('raw_material_id')} className="select">
+                <option value="">Tanlang (ixtiyoriy)</option>
+                {rawMats?.raw_materials?.map(rm => (
+                  <option key={rm.id} value={rm.id}>{rm.name} ({rm.stock_balance} {rm.unit})</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Og'irligi (gramm/dona)</label>
+              <input {...register('weight')} type="number" min="0" step="0.1" className="input" placeholder="masalan: 55" />
+              <p className="text-xs text-gray-400 mt-1">Ishlab chiqarishda ketgan xom ashyo = dona × og'irlik</p>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

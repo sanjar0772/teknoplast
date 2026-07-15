@@ -421,6 +421,20 @@ export default function ProductionPage() {
 
   const calcEarnings = (entry) => entry.items.reduce((s, item) => s + calcItemEarnings(entry.employee_id, item), 0);
 
+  // Ketgan xom ashyo (kg) = dona × og'irlik(gramm)/1000. Faqat QOLIPLASH bosqichida:
+  // yarim tayyor / komponent / (bir bosqichli tayyor). Ikki bosqichli tayyorlashda syryo ketmaydi.
+  const calcItemRaw = (item) => {
+    const p = prodMap[item.product_id];
+    const qty = parseFloat(item.quantity_produced) || 0;
+    const w = num(p?.weight);
+    if (!p || !p.raw_material_id || w <= 0 || qty <= 0) return 0;
+    const twoStage = num(p.stanokchi_semi_rate) > 0 || num(p.detalchi_rate) > 0;
+    const ptype = item.production_type || 'FINISHED';
+    const molding = ptype === 'SEMI_FINISHED' || ptype === 'KOMPONENT' || (ptype === 'FINISHED' && !twoStage);
+    return molding ? (qty * w) / 1000 : 0;
+  };
+  const totalRawKg = entries.reduce((s, e) => s + e.items.reduce((s2, it) => s2 + calcItemRaw(it), 0), 0);
+
   const saveBulk = () => {
     const valid = entries.flatMap(e =>
       e.items
@@ -1014,13 +1028,21 @@ export default function ProductionPage() {
               })}
             </div>
 
-            {/* Jami hisoblangan maosh */}
+            {/* Jami hisoblangan maosh + ketgan xom ashyo */}
             {entries.length > 0 && (
-              <div className="mt-3 p-3 bg-green-50 rounded-lg flex justify-between items-center">
-                <span className="text-sm text-gray-600">Jami hisoblangan:</span>
-                <span className="font-bold text-green-700 text-lg">
-                  {fmt(entries.reduce((sum, e) => sum + calcEarnings(e), 0))} so'm
-                </span>
+              <div className="mt-3 space-y-2">
+                <div className="p-3 bg-green-50 rounded-lg flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Jami hisoblangan:</span>
+                  <span className="font-bold text-green-700 text-lg">
+                    {fmt(entries.reduce((sum, e) => sum + calcEarnings(e), 0))} so'm
+                  </span>
+                </div>
+                {totalRawKg > 0 && (
+                  <div className="p-3 bg-amber-50 rounded-lg flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Ketgan xom ashyo:</span>
+                    <span className="font-bold text-amber-700 text-lg">≈ {totalRawKg.toFixed(2)} kg</span>
+                  </div>
+                )}
               </div>
             )}
 

@@ -59,6 +59,20 @@ function pieceRate(product, ptype, empType) {
 //  FINISHED      → tayyor ombor (stock_quantity + rang buckets); mahsulot ikki bosqichli bo'lsa
 //                  yarim tayyor ombordan ayiriladi (tayyorlash uchun yarim tayyor sarflanadi).
 //  KOMPONENT/boshqa → tayyor stock (mavjud xatti-harakat).
+// Ishlab chiqarilgan (qoliplangan) dona uchun ketgan xom ashyoni hisoblab, syryo zaxiradan ayiradi.
+// moldedQty > 0 → zaxira kamayadi (ishlab chiqarildi); < 0 → tiklanadi (qaytarish/o'chirish).
+// Xom ashyo (kg) = dona × og'irlik(gramm) / 1000.
+async function consumeRawMaterial(cq, product_id, moldedQty) {
+  if (!moldedQty) return;
+  const pr = await cq('SELECT raw_material_id, weight FROM products WHERE id=$1', [product_id]);
+  const p = pr.rows[0];
+  if (!p || !p.raw_material_id) return;
+  const w = parseFloat(p.weight) || 0; // gramm/dona
+  if (w <= 0) return;
+  const kg = (moldedQty * w) / 1000;
+  await cq("UPDATE raw_materials SET stock_balance = GREATEST(0, stock_balance - $1), last_used_date = date('now'), updated_at=NOW() WHERE id=$2", [kg, p.raw_material_id]);
+}
+
 async function applyStockEffect(cq, { product_id, quantity_produced, production_type, rang }, sign) {
   const qty = parseFloat(quantity_produced) || 0;
   if (!product_id || qty <= 0) return;
@@ -67,19 +81,25 @@ async function applyStockEffect(cq, { product_id, quantity_produced, production_
 
   if (ptype === 'SEMI_FINISHED') {
     await cq('UPDATE products SET semi_stock_quantity = GREATEST(0, COALESCE(semi_stock_quantity,0) + $1), updated_at=NOW() WHERE id=$2', [q, product_id]);
+    await consumeRawMaterial(cq, product_id, q); // qoliplash bosqichi — syryo sarflandi
     return;
   }
   if (ptype === 'FINISHED') {
     if (await productIsTwoStage(cq, product_id)) {
+      // Tayyorlash (finishing) — yangi qoliplash yo'q, syryo sarflanmaydi; yarim ombordan oladi
       await cq('UPDATE products SET semi_stock_quantity = GREATEST(0, COALESCE(semi_stock_quantity,0) - $1), updated_at=NOW() WHERE id=$2', [q, product_id]);
+    } else {
+      // Bir bosqichli — to'g'ridan-to'g'ri qoliplash, syryo sarflandi
+      await consumeRawMaterial(cq, product_id, q);
     }
     await cq('UPDATE products SET stock_quantity = GREATEST(0, stock_quantity + $1), updated_at=NOW() WHERE id=$2', [q, product_id]);
     await addColorStock(cq, product_id, rang, q);
     return;
   }
-  // KOMPONENT yoki boshqa
+  // KOMPONENT yoki boshqa — qoliplash
   await cq('UPDATE products SET stock_quantity = GREATEST(0, stock_quantity + $1), updated_at=NOW() WHERE id=$2', [q, product_id]);
   await addColorStock(cq, product_id, rang, q);
+  await consumeRawMaterial(cq, product_id, q);
 }
 
 // GET /api/production — kunlik ishlab chiqarish

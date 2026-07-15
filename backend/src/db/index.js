@@ -935,6 +935,8 @@ if (USE_PG) {
       `ALTER TABLE products ADD COLUMN cost_price REAL DEFAULT 0`,
       // Yarim tayyor (ishlab chiqarish ombori) zaxirasi — tayyor stock_quantity'dan alohida
       `ALTER TABLE products ADD COLUMN semi_stock_quantity REAL DEFAULT 0`,
+      // Mahsulot og'irligi (gramm/dona) — ishlab chiqarishda ketgan xom ashyoni hisoblash uchun
+      `ALTER TABLE products ADD COLUMN weight REAL DEFAULT 0`,
       `ALTER TABLE employee_production ADD COLUMN production_type TEXT DEFAULT 'FINISHED'`,
       `ALTER TABLE employee_production ADD COLUMN recorded_by TEXT REFERENCES users(id)`,
       `ALTER TABLE employee_production ADD COLUMN recorded_at TEXT`,

@@ -480,8 +480,8 @@ router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI', 'SALES_HEAD
     // Filial foydalanuvchisi yaratsa — mahsulot o'sha filialniki (branch_id); zavod bo'lsa NULL.
     const branchId = req.user.branch_id || null;
     const result = await query(
-      'INSERT INTO products (name, type, description, price, cost_price, is_resale, daily_production, stock_quantity, raw_material_id, unit, rang, kind, created_at, branch_id, supplier_customer_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
-      [name, type, description, price, costPrice, isResale, daily_production || 0, initStock, raw_material_id || null, unit || 'dona', rang || null, kind === 'KOMPONENT' ? 'KOMPONENT' : 'TAYYOR', createdAt, branchId, supplierId]
+      'INSERT INTO products (name, type, description, price, cost_price, is_resale, daily_production, stock_quantity, raw_material_id, unit, rang, kind, created_at, branch_id, supplier_customer_id, weight) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *',
+      [name, type, description, price, costPrice, isResale, daily_production || 0, initStock, raw_material_id || null, unit || 'dona', rang || null, kind === 'KOMPONENT' ? 'KOMPONENT' : 'TAYYOR', createdAt, branchId, supplierId, parseFloat(req.body.weight) || 0]
     );
     // Boshlang'ich ombor bo'lsa — mahsulotning O'Z rangi buketiga ham yozamiz
     // (aks holda umumiy qoldiq bor, lekin rang bo'yicha sotib bo'lmaydigan "fantom ombor" hosil bo'ladi)
@@ -687,12 +687,13 @@ router.put('/:id', requireRole('OWNER', 'PRODUCTION_HEAD', 'SALES_HEAD'), async 
       const scope = req.user.branch_id || null;
       // MUHIM: SQLite adapter $N ni ko'rinish tartibida ? ga almashtiradi — parametrlar
       // SQL'dagi ko'rinish tartibida bo'lishi shart.
-      const updParams = [name, type, description, price, daily_production, newStock, raw_material_id, unit, is_active, rang || null, costPrice, isResale, supplierId, createdAt, req.params.id];
-      let whereCond = 'id=$15';
-      if (scope) { updParams.push(scope); whereCond += ' AND branch_id=$16'; }
+      const weight = parseFloat(req.body.weight) || 0;
+      const updParams = [name, type, description, price, daily_production, newStock, raw_material_id, unit, is_active, rang || null, costPrice, isResale, supplierId, createdAt, weight, req.params.id];
+      let whereCond = 'id=$16';
+      if (scope) { updParams.push(scope); whereCond += ' AND branch_id=$17'; }
       else { whereCond += ' AND branch_id IS NULL'; }
       const result = await client.query(
-        `UPDATE products SET name=$1,type=$2,description=$3,price=$4,daily_production=$5,stock_quantity=$6,raw_material_id=$7,unit=$8,is_active=$9,rang=$10,cost_price=$11,is_resale=$12,supplier_customer_id=$13,created_at=COALESCE($14, created_at),updated_at=NOW() WHERE ${whereCond} RETURNING *`,
+        `UPDATE products SET name=$1,type=$2,description=$3,price=$4,daily_production=$5,stock_quantity=$6,raw_material_id=$7,unit=$8,is_active=$9,rang=$10,cost_price=$11,is_resale=$12,supplier_customer_id=$13,created_at=COALESCE($14, created_at),weight=$15,updated_at=NOW() WHERE ${whereCond} RETURNING *`,
         updParams
       );
       if (!result.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Mahsulot topilmadi' }); }

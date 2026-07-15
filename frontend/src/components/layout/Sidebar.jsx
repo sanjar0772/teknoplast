@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   LayoutDashboard, ShoppingCart, Receipt, Users, Factory,
   Banknote, Package, Warehouse, Cog, FileBarChart, Bot,
-  LogOut, ChevronRight, UserSquare2, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X, Sparkles, ShoppingBag, Boxes, History, RotateCcw, Scale, Store, MapPin
+  LogOut, ChevronRight, UserSquare2, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X, Sparkles, ShoppingBag, Boxes, History, RotateCcw, Scale, Store, MapPin, Recycle
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { authAPI } from '../../services/api';
@@ -43,6 +43,7 @@ const NAV_ITEMS = [
   { to: '/quick-sale', icon: ShoppingBag,     label: 'Savdo qilish',     roles: ['OWNER','ACCOUNTANT','SALES_HEAD','AGENT'] },
   { to: '/inventory',  icon: Warehouse,       label: 'Ombor',            roles: ['OWNER','ACCOUNTANT','PRODUCTION_HEAD','KIRIMCHI','OMBORCHI','TAMINOTCHI','SALES_HEAD'] },
   { to: '/machines',   icon: Cog,             label: 'Mashinalar',       roles: ['OWNER','PRODUCTION_HEAD','CYCLE_TIME','KIRIMCHI'] },
+  { to: '/drobilka',   icon: Recycle,         label: 'Drobilka',         roles: ['OWNER','PRODUCTION_HEAD','CYCLE_TIME','KIRIMCHI'] },
   { to: '/branches',   icon: Store,           label: 'Filiallar',        roles: ['OWNER'] },
   // Tarozi — asosiy tizimda TAMINOTCHI chek chiqaradi; EGA cheklarni ko'radi
   { to: '/tarozi',        icon: Scale,        label: 'Tarozi',           roles: ['OWNER','TAMINOTCHI'] },

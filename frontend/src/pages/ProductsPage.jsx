@@ -7,6 +7,7 @@ import clsx from 'clsx';
 import { productsAPI, customersAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 import { RANGLAR, RANG_COLORS } from '../constants/colors';
+import { parseSom } from '../utils/money';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
@@ -694,7 +695,7 @@ export default function ProductsPage({ embedded = false }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Narxi (so'm) *</label>
-              <input {...register('price', { required: true, setValueAs: v => parseFloat(String(v).replace(/\s/g,'').replace(/,/g,'')) || 0 })} type="text" inputMode="decimal" className="input" placeholder="masalan: 15 000" />
+              <input {...register('price', { required: true, setValueAs: parseSom })} type="text" inputMode="numeric" className="input" placeholder="masalan: 15 000" />
             </div>
             <div>
               <label className="label">Boshlang'ich ombor</label>
@@ -710,7 +711,7 @@ export default function ProductsPage({ embedded = false }) {
               <>
                 <div>
                   <label className="label">Kelish narxi (so'm) — biz to'laymiz</label>
-                  <input {...register('cost_price', { setValueAs: v => parseFloat(String(v).replace(/\s/g,'').replace(/,/g,'')) || 0 })} type="text" inputMode="decimal" className="input" placeholder="masalan: 10 000" />
+                  <input {...register('cost_price', { setValueAs: parseSom })} type="text" inputMode="numeric" className="input" placeholder="masalan: 10 000" />
                   <p className="text-xs text-amber-700 mt-1">Yuqoridagi "Narxi" — biz sotadigan narx (ustiga qo'yib).</p>
                 </div>
                 <div>

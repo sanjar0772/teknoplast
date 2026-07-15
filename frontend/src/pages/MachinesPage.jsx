@@ -854,6 +854,131 @@ function RegimeModal({ machine, canWrite, onClose }) {
   );
 }
 
+// Ishga tushirishdan OLDIN — chiqarilayotgan mahsulot, kalip va stanok sozlamalarini
+// so'raydigan oyna. To'ldirish IXTIYORIY (bo'sh qoldirsa ham ishga tushadi), lekin har
+// safar so'rab turadi — egasi ma'lumotlarni yangilashni unutmasligi uchun.
+function StartProductionModal({ machine, canWrite, onStart, onAssignMold, starting, onClose }) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({});
+  const [dirty, setDirty] = useState(false);
+  const [savingThenStart, setSavingThenStart] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['machine-regime', machine.id],
+    queryFn: () => machinesAPI.getRegime(machine.id).then(r => r.data),
+  });
+  useEffect(() => {
+    const rg = data?.regime; const f = {};
+    Object.keys(REGIME_LABELS).forEach(k => { f[k] = rg?.[k] ?? ''; });
+    setForm(f); setDirty(false);
+  }, [data]);
+  const set = (k, v) => { setForm(f => ({ ...f, [k]: v })); setDirty(true); };
+
+  const saveMut = useMutation({
+    mutationFn: () => machinesAPI.saveRegime(machine.id, form),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['machine-regime', machine.id] });
+      qc.invalidateQueries({ queryKey: ['machine-regimes'] });
+    },
+  });
+
+  const hasMold = !!machine.current_mold_id;
+  const productName = machine.current_product_name || machine.current_mold_product_name;
+  const filledCount = Object.values(form).filter(v => String(v ?? '').trim() !== '').length;
+
+  const doStart = async () => {
+    if (canWrite && dirty) {
+      setSavingThenStart(true);
+      try { await saveMut.mutateAsync(); toast.success('Sozlamalar saqlandi'); }
+      catch { /* saqlanmasa ham ishga tushiramiz — ixtiyoriy */ }
+      setSavingThenStart(false);
+    }
+    onStart(machine);
+  };
+
+  const busy = starting || savingThenStart;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-10 overflow-y-auto">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg my-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h3 className="font-bold flex items-center gap-2 text-emerald-700"><Play size={18} fill="currentColor" /> Ishga tushirish — {machine.name}</h3>
+          <button onClick={onClose}><X size={20} className="text-gray-400" /></button>
+        </div>
+
+        <div className="px-6 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+          {/* Kalip + mahsulot ma'lumotlari */}
+          <div className={`rounded-xl border px-4 py-3 ${hasMold ? 'bg-indigo-50 border-indigo-100' : 'bg-amber-50 border-amber-200'}`}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-wide text-gray-400 flex items-center gap-1"><Layers size={11} /> Kalip / Mahsulot</p>
+                {hasMold ? (
+                  <>
+                    <p className="text-sm font-bold text-indigo-800 truncate mt-0.5">{machine.current_mold_name}{machine.current_mold_location ? ` · ${machine.current_mold_location}` : ''}</p>
+                    {productName && <p className="text-[13px] text-emerald-700 truncate">🏷 {productName}</p>}
+                  </>
+                ) : (
+                  <p className="text-sm font-semibold text-amber-700 mt-0.5">Kalip belgilanmagan</p>
+                )}
+              </div>
+              {canWrite && (
+                <button onClick={() => onAssignMold(machine)}
+                  className="btn-sm bg-white text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 py-1.5 shrink-0 flex items-center gap-1">
+                  <Layers size={13} /> {hasMold ? 'Almashtirish' : 'Belgilash'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Stanok sozlamalari (texnologik rejim) — ixtiyoriy */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-600 flex items-center gap-1.5"><Gauge size={13} className="text-teal-500" /> Stanok sozlamalari</p>
+              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${filledCount > 0 ? 'bg-teal-50 text-teal-700' : 'bg-gray-100 text-gray-400'}`}>
+                {filledCount > 0 ? `${filledCount} ta to'ldirilgan` : "ixtiyoriy — to'ldirilmagan"}
+              </span>
+            </div>
+            {isLoading ? (
+              <div className="py-6 text-center text-gray-400 text-sm">Yuklanmoqda...</div>
+            ) : (
+              <div className="space-y-3">
+                {REGIME_GROUPS.map(g => (
+                  <div key={g.title}>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">{g.title}</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {g.keys.map(k => (
+                        <div key={k}>
+                          <label className="block text-[10px] text-gray-500 mb-0.5">{REGIME_LABELS[k]}</label>
+                          <input
+                            value={form[k] ?? ''}
+                            onChange={e => set(k, e.target.value)}
+                            disabled={!canWrite}
+                            className="input py-1.5 text-sm disabled:bg-gray-50 disabled:text-gray-500"
+                            placeholder="—"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-100 flex gap-2">
+          <button onClick={onClose} className="btn-secondary flex-1" disabled={busy}>Bekor</button>
+          <button onClick={doStart} disabled={busy}
+            className="flex-[2] flex items-center justify-center gap-2 rounded-xl py-2.5 font-semibold text-sm bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm disabled:opacity-60">
+            <Play size={16} fill="currentColor" /> {busy ? 'Boshlanmoqda...' : (canWrite && dirty ? 'Saqlab ishga tushirish' : 'Ishga tushirish')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Bitta qolip (kalip) texnologik rejimini ko'rish/tahrirlash — yangi oynada
 // (rejim qolipga tegishli: qaysi stanokka o'rnatilsa ham bir xil parametrlar bilan chiqadi)
 function MoldRegimeModal({ mold, canWrite, onClose }) {
@@ -1407,6 +1532,7 @@ export default function MachinesPage() {
   const [pageScanOpen, setPageScanOpen] = useState(false); // sahifa darajasidagi stanok QR skaneri
   const [pageScanManual, setPageScanManual] = useState('');
   const [statusFilter, setStatusFilter] = useState('');   // yuqoridagi holat kartasi bosilganda filtr
+  const [startFor, setStartFor] = useState(null);         // ishga tushirishdan oldin sozlama so'rash modali
   const pageScannerRef = useRef(null);
 
   const stopPageScan = () => {
@@ -1454,7 +1580,7 @@ export default function MachinesPage() {
     setHubMachine(null);
     if (key === 'toggle') {
       if (m.is_running) { setPauseInitialKind('NOSOZ'); setPauseFor(m); }
-      else runningMutation.mutate({ id: m.id, is_running: 1 });
+      else setStartFor(m);
     } else if (key === 'kalip-assign') {
       setMoldAssignFor(m);
     } else if (key === 'shift') {
@@ -1795,7 +1921,7 @@ export default function MachinesPage() {
                 {/* Ishga tushirish / to'xtatish — asosiy amal */}
                 {canWrite && (
                   <button
-                    onClick={() => { if (m.is_running) { setPauseInitialKind('NOSOZ'); setPauseFor(m); } else { runningMutation.mutate({ id: m.id, is_running: 1 }); } }}
+                    onClick={() => { if (m.is_running) { setPauseInitialKind('NOSOZ'); setPauseFor(m); } else { setStartFor(m); } }}
                     disabled={runningMutation.isPending}
                     className={`mt-4 w-full flex items-center justify-center gap-2 rounded-xl py-2.5 font-semibold text-sm transition ${
                       m.is_running
@@ -2020,6 +2146,17 @@ export default function MachinesPage() {
           machine={machines.find(x => x.id === regimeFor.id) || regimeFor}
           canWrite={canWrite}
           onClose={() => setRegimeFor(null)}
+        />
+      )}
+
+      {startFor && (
+        <StartProductionModal
+          machine={machines.find(x => x.id === startFor.id) || startFor}
+          canWrite={canWrite}
+          starting={runningMutation.isPending}
+          onAssignMold={(m) => { setStartFor(null); setMoldAssignFor(m); }}
+          onStart={(m) => { runningMutation.mutate({ id: m.id, is_running: 1 }); setStartFor(null); }}
+          onClose={() => setStartFor(null)}
         />
       )}
 

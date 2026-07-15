@@ -1062,6 +1062,8 @@ if (USE_PG) {
       )`,
       // Brak siryo — har bir mahsulot qatorida nechi kg xom ashyo brak bo'lgani (ixtiyoriy)
       `ALTER TABLE employee_production ADD COLUMN brak_kg REAL DEFAULT 0`,
+      // Stanok ishga tushgan vaqt — "qachondan beri ishlayapti" jonli hisoblagich uchun
+      `ALTER TABLE machines ADD COLUMN run_started_at TEXT`,
     ];
     for (const m of migrations) {
       try {

@@ -217,7 +217,7 @@ router.put('/:id/running', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME',
       // Play — ochiq to'xtash yozuvini yopib, holatni WORKING qilamiz
       await query('UPDATE machine_downtime SET ended_at=NOW() WHERE machine_id=$1 AND ended_at IS NULL', [id]);
       const r = await query(
-        "UPDATE machines SET is_running=1, status='WORKING', updated_at=NOW() WHERE id=$1 RETURNING *", [id]
+        "UPDATE machines SET is_running=1, status='WORKING', run_started_at=NOW(), updated_at=NOW() WHERE id=$1 RETURNING *", [id]
       );
       if (!r.rows.length) return res.status(404).json({ error: 'Mashina topilmadi' });
       return res.json({ machine: r.rows[0] });
@@ -244,11 +244,11 @@ router.put('/:id/running', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME',
 
     let upd;
     if (machineStatus) {
-      upd = await query('UPDATE machines SET is_running=0, status=$1, updated_at=NOW() WHERE id=$2 RETURNING *', [machineStatus, id]);
+      upd = await query('UPDATE machines SET is_running=0, run_started_at=NULL, status=$1, updated_at=NOW() WHERE id=$2 RETURNING *', [machineStatus, id]);
     } else if (pauseKind === 'QOLIP') {
-      upd = await query('UPDATE machines SET is_running=0, current_product_id=$1, updated_at=NOW() WHERE id=$2 RETURNING *', [moldProductId, id]);
+      upd = await query('UPDATE machines SET is_running=0, run_started_at=NULL, current_product_id=$1, updated_at=NOW() WHERE id=$2 RETURNING *', [moldProductId, id]);
     } else {
-      upd = await query('UPDATE machines SET is_running=0, updated_at=NOW() WHERE id=$1 RETURNING *', [id]);
+      upd = await query('UPDATE machines SET is_running=0, run_started_at=NULL, updated_at=NOW() WHERE id=$1 RETURNING *', [id]);
     }
     if (!upd.rows.length) return res.status(404).json({ error: 'Mashina topilmadi' });
 

@@ -69,7 +69,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'mahsulot-ogirlik-syryo-hisob', commit: 'v203' });
+  res.json({ version: 'xom-ashyo-seed-qoshildi', commit: 'v204' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)
@@ -173,6 +173,11 @@ require('./services/taroziSchema')
 require('./services/inventoryAudit')
   .ensureInventoryAuditSchema()
   .catch(e => console.error('Inventory audit init xato:', e.message));
+
+// Xom ashyo turlarini avtomatik yuklash (faqat bir marta, jadval bo'sh bo'lsa)
+require('./services/rawMaterialSeed')
+  .ensureRawMaterialSeed()
+  .catch(e => console.error('Raw material seed xato:', e.message));
 
 // Texno Innovator 2026 prayslistini avtomatik yuklash (faqat bir marta, sentinel bilan himoyalangan)
 require('./services/pricelistSeed')

@@ -167,35 +167,36 @@ export default function DrobilkaPage() {
         </div>
       )}
 
-      {/* Drobilka ombori — maydalangan material rang bo'yicha */}
+      {/* Drobilka ombori — kelgan (kutayotgan) brak rang bo'yicha = asosiy ombor */}
       <div className="card">
-        <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-          <Package size={16} className="text-emerald-600" /> Drobilka ombori
-          <span className="text-xs font-normal text-gray-400">— maydalangan material (qayta ishlashga tayyor)</span>
+        <p className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
+          <Package size={16} className="text-amber-600" /> Drobilka ombori
+          <span className="text-xs font-normal text-gray-400">— rang bo'yicha brak (maydalashni kutayotgan)</span>
         </p>
-        {!ombor.length ? (
-          <p className="text-center text-gray-400 py-6 text-sm">Ombor bo'sh — hali material maydalanmagan</p>
+        <p className="text-[11px] text-gray-400 mb-3">Kunlik kiritishda yozilgan brak shu yerga avtomatik tushadi.</p>
+        {!kutayotganByColor.length ? (
+          <p className="text-center text-gray-400 py-6 text-sm">Ombor bo'sh — hali brak tushmagan</p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-            {ombor.map(c => (
-              <div key={c.rang || 'none'} className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2.5 flex items-center gap-2">
-                <span style={{ display:'inline-block', width:16, height:16, borderRadius:'50%', flexShrink:0, background: RANG_COLORS[c.rang] || '#cbd5e1', border:'1px solid #ccc' }} />
+            {kutayotganByColor.map(c => (
+              <div key={c.rang || 'none'} className="rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-3 flex items-center gap-2.5">
+                <span style={{ display:'inline-block', width:18, height:18, borderRadius:'50%', flexShrink:0, background: RANG_COLORS[c.rang] || '#cbd5e1', border:'1px solid #ccc' }} />
                 <div className="min-w-0">
-                  <p className="text-sm font-bold text-emerald-700 leading-none">{kgFmt(c.maydalangan)} <span className="text-[11px] font-normal text-gray-500">kg</span></p>
+                  <p className="text-lg font-bold text-amber-700 leading-none">{kgFmt(c.kutayotgan)} <span className="text-[11px] font-normal text-gray-500">kg</span></p>
                   <p className="text-[11px] text-gray-500 truncate mt-0.5">{rangLabel(c.rang)}</p>
                 </div>
               </div>
             ))}
           </div>
         )}
-        {kutayotganByColor.length > 0 && (
+        {ombor.length > 0 && (
           <div className="mt-4 pt-3 border-t border-gray-100">
-            <p className="text-xs font-semibold text-amber-600 mb-2">Maydalashni kutayotgan brak (rang bo'yicha)</p>
+            <p className="text-xs font-semibold text-emerald-600 mb-2 flex items-center gap-1"><Recycle size={12} /> Maydalangan material (qayta ishlashga tayyor)</p>
             <div className="flex flex-wrap gap-2">
-              {kutayotganByColor.map(c => (
-                <span key={c.rang || 'none'} className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+              {ombor.map(c => (
+                <span key={c.rang || 'none'} className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
                   <span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background: RANG_COLORS[c.rang] || '#cbd5e1', border:'1px solid #ccc' }} />
-                  {rangLabel(c.rang)}: {kgFmt(c.kutayotgan)} kg
+                  {rangLabel(c.rang)}: {kgFmt(c.maydalangan)} kg
                 </span>
               ))}
             </div>

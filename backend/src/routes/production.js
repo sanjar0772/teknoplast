@@ -505,6 +505,19 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async 
             brak_kg: entry.brak_kg,
           });
           results.push(production);
+
+          // Brak (kg) kiritilgan bo'lsa — avtomatik drobilkaga TOPSHIRISH bo'lib tushadi
+          // (o'sha mahsulot rangi bilan). Shunda drobilka omborida "kutayotgan brak" ko'rinadi.
+          const brak = parseFloat(entry.brak_kg) || 0;
+          if (brak > 0) {
+            await client.query(
+              `INSERT INTO drobilka_entries
+                (entry_type, kg, rang, product_id, machine_id, employee_id, note, entry_date, created_by, branch_id)
+               VALUES ('TOPSHIRISH',$1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+              [brak, entry.rang || null, entry.product_id || null, entry.machine_id || null,
+               employee_id, 'Kunlik kiritishdan (brak)', production_date, req.user.id, req.user.branch_id || null]
+            );
+          }
         }
       }
       await client.query('COMMIT');

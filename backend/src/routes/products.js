@@ -577,13 +577,15 @@ router.post('/bulk-delete', requireRole('OWNER'), async (req, res, next) => {
         // Barcha FK bog'lanishlarni tozalash
         await query('UPDATE employee_production SET product_id=NULL WHERE product_id=$1', [id]);
         await query('UPDATE molds SET product_id=NULL WHERE product_id=$1', [id]);
+        await query('UPDATE drobilka_entries SET product_id=NULL WHERE product_id=$1', [id]).catch(() => {});
         await query('DELETE FROM machine_cycle_times WHERE product_id=$1', [id]);
         await query('DELETE FROM intake_items WHERE product_id=$1', [id]);
+        await query('DELETE FROM branch_stock WHERE product_id=$1', [id]).catch(() => {});
+        await query('DELETE FROM branch_transfers WHERE product_id=$1', [id]).catch(() => {});
         await query('DELETE FROM product_bom WHERE component_id=$1 OR product_id=$1', [id]);
         await query('DELETE FROM product_color_stock WHERE product_id=$1', [id]);
         await query('DELETE FROM product_recipes WHERE product_id=$1', [id]);
         if (salesCount > 0) {
-          // Sotuv to'lovlarini ham o'chirish (force mode)
           await query('DELETE FROM payments WHERE sale_id IN (SELECT id FROM sales WHERE product_id=$1)', [id]);
           await query('DELETE FROM sale_returns WHERE sale_id IN (SELECT id FROM sales WHERE product_id=$1)', [id]).catch(() => {});
           await query('DELETE FROM sales WHERE product_id=$1', [id]);

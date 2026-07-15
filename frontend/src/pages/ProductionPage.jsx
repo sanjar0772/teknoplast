@@ -209,7 +209,7 @@ export default function ProductionPage() {
   const machineMap = {};
   (machinesData?.machines || []).forEach(m => { machineMap[m.id] = m; });
 
-  const newItem = () => ({ prodSearch: '', product_id: '', production_type: 'FINISHED', tarif: '', quantity_produced: '', rang: '' });
+  const newItem = () => ({ prodSearch: '', product_id: '', production_type: 'FINISHED', tarif: '', quantity_produced: '', rang: '', brak_kg: '' });
 
   const addEntry = () => {
     setEntries(prev => [...prev, { employee_id: '', items: [newItem()] }]);
@@ -435,6 +435,7 @@ export default function ProductionPage() {
             quantity_produced: parseFloat(item.quantity_produced),
             daily_tariff: item.tarif !== '' ? parseFloat(item.tarif) : undefined,
             rang: item.rang || null,
+            brak_kg: item.brak_kg !== '' ? parseFloat(item.brak_kg) : 0,
           };
         })
     );
@@ -880,12 +881,13 @@ export default function ProductionPage() {
               {/* Sarlavha */}
               <div className="flex gap-2 text-xs text-gray-400 font-medium px-1 ml-2">
                 <span className="w-48 shrink-0">Xodim</span>
-                <div className="grid grid-cols-12 gap-2 flex-1">
+                <div className="grid grid-cols-13 gap-2 flex-1" style={{gridTemplateColumns:'repeat(13,minmax(0,1fr))'}}>
                   <span className="col-span-3">Mahsulot</span>
                   <span className="col-span-2">Rang</span>
                   <span className="col-span-2">Tur</span>
                   <span className="col-span-2 text-blue-500">Tarif</span>
                   <span className="col-span-2">Dona</span>
+                  <span className="col-span-1 text-red-400">Brak kg</span>
                   <span className="col-span-1"></span>
                 </div>
               </div>
@@ -922,7 +924,8 @@ export default function ProductionPage() {
                     {/* Mahsulotlar */}
                     <div className="space-y-1 ml-2">
                       {entry.items.map((item, j) => (
-                        <div key={j} className="grid grid-cols-12 gap-2 items-center">
+                        <div key={j} className="grid gap-2 items-center" style={{gridTemplateColumns:'repeat(13,minmax(0,1fr))'}}>
+
                           {/* Mahsulot */}
                           <div className="col-span-3">
                             <input
@@ -985,6 +988,16 @@ export default function ProductionPage() {
                               onChange={e => updateItem(i, j, 'quantity_produced', e.target.value)}
                               onFocus={e => e.target.select()}
                               className="input text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                            />
+                          </div>
+                          {/* Brak kg — ixtiyoriy */}
+                          <div className="col-span-1">
+                            <input
+                              type="number" min="0" step="0.1" placeholder="0"
+                              value={item.brak_kg}
+                              onChange={e => updateItem(i, j, 'brak_kg', e.target.value)}
+                              onFocus={e => e.target.select()}
+                              className="input text-sm border-red-200 focus:border-red-400 [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
                             />
                           </div>
                           {/* O'chirish */}

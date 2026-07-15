@@ -12,16 +12,16 @@ router.use(authenticate);
 // PENDING sifatida saqlaydi — omborga qo'SHILMAYDI (tasdiqlashdan keyin qo'shiladi)
 async function insertProductionRow(client, {
   employee_id, product_id, machine_id, production_date,
-  quantity_produced, daily_tariff, calculated_amount, month, notes, production_type, rang,
+  quantity_produced, daily_tariff, calculated_amount, month, notes, production_type, rang, brak_kg,
 }) {
   const r = await client.query(
     `INSERT INTO employee_production
       (employee_id, product_id, machine_id, production_date, quantity_produced, daily_tariff,
-       calculated_amount, month, notes, production_type, rang, approval_status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'PENDING') RETURNING *`,
+       calculated_amount, month, notes, production_type, rang, approval_status, brak_kg)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'PENDING',$12) RETURNING *`,
     [employee_id, product_id || null, machine_id || null, production_date,
      quantity_produced, daily_tariff, calculated_amount, month, notes || null,
-     production_type || 'FINISHED', rang || null]
+     production_type || 'FINISHED', rang || null, parseFloat(brak_kg) || 0]
   );
   // Stock PENDING da qo'SHILMAYDI — faqat tasdiqlangandan keyin qo'shiladi
   return r.rows[0];
@@ -459,6 +459,7 @@ router.post('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'KIRIMCHI'), async 
             machine_id: entry.machine_id, production_date,
             quantity_produced: entry.quantity_produced, daily_tariff,
             calculated_amount, month, notes: entry.notes, production_type: ptype, rang: entry.rang,
+            brak_kg: entry.brak_kg,
           });
           results.push(production);
         }

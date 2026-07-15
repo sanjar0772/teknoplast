@@ -1060,6 +1060,8 @@ if (USE_PG) {
         updated_at TEXT DEFAULT (datetime('now')),
         UNIQUE(mold_id)
       )`,
+      // Brak siryo — har bir mahsulot qatorida nechi kg xom ashyo brak bo'lgani (ixtiyoriy)
+      `ALTER TABLE employee_production ADD COLUMN brak_kg REAL DEFAULT 0`,
     ];
     for (const m of migrations) {
       try {

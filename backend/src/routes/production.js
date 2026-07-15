@@ -64,13 +64,35 @@ function pieceRate(product, ptype, empType) {
 // Xom ashyo (kg) = dona × og'irlik(gramm) / 1000.
 async function consumeRawMaterial(cq, product_id, moldedQty) {
   if (!moldedQty) return;
+
+  // Retsept bo'lsa — har bir ingredientdan ayir
+  const rec = await cq(
+    'SELECT raw_material_id, qty_per_unit, unit FROM product_recipes WHERE product_id=$1',
+    [product_id]
+  );
+  if (rec.rows.length > 0) {
+    for (const ing of rec.rows) {
+      const perUnit = parseFloat(ing.qty_per_unit) || 0;
+      if (perUnit <= 0) continue;
+      const kg = ing.unit === 'kg' ? moldedQty * perUnit : (moldedQty * perUnit) / 1000;
+      if (kg > 0) {
+        await cq(
+          "UPDATE raw_materials SET stock_balance=GREATEST(0,stock_balance-$1), last_used_date=date('now'), updated_at=NOW() WHERE id=$2",
+          [kg, ing.raw_material_id]
+        );
+      }
+    }
+    return;
+  }
+
+  // Eski usul: bitta raw_material_id + weight (gramm)
   const pr = await cq('SELECT raw_material_id, weight FROM products WHERE id=$1', [product_id]);
   const p = pr.rows[0];
   if (!p || !p.raw_material_id) return;
-  const w = parseFloat(p.weight) || 0; // gramm/dona
+  const w = parseFloat(p.weight) || 0;
   if (w <= 0) return;
   const kg = (moldedQty * w) / 1000;
-  await cq("UPDATE raw_materials SET stock_balance = GREATEST(0, stock_balance - $1), last_used_date = date('now'), updated_at=NOW() WHERE id=$2", [kg, p.raw_material_id]);
+  await cq("UPDATE raw_materials SET stock_balance=GREATEST(0,stock_balance-$1), last_used_date=date('now'), updated_at=NOW() WHERE id=$2", [kg, p.raw_material_id]);
 }
 
 async function applyStockEffect(cq, { product_id, quantity_produced, production_type, rang }, sign) {

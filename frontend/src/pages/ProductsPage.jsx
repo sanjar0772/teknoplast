@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Package, DollarSign, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory, Calendar, CheckSquare, Square, FileText, FileSpreadsheet, Trash2 } from 'lucide-react';
+import { Plus, X, Package, DollarSign, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory, Calendar, CheckSquare, Square, FileText, FileSpreadsheet, Trash2, FlaskConical } from 'lucide-react';
 import clsx from 'clsx';
 import { productsAPI, customersAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
@@ -192,6 +192,8 @@ export default function ProductsPage({ embedded = false }) {
   const [pricingForm, setPricingForm] = useState({ stanokchi_rate: 0, stanokchi_semi_rate: 0, detalchi_rate: 0 });
   const [bomModal, setBomModal] = useState(null); // { id, name } — tarkibni boshqarish
   const [bomAddForm, setBomAddForm] = useState({ component_id: '', qty: 1 });
+  const [recipeModal, setRecipeModal] = useState(null); // { id, name } — retsept
+  const [recipeAddForm, setRecipeAddForm] = useState({ raw_material_id: '', qty_per_unit: '', unit: 'g', note: '' });
   const [historyProduct, setHistoryProduct] = useState(null); // tarix modal
   const [deleteTarget, setDeleteTarget] = useState(null); // o'chirish tasdig'i: mahsulot yoki { bulk: true }
   const [search, setSearch] = useState(''); // mahsulot qidiruv
@@ -291,6 +293,30 @@ export default function ProductsPage({ embedded = false }) {
     queryKey: ['product-bom', bomModal?.id],
     queryFn: () => productsAPI.getBom(bomModal.id).then(r => r.data),
     enabled: !!bomModal,
+  });
+
+  // Retsept (xom ashyo tarkibi)
+  const { data: recipeData } = useQuery({
+    queryKey: ['product-recipe', recipeModal?.id],
+    queryFn: () => productsAPI.getRecipe(recipeModal.id).then(r => r.data),
+    enabled: !!recipeModal,
+  });
+  const addRecipeMutation = useMutation({
+    mutationFn: ({ product_id, ...data }) => productsAPI.addRecipeItem(product_id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['product-recipe', recipeModal?.id] });
+      setRecipeAddForm({ raw_material_id: '', qty_per_unit: '', unit: 'g', note: '' });
+      toast.success('Ingredient qo\'shildi');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
+  });
+  const removeRecipeMutation = useMutation({
+    mutationFn: ({ product_id, raw_material_id }) => productsAPI.removeRecipeItem(product_id, raw_material_id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['product-recipe', recipeModal?.id] });
+      toast.success('Olib tashlandi');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
 
   const addBomMutation = useMutation({
@@ -658,6 +684,12 @@ export default function ProductsPage({ embedded = false }) {
                   <Layers size={13} /> Tarkib (komponentlar)
                 </button>
               )}
+              {canWrite && (
+                <button onClick={() => { setRecipeModal(p); setRecipeAddForm({ raw_material_id: '', qty_per_unit: '', unit: 'g', note: '' }); }}
+                  className="btn-sm w-full bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 rounded-lg px-2 flex items-center gap-1 justify-center mt-1">
+                  <FlaskConical size={13} /> Retsept (xom ashyo)
+                </button>
+              )}
               {canDelete && (
                 <button onClick={() => setDeleteTarget(p)}
                   className="btn-sm w-full bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 rounded-lg px-2 flex items-center gap-1 justify-center mt-1">
@@ -907,6 +939,119 @@ export default function ProductsPage({ embedded = false }) {
           <div className="flex justify-end pt-1">
             <button
               onClick={() => { setBomModal(null); setBomAddForm({ component_id: '', qty: 1 }); }}
+              className="btn-secondary"
+            >
+              Yopish
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Retsept (xom ashyo) modal */}
+      <Modal
+        open={!!recipeModal}
+        onClose={() => { setRecipeModal(null); setRecipeAddForm({ raw_material_id: '', qty_per_unit: '', unit: 'g', note: '' }); }}
+        title={`Retsept — ${recipeModal?.name || ''}`}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-gray-500">
+            1 dona mahsulot uchun kerakli xom ashyo miqdori. Ishlab chiqarishda avtomatik ayiriladi.
+          </p>
+
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 mb-2">Hozirgi retsept</h4>
+            {!(recipeData?.recipe?.length) ? (
+              <div className="text-center py-6 bg-gray-50 rounded-lg">
+                <FlaskConical size={24} className="mx-auto mb-2 text-gray-300" />
+                <p className="text-sm text-gray-400">Hali ingredient qo'shilmagan</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                {(recipeData?.recipe || []).map(item => (
+                  <div key={item.raw_material_id} className="flex items-center justify-between bg-green-50 rounded-lg px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="font-medium text-sm text-gray-900 truncate">{item.raw_material_name}</div>
+                      <div className="text-xs text-gray-500">
+                        × <strong>{item.qty_per_unit}</strong> {item.unit}/dona
+                        {item.note && <span className="ml-2 text-gray-400">({item.note})</span>}
+                        <span className="ml-2 text-gray-400">· ombor: {item.stock_balance} kg</span>
+                      </div>
+                    </div>
+                    {canWrite && (
+                      <button
+                        onClick={() => removeRecipeMutation.mutate({ product_id: recipeModal.id, raw_material_id: item.raw_material_id })}
+                        disabled={removeRecipeMutation.isPending}
+                        className="p-1 text-red-400 hover:text-red-600 rounded"
+                      >
+                        <X size={16} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {canWrite && (
+            <div className="border-t pt-3 space-y-2">
+              <h4 className="text-sm font-semibold text-gray-700">Ingredient qo'shish</h4>
+              <select
+                value={recipeAddForm.raw_material_id}
+                onChange={e => setRecipeAddForm(f => ({ ...f, raw_material_id: e.target.value }))}
+                className="select text-sm"
+              >
+                <option value="">— Xom ashyo tanlang —</option>
+                {(rawMats?.raw_materials || []).filter(r => r.is_active !== 0).map(r => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+              <div className="flex gap-2">
+                <input
+                  type="number" min="0" step="any"
+                  placeholder="Miqdor"
+                  value={recipeAddForm.qty_per_unit}
+                  onChange={e => setRecipeAddForm(f => ({ ...f, qty_per_unit: e.target.value }))}
+                  className="input text-sm w-28"
+                />
+                <select
+                  value={recipeAddForm.unit}
+                  onChange={e => setRecipeAddForm(f => ({ ...f, unit: e.target.value }))}
+                  className="select text-sm w-20"
+                >
+                  <option value="g">g</option>
+                  <option value="kg">kg</option>
+                </select>
+                <input
+                  type="text"
+                  placeholder="Izoh (ixtiyoriy)"
+                  value={recipeAddForm.note}
+                  onChange={e => setRecipeAddForm(f => ({ ...f, note: e.target.value }))}
+                  className="input text-sm flex-1"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  if (!recipeAddForm.raw_material_id) return toast.error('Xom ashyo tanlang');
+                  if (!recipeAddForm.qty_per_unit || parseFloat(recipeAddForm.qty_per_unit) <= 0) return toast.error('Miqdor kiriting');
+                  addRecipeMutation.mutate({
+                    product_id: recipeModal.id,
+                    raw_material_id: recipeAddForm.raw_material_id,
+                    qty_per_unit: parseFloat(recipeAddForm.qty_per_unit),
+                    unit: recipeAddForm.unit,
+                    note: recipeAddForm.note || null,
+                  });
+                }}
+                disabled={addRecipeMutation.isPending}
+                className="btn-primary btn-sm w-full"
+              >
+                <Plus size={14} /> Qo'shish
+              </button>
+            </div>
+          )}
+
+          <div className="flex justify-end pt-1">
+            <button
+              onClick={() => { setRecipeModal(null); setRecipeAddForm({ raw_material_id: '', qty_per_unit: '', unit: 'g', note: '' }); }}
               className="btn-secondary"
             >
               Yopish

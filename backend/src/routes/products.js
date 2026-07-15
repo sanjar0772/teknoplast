@@ -1198,4 +1198,77 @@ router.delete('/:id/bom/:componentId', requireRole('OWNER', 'PRODUCTION_HEAD'), 
   } catch (err) { next(err); }
 });
 
+// ─── RETSEPT (mahsulot → xom ashyo) ────────────────────────────────────────
+
+// GET /api/products/:id/recipe — mahsulot retseptini olish
+router.get('/:id/recipe', async (req, res, next) => {
+  try {
+    const result = await query(
+      `SELECT pr.id, pr.raw_material_id, pr.qty_per_unit, pr.unit, pr.note,
+              rm.name AS raw_material_name, rm.stock_balance, rm.unit AS rm_unit
+       FROM product_recipes pr
+       JOIN raw_materials rm ON rm.id = pr.raw_material_id
+       WHERE pr.product_id = $1
+       ORDER BY pr.created_at`,
+      [req.params.id]
+    );
+    res.json({ recipe: result.rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/products/:id/recipe — ingredient qo'shish yoki yangilash
+router.post('/:id/recipe', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, next) => {
+  try {
+    const { raw_material_id, qty_per_unit, unit, note } = req.body;
+    if (!raw_material_id || !qty_per_unit || parseFloat(qty_per_unit) <= 0) {
+      return res.status(400).json({ error: 'raw_material_id va qty_per_unit (>0) kerak' });
+    }
+    const u = unit || 'g';
+    const client = await require('../db').getClient();
+    try {
+      await client.query('BEGIN');
+      const USE_PG = process.env.USE_POSTGRES === 'true';
+      if (USE_PG) {
+        await client.query(
+          `INSERT INTO product_recipes (product_id, raw_material_id, qty_per_unit, unit, note)
+           VALUES ($1,$2,$3,$4,$5)
+           ON CONFLICT (product_id, raw_material_id) DO UPDATE SET qty_per_unit=$3, unit=$4, note=$5`,
+          [req.params.id, raw_material_id, parseFloat(qty_per_unit), u, note || null]
+        );
+      } else {
+        await client.query(
+          `INSERT OR REPLACE INTO product_recipes (product_id, raw_material_id, qty_per_unit, unit, note)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [req.params.id, raw_material_id, parseFloat(qty_per_unit), u, note || null]
+        );
+      }
+      const result = await client.query(
+        `SELECT pr.id, pr.raw_material_id, pr.qty_per_unit, pr.unit, pr.note,
+                rm.name AS raw_material_name, rm.stock_balance
+         FROM product_recipes pr JOIN raw_materials rm ON rm.id=pr.raw_material_id
+         WHERE pr.product_id=$1 ORDER BY pr.created_at`,
+        [req.params.id]
+      );
+      await client.query('COMMIT');
+      res.json({ recipe: result.rows });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/products/:id/recipe/:rmId — ingredientni olib tashlash
+router.delete('/:id/recipe/:rmId', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, next) => {
+  try {
+    await query(
+      'DELETE FROM product_recipes WHERE product_id=$1 AND raw_material_id=$2',
+      [req.params.id, req.params.rmId]
+    );
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

@@ -684,6 +684,17 @@ if (USE_PG) {
       updated_at TEXT DEFAULT (datetime('now'))
     )`);
 
+    _db.run(`CREATE TABLE IF NOT EXISTS product_recipes (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      raw_material_id TEXT NOT NULL REFERENCES raw_materials(id),
+      qty_per_unit REAL NOT NULL DEFAULT 0,
+      unit TEXT NOT NULL DEFAULT 'g',
+      note TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(product_id, raw_material_id)
+    )`);
+
     _db.run(`CREATE TABLE IF NOT EXISTS discounts (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       name TEXT NOT NULL,

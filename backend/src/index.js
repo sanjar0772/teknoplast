@@ -69,7 +69,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'xom-ashyo-balans-qoshildi', commit: 'v205' });
+  res.json({ version: 'retsept-tizimi', commit: 'v206' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)
@@ -173,6 +173,11 @@ require('./services/taroziSchema')
 require('./services/inventoryAudit')
   .ensureInventoryAuditSchema()
   .catch(e => console.error('Inventory audit init xato:', e.message));
+
+// Mahsulot retsept jadvali (product_recipes) — PostgreSQL uchun runtime DDL
+require('./services/recipeSchema')
+  .ensureRecipeSchema()
+  .catch(e => console.error('Recipe schema xato:', e.message));
 
 // Xom ashyo turlarini avtomatik yuklash (faqat bir marta, jadval bo'sh bo'lsa)
 require('./services/rawMaterialSeed')

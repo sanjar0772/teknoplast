@@ -1071,6 +1071,7 @@ if (USE_PG) {
         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
         entry_type TEXT NOT NULL DEFAULT 'TOPSHIRISH',
         kg REAL NOT NULL DEFAULT 0,
+        rang TEXT,
         product_id TEXT REFERENCES products(id),
         machine_id TEXT REFERENCES machines(id),
         employee_id TEXT REFERENCES employees(id),
@@ -1080,6 +1081,8 @@ if (USE_PG) {
         branch_id TEXT,
         created_at TEXT DEFAULT (datetime('now'))
       )`,
+      // v199 jadvali rangsiz yaratilgan — mavjud bazaga rang ustunini qo'shamiz
+      `ALTER TABLE drobilka_entries ADD COLUMN rang TEXT`,
     ];
     for (const m of migrations) {
       try {

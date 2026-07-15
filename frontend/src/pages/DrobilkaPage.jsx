@@ -2,9 +2,12 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Recycle, Download, Trash2, ArrowLeft } from 'lucide-react';
+import { Recycle, Download, Trash2, ArrowLeft, Package } from 'lucide-react';
 import { drobilkaAPI, machinesAPI, productsAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
+import { RANGLAR, RANG_COLORS } from '../constants/colors';
+
+const rangLabel = (r) => r || 'Rangsiz';
 
 const fmtDT = (s) => s
   ? new Date(String(s).replace(' ', 'T')).toLocaleString('uz-UZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -21,6 +24,7 @@ export default function DrobilkaPage() {
 
   const [type, setType] = useState('TOPSHIRISH'); // TOPSHIRISH | MAYDALASH
   const [kg, setKg] = useState('');
+  const [rang, setRang] = useState('');
   const [machineId, setMachineId] = useState('');
   const [productId, setProductId] = useState('');
   const [note, setNote] = useState('');
@@ -40,7 +44,7 @@ export default function DrobilkaPage() {
 
   const createMut = useMutation({
     mutationFn: () => drobilkaAPI.create({
-      entry_type: type, kg: parseFloat(kg),
+      entry_type: type, kg: parseFloat(kg), rang: rang || undefined,
       machine_id: machineId || undefined, product_id: productId || undefined,
       note: note || undefined,
     }),
@@ -61,6 +65,9 @@ export default function DrobilkaPage() {
   const entries = data?.entries || [];
   const machines = machinesData?.machines || [];
   const products = prodData?.products || [];
+  const byColor = data?.by_color || [];
+  const ombor = byColor.filter(c => c.maydalangan > 0);       // maydalangan material — ombor
+  const kutayotganByColor = byColor.filter(c => c.kutayotgan > 0.0001); // kutayotgan brak rang bo'yicha
 
   const submit = () => {
     if (!(parseFloat(kg) > 0)) return toast.error('Kg kiriting (musbat son)');
@@ -116,11 +123,21 @@ export default function DrobilkaPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <div>
               <label className="label text-xs">Miqdor (kg) *</label>
               <input type="number" min="0" step="0.1" value={kg} onChange={e => setKg(e.target.value)}
                 onFocus={e => e.target.select()} placeholder="0" className="input" />
+            </div>
+            <div>
+              <label className="label text-xs">Rang (siryo rangi)</label>
+              <div className="flex items-center gap-1.5">
+                <select value={rang} onChange={e => setRang(e.target.value)} className="select">
+                  <option value="">Rangsiz</option>
+                  {RANGLAR.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+                {rang && <span style={{ display:'inline-block', width:12, height:12, borderRadius:'50%', flexShrink:0, background: RANG_COLORS[rang] || '#999', border:'1px solid #ccc' }} />}
+              </div>
             </div>
             <div>
               <label className="label text-xs">Stanok (ixtiyoriy)</label>
@@ -150,6 +167,42 @@ export default function DrobilkaPage() {
         </div>
       )}
 
+      {/* Drobilka ombori — maydalangan material rang bo'yicha */}
+      <div className="card">
+        <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+          <Package size={16} className="text-emerald-600" /> Drobilka ombori
+          <span className="text-xs font-normal text-gray-400">— maydalangan material (qayta ishlashga tayyor)</span>
+        </p>
+        {!ombor.length ? (
+          <p className="text-center text-gray-400 py-6 text-sm">Ombor bo'sh — hali material maydalanmagan</p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+            {ombor.map(c => (
+              <div key={c.rang || 'none'} className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2.5 flex items-center gap-2">
+                <span style={{ display:'inline-block', width:16, height:16, borderRadius:'50%', flexShrink:0, background: RANG_COLORS[c.rang] || '#cbd5e1', border:'1px solid #ccc' }} />
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-emerald-700 leading-none">{kgFmt(c.maydalangan)} <span className="text-[11px] font-normal text-gray-500">kg</span></p>
+                  <p className="text-[11px] text-gray-500 truncate mt-0.5">{rangLabel(c.rang)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {kutayotganByColor.length > 0 && (
+          <div className="mt-4 pt-3 border-t border-gray-100">
+            <p className="text-xs font-semibold text-amber-600 mb-2">Maydalashni kutayotgan brak (rang bo'yicha)</p>
+            <div className="flex flex-wrap gap-2">
+              {kutayotganByColor.map(c => (
+                <span key={c.rang || 'none'} className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+                  <span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background: RANG_COLORS[c.rang] || '#cbd5e1', border:'1px solid #ccc' }} />
+                  {rangLabel(c.rang)}: {kgFmt(c.kutayotgan)} kg
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Tarix */}
       <div className="card">
         <p className="text-sm font-semibold text-gray-700 mb-3">Tarix</p>
@@ -163,8 +216,9 @@ export default function DrobilkaPage() {
               <div key={en.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
                 <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${en.entry_type === 'TOPSHIRISH' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-800">
+                  <p className="text-sm font-medium text-gray-800 flex items-center gap-1.5">
                     {en.entry_type === 'TOPSHIRISH' ? 'Topshirildi' : 'Maydalandi'} · <span className={en.entry_type === 'TOPSHIRISH' ? 'text-amber-600' : 'text-emerald-600'}>{kgFmt(en.kg)} kg</span>
+                    {en.rang && <span className="inline-flex items-center gap-1 text-[11px] text-gray-500"><span style={{ display:'inline-block', width:9, height:9, borderRadius:'50%', background: RANG_COLORS[en.rang] || '#999', border:'1px solid #ccc' }} />{en.rang}</span>}
                   </p>
                   <p className="text-xs text-gray-400 truncate">
                     {[en.machine_name, en.product_name, en.note].filter(Boolean).join(' · ') || '—'}

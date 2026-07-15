@@ -36,6 +36,15 @@ router.get('/', async (req, res, next) => {
       FROM drobilka_entries WHERE 1=1${bClause}
     `, branchParams);
 
+    // Rang bo'yicha jamlanma — kutayotgan brak va ombor (maydalangan material) rang bo'yicha
+    const byColor = await query(`
+      SELECT COALESCE(rang, '') AS rang,
+        COALESCE(SUM(CASE WHEN entry_type='TOPSHIRISH' THEN kg ELSE 0 END), 0) AS topshirilgan,
+        COALESCE(SUM(CASE WHEN entry_type='MAYDALASH'  THEN kg ELSE 0 END), 0) AS maydalangan
+      FROM drobilka_entries WHERE 1=1${bClause}
+      GROUP BY COALESCE(rang, '')
+    `, branchParams);
+
     // Ishlab chiqarishda qayd etilgan jami brak (ma'lumot uchun)
     const prodBrak = await query(`
       SELECT COALESCE(SUM(brak_kg), 0) AS total_brak FROM employee_production
@@ -43,6 +52,12 @@ router.get('/', async (req, res, next) => {
 
     const topshirilgan = parseFloat(sum.rows[0].topshirilgan) || 0;
     const maydalangan = parseFloat(sum.rows[0].maydalangan) || 0;
+
+    const by_color = byColor.rows.map(r => {
+      const t = parseFloat(r.topshirilgan) || 0;
+      const md = parseFloat(r.maydalangan) || 0;
+      return { rang: r.rang || '', topshirilgan: t, maydalangan: md, kutayotgan: t - md };
+    });
 
     res.json({
       entries: list.rows,
@@ -52,6 +67,7 @@ router.get('/', async (req, res, next) => {
         kutayotgan: topshirilgan - maydalangan,
         production_brak: parseFloat(prodBrak.rows[0].total_brak) || 0,
       },
+      by_color,
     });
   } catch (err) { next(err); }
 });
@@ -64,20 +80,20 @@ router.post('/', requireRole(...WRITE_ROLES), [
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ error: 'Kg musbat son bo\'lishi kerak' });
 
-    const { entry_type, kg, product_id, machine_id, employee_id, note, entry_date } = req.body;
+    const { entry_type, kg, rang, product_id, machine_id, employee_id, note, entry_date } = req.body;
     const type = entry_type === 'MAYDALASH' ? 'MAYDALASH' : 'TOPSHIRISH';
 
     const result = await query(
       `INSERT INTO drobilka_entries
-        (entry_type, kg, product_id, machine_id, employee_id, note, entry_date, created_by, branch_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [type, parseFloat(kg), product_id || null, machine_id || null, employee_id || null,
+        (entry_type, kg, rang, product_id, machine_id, employee_id, note, entry_date, created_by, branch_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [type, parseFloat(kg), rang || null, product_id || null, machine_id || null, employee_id || null,
        (note || '').trim() || null, entry_date || null, req.user.id, req.user.branch_id || null]
     );
 
     logAudit(req, {
       action: 'DROBILKA_ADD', table: 'drobilka_entries', recordId: result.rows[0].id,
-      newValues: { entry_type: type, kg, product_id: product_id || null, machine_id: machine_id || null },
+      newValues: { entry_type: type, kg, rang: rang || null, product_id: product_id || null, machine_id: machine_id || null },
     });
     res.status(201).json({ entry: result.rows[0] });
   } catch (err) { next(err); }

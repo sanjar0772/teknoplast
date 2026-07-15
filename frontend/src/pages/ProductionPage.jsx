@@ -881,13 +881,13 @@ export default function ProductionPage() {
               {/* Sarlavha */}
               <div className="flex gap-2 text-xs text-gray-400 font-medium px-1 ml-2">
                 <span className="w-48 shrink-0">Xodim</span>
-                <div className="grid grid-cols-13 gap-2 flex-1" style={{gridTemplateColumns:'repeat(13,minmax(0,1fr))'}}>
+                <div className="grid grid-cols-13 gap-2 flex-1" style={{gridTemplateColumns:'repeat(14,minmax(0,1fr))'}}>
                   <span className="col-span-3">Mahsulot</span>
                   <span className="col-span-2">Rang</span>
                   <span className="col-span-2">Tur</span>
                   <span className="col-span-2 text-blue-500">Tarif</span>
                   <span className="col-span-2">Dona</span>
-                  <span className="col-span-1 text-red-400">Brak kg</span>
+                  <span className="col-span-2 text-red-400">Brak kg</span>
                   <span className="col-span-1"></span>
                 </div>
               </div>
@@ -924,7 +924,7 @@ export default function ProductionPage() {
                     {/* Mahsulotlar */}
                     <div className="space-y-1 ml-2">
                       {entry.items.map((item, j) => (
-                        <div key={j} className="grid gap-2 items-center" style={{gridTemplateColumns:'repeat(13,minmax(0,1fr))'}}>
+                        <div key={j} className="grid gap-2 items-center" style={{gridTemplateColumns:'repeat(14,minmax(0,1fr))'}}>
 
                           {/* Mahsulot */}
                           <div className="col-span-3">
@@ -991,7 +991,7 @@ export default function ProductionPage() {
                             />
                           </div>
                           {/* Brak kg — ixtiyoriy */}
-                          <div className="col-span-1">
+                          <div className="col-span-2">
                             <input
                               type="number" min="0" step="0.1" placeholder="0"
                               value={item.brak_kg}

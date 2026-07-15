@@ -276,13 +276,15 @@ export default function ProductsPage({ embedded = false }) {
   });
 
   // Mahsulotni o'chirish (faqat OWNER) — sotuvi bori nofaol bo'ladi, boshqasi butunlay o'chadi
+  const [forceDelete, setForceDelete] = useState(false);
   const deleteMutation = useMutation({
-    mutationFn: (ids) => productsAPI.bulkDelete(ids),
+    mutationFn: ({ ids, force }) => productsAPI.bulkDelete(ids, force),
     onSuccess: () => {
       toast.success("Mahsulot o'chirildi");
       qc.invalidateQueries({ queryKey: ['products'] });
       setDeleteTarget(null);
       setSelectedIds(new Set());
+      setForceDelete(false);
     },
     onError: (e) => toast.error(e.response?.data?.error || "O'chirishda xato"),
   });
@@ -1064,7 +1066,7 @@ export default function ProductsPage({ embedded = false }) {
       <ProductHistoryModal product={historyProduct} onClose={() => setHistoryProduct(null)} />
 
       {/* O'chirishni tasdiqlash — faqat OWNER */}
-      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Mahsulotni o'chirish">
+      <Modal open={!!deleteTarget} onClose={() => { setDeleteTarget(null); setForceDelete(false); }} title="Mahsulotni o'chirish">
         <div className="space-y-4">
           <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-3">
             <Trash2 size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
@@ -1074,18 +1076,37 @@ export default function ProductsPage({ embedded = false }) {
               ) : (
                 <p>«<strong>{deleteTarget?.name}</strong>» mahsulotini o'chirmoqchimisiz?</p>
               )}
-              <p className="text-xs text-gray-500 mt-1">
-                Sotuv tarixi bor mahsulot butunlay o'chmaydi — u <strong>nofaol</strong> qilinadi (hisobotlar saqlanadi). Tarixi yo'q mahsulot butunlay o'chiriladi.
-              </p>
+              {!forceDelete && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Sotuv tarixi bor mahsulot <strong>nofaol</strong> qilinadi. Butunlay o'chirish uchun quyidagi katak belgilang.
+                </p>
+              )}
             </div>
           </div>
+
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={forceDelete}
+              onChange={e => setForceDelete(e.target.checked)}
+              className="w-4 h-4 accent-red-600"
+            />
+            <span className="text-sm font-medium text-red-700">Majburiy o'chirish — sotuv tarixi ham o'chadi</span>
+          </label>
+
+          {forceDelete && (
+            <div className="bg-red-100 border border-red-300 rounded-lg px-3 py-2 text-xs text-red-800">
+              ⚠️ Ogohlantirish: bu mahsulotga bog'liq barcha sotuv, to'lov va kirim yozuvlari ham bazadan butunlay o'chiriladi. Qaytarib bo'lmaydi!
+            </div>
+          )}
+
           <div className="flex gap-3">
-            <button onClick={() => setDeleteTarget(null)} className="btn-secondary flex-1">Bekor</button>
+            <button onClick={() => { setDeleteTarget(null); setForceDelete(false); }} className="btn-secondary flex-1">Bekor</button>
             <button
-              onClick={() => deleteMutation.mutate(deleteTarget?.bulk ? Array.from(selectedIds) : [deleteTarget.id])}
+              onClick={() => deleteMutation.mutate({ ids: deleteTarget?.bulk ? Array.from(selectedIds) : [deleteTarget.id], force: forceDelete })}
               disabled={deleteMutation.isPending || (deleteTarget?.bulk && !selectedIds.size)}
               className="btn-sm flex-1 bg-red-600 text-white hover:bg-red-700 rounded-lg px-3 flex items-center gap-1 justify-center disabled:opacity-50">
-              <Trash2 size={14} /> {deleteMutation.isPending ? "O'chirilmoqda..." : "Ha, o'chirish"}
+              <Trash2 size={14} /> {deleteMutation.isPending ? "O'chirilmoqda..." : forceDelete ? "Majburiy o'chirish" : "Ha, o'chirish"}
             </button>
           </div>
         </div>

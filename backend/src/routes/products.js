@@ -559,26 +559,40 @@ router.put('/bulk', requireRole('OWNER', 'PRODUCTION_HEAD', 'SALES_HEAD', 'ACCOU
 });
 
 // DELETE /api/products/bulk — bir nechta mahsulotni o'chirish/nofaol qilish
+// force=true bo'lsa sotuv tarixi ham o'chiriladi va butunlay o'chiriladi
 router.post('/bulk-delete', requireRole('OWNER'), async (req, res, next) => {
   try {
-    const { ids } = req.body;
+    const { ids, force } = req.body;
     if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'IDlar bo\'sh' });
     let deleted = 0, deactivated = 0;
     for (const id of ids) {
-      // Sotuvi bormi tekshirish — bo'lsa faqat nofaol qilamiz (hisobot saqlanadi)
-      const sales = await query('SELECT COUNT(*) as count FROM sales WHERE product_id=$1', [id]);
-      if (parseInt(sales.rows[0].count) > 0) {
+      const salesRes = await query('SELECT COUNT(*) as count FROM sales WHERE product_id=$1', [id]);
+      const salesCount = parseInt(salesRes.rows[0]?.count || salesRes.rows[0]?.['COUNT(*)'] || 0);
+
+      if (salesCount > 0 && !force) {
+        // Sotuvi bor va force yo'q — faqat nofaol
         await query('UPDATE products SET is_active=0, updated_at=NOW() WHERE id=$1', [id]);
         deactivated++;
       } else {
-        // FK bog'lanishlarni tozalab, butunlay o'chiramiz
-        await query('DELETE FROM product_bom WHERE component_id = $1 OR product_id = $1', [id]);
-        await query('DELETE FROM product_color_stock WHERE product_id = $1', [id]);
+        // Barcha FK bog'lanishlarni tozalash
+        await query('UPDATE employee_production SET product_id=NULL WHERE product_id=$1', [id]);
+        await query('UPDATE molds SET product_id=NULL WHERE product_id=$1', [id]);
+        await query('DELETE FROM machine_cycle_times WHERE product_id=$1', [id]);
+        await query('DELETE FROM intake_items WHERE product_id=$1', [id]);
+        await query('DELETE FROM product_bom WHERE component_id=$1 OR product_id=$1', [id]);
+        await query('DELETE FROM product_color_stock WHERE product_id=$1', [id]);
+        await query('DELETE FROM product_recipes WHERE product_id=$1', [id]);
+        if (salesCount > 0) {
+          // Sotuv to'lovlarini ham o'chirish (force mode)
+          await query('DELETE FROM payments WHERE sale_id IN (SELECT id FROM sales WHERE product_id=$1)', [id]);
+          await query('DELETE FROM sale_returns WHERE sale_id IN (SELECT id FROM sales WHERE product_id=$1)', [id]).catch(() => {});
+          await query('DELETE FROM sales WHERE product_id=$1', [id]);
+        }
         await query('DELETE FROM products WHERE id=$1', [id]);
         deleted++;
       }
     }
-    logAudit(req, { action: 'PRODUCTS_DELETE', table: 'products', recordId: ids.join(','), newValues: { deleted, deactivated } });
+    logAudit(req, { action: 'PRODUCTS_DELETE', table: 'products', recordId: ids.join(','), newValues: { deleted, deactivated, force: !!force } });
     res.json({ count: deleted + deactivated, deleted, deactivated });
   } catch (err) { next(err); }
 });

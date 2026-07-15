@@ -72,9 +72,10 @@ async function consumeRawMaterial(cq, product_id, moldedQty) {
   );
   if (rec.rows.length > 0) {
     for (const ing of rec.rows) {
+      if (!ing.raw_material_id) continue; // maxsus ingredient (kalsiy/rang/drobilka) — ombordan ayrilmaydi
       const perUnit = parseFloat(ing.qty_per_unit) || 0;
       if (perUnit <= 0) continue;
-      const kg = ing.unit === 'kg' ? moldedQty * perUnit : (moldedQty * perUnit) / 1000;
+      const kg = ing.unit === 'mg' ? (moldedQty * perUnit) / 1e6 : ing.unit === 'kg' ? moldedQty * perUnit : (moldedQty * perUnit) / 1000;
       if (kg > 0) {
         await cq(
           "UPDATE raw_materials SET stock_balance=GREATEST(0,stock_balance-$1), last_used_date=date('now'), updated_at=NOW() WHERE id=$2",

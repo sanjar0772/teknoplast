@@ -1217,57 +1217,85 @@ router.delete('/:id/bom/:componentId', requireRole('OWNER', 'PRODUCTION_HEAD'), 
 
 // ─── RETSEPT (mahsulot → xom ashyo) ────────────────────────────────────────
 
-// GET /api/products/:id/recipe — mahsulot retseptini olish
+// Maxsus ingredient nomlari (xom ashyoga bog'lanmaydi)
+const SPECIAL_LABELS = { KALSIY: 'Kalsiy', RANG: 'Rang (bo\'yoq)', DROBILKA: 'Drobilka (maydalangan)' };
+
+// GET /api/products/:id/recipe — mahsulot retseptini olish (xom ashyo + maxsus ingredientlar)
 router.get('/:id/recipe', async (req, res, next) => {
   try {
     const result = await query(
-      `SELECT pr.id, pr.raw_material_id, pr.qty_per_unit, pr.unit, pr.note,
+      `SELECT pr.id, pr.raw_material_id, pr.ingredient_type, pr.qty_per_unit, pr.unit, pr.rang, pr.note,
               rm.name AS raw_material_name, rm.stock_balance, rm.unit AS rm_unit
        FROM product_recipes pr
-       JOIN raw_materials rm ON rm.id = pr.raw_material_id
+       LEFT JOIN raw_materials rm ON rm.id = pr.raw_material_id
        WHERE pr.product_id = $1
        ORDER BY pr.created_at`,
       [req.params.id]
     );
-    res.json({ recipe: result.rows });
+    const recipe = result.rows.map(r => ({
+      ...r,
+      display_name: r.ingredient_type && r.ingredient_type !== 'XOM_ASHYO'
+        ? (SPECIAL_LABELS[r.ingredient_type] || r.ingredient_type) + (r.rang ? ` — ${r.rang}` : '')
+        : r.raw_material_name,
+    }));
+    res.json({ recipe });
   } catch (err) { next(err); }
 });
 
-// POST /api/products/:id/recipe — ingredient qo'shish yoki yangilash
+// POST /api/products/:id/recipe — ingredient qo'shish (xom ashyo yoki maxsus: kalsiy/rang/drobilka)
 router.post('/:id/recipe', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, next) => {
   try {
-    const { raw_material_id, qty_per_unit, unit, note } = req.body;
-    if (!raw_material_id || !qty_per_unit || parseFloat(qty_per_unit) <= 0) {
-      return res.status(400).json({ error: 'raw_material_id va qty_per_unit (>0) kerak' });
+    const { raw_material_id, qty_per_unit, unit, note, rang } = req.body;
+    const ingredient_type = ['KALSIY', 'RANG', 'DROBILKA'].includes(req.body.ingredient_type)
+      ? req.body.ingredient_type : 'XOM_ASHYO';
+    if (!qty_per_unit || parseFloat(qty_per_unit) <= 0) {
+      return res.status(400).json({ error: 'qty_per_unit (>0) kerak' });
+    }
+    if (ingredient_type === 'XOM_ASHYO' && !raw_material_id) {
+      return res.status(400).json({ error: 'Xom ashyo tanlang' });
     }
     const u = unit || 'g';
     const client = await require('../db').getClient();
     try {
       await client.query('BEGIN');
       const USE_PG = process.env.USE_POSTGRES === 'true';
-      if (USE_PG) {
-        await client.query(
-          `INSERT INTO product_recipes (product_id, raw_material_id, qty_per_unit, unit, note)
-           VALUES ($1,$2,$3,$4,$5)
-           ON CONFLICT (product_id, raw_material_id) DO UPDATE SET qty_per_unit=$3, unit=$4, note=$5`,
-          [req.params.id, raw_material_id, parseFloat(qty_per_unit), u, note || null]
-        );
+      if (ingredient_type === 'XOM_ASHYO') {
+        // Xom ashyo — raw_material_id bo'yicha upsert (bir xom ashyo bir marta)
+        if (USE_PG) {
+          await client.query(
+            `INSERT INTO product_recipes (product_id, raw_material_id, ingredient_type, qty_per_unit, unit, note)
+             VALUES ($1,$2,'XOM_ASHYO',$3,$4,$5)
+             ON CONFLICT (product_id, raw_material_id) DO UPDATE SET qty_per_unit=$3, unit=$4, note=$5`,
+            [req.params.id, raw_material_id, parseFloat(qty_per_unit), u, note || null]
+          );
+        } else {
+          await client.query(
+            `INSERT OR REPLACE INTO product_recipes (product_id, raw_material_id, ingredient_type, qty_per_unit, unit, note)
+             VALUES ($1,$2,'XOM_ASHYO',$3,$4,$5)`,
+            [req.params.id, raw_material_id, parseFloat(qty_per_unit), u, note || null]
+          );
+        }
       } else {
-        await client.query(
-          `INSERT OR REPLACE INTO product_recipes (product_id, raw_material_id, qty_per_unit, unit, note)
-           VALUES ($1,$2,$3,$4,$5)`,
-          [req.params.id, raw_material_id, parseFloat(qty_per_unit), u, note || null]
+        // Maxsus ingredient (kalsiy/rang/drobilka) — xuddi shu tur+rang bo'lsa yangilaymiz, aks holda yangi
+        const existing = await client.query(
+          `SELECT id FROM product_recipes WHERE product_id=$1 AND ingredient_type=$2 AND COALESCE(rang,'')=COALESCE($3,'')`,
+          [req.params.id, ingredient_type, rang || null]
         );
+        if (existing.rows.length) {
+          await client.query(
+            `UPDATE product_recipes SET qty_per_unit=$1, unit=$2, note=$3 WHERE id=$4`,
+            [parseFloat(qty_per_unit), u, note || null, existing.rows[0].id]
+          );
+        } else {
+          await client.query(
+            `INSERT INTO product_recipes (product_id, raw_material_id, ingredient_type, qty_per_unit, unit, rang, note)
+             VALUES ($1,NULL,$2,$3,$4,$5,$6)`,
+            [req.params.id, ingredient_type, parseFloat(qty_per_unit), u, rang || null, note || null]
+          );
+        }
       }
-      const result = await client.query(
-        `SELECT pr.id, pr.raw_material_id, pr.qty_per_unit, pr.unit, pr.note,
-                rm.name AS raw_material_name, rm.stock_balance
-         FROM product_recipes pr JOIN raw_materials rm ON rm.id=pr.raw_material_id
-         WHERE pr.product_id=$1 ORDER BY pr.created_at`,
-        [req.params.id]
-      );
       await client.query('COMMIT');
-      res.json({ recipe: result.rows });
+      res.json({ ok: true });
     } catch (e) {
       await client.query('ROLLBACK');
       throw e;
@@ -1277,13 +1305,21 @@ router.post('/:id/recipe', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, 
   } catch (err) { next(err); }
 });
 
-// DELETE /api/products/:id/recipe/:rmId — ingredientni olib tashlash
+// DELETE /api/products/:id/recipe/:rmId — xom ashyo ingredientini olib tashlash (raw_material_id bo'yicha)
 router.delete('/:id/recipe/:rmId', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, next) => {
   try {
     await query(
       'DELETE FROM product_recipes WHERE product_id=$1 AND raw_material_id=$2',
       [req.params.id, req.params.rmId]
     );
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/products/:id/recipe-item/:itemId — istalgan ingredientni satr id bo'yicha olib tashlash (maxsuslar uchun)
+router.delete('/:id/recipe-item/:itemId', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, next) => {
+  try {
+    await query('DELETE FROM product_recipes WHERE product_id=$1 AND id=$2', [req.params.id, req.params.itemId]);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

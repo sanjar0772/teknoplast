@@ -223,6 +223,7 @@ if (USE_PG) {
       relaxProductionUniqueConstraint(); // bir kunda ko'p mahsulot kiritish uchun UNIQUE cheklovni olib tashlaydi
       relaxPaymentsMethodConstraint(); // to'lov usuli CHECK ni olib tashlaydi (PAYME/CLICK/DISCOUNT uchun)
       relaxMoldsProductNotNull(); // qolip mahsulotini ixtiyoriy qiladi (rejim uchun mahsulotsiz qolip)
+      relaxRecipeRawMaterialConstraint(); // retseptga maxsus ingredientlar (kalsiy/rang/drobilka) uchun
       backfillProductMeta();   // nomdan rang/razmer/base_name to'ldiradi (kirill mahsulotlar uchun)
       saveDBSync();
     } else {
@@ -605,6 +606,54 @@ if (USE_PG) {
       try { _db.run('ROLLBACK'); } catch {}
       try { _db.run('PRAGMA foreign_keys = ON'); } catch {}
       console.error('❌ relaxMoldsProductNotNull xato:', e.message);
+    }
+  }
+
+  // Retseptga maxsus ingredientlar (KALSIY / RANG / DROBILKA) qo'shish uchun
+  // product_recipes.raw_material_id ni ixtiyoriy qilamiz + ingredient_type va rang ustunlari.
+  // Maxsus ingredientlar xom ashyo ro'yxatiga bog'lanmaydi (raw_material_id NULL).
+  function relaxRecipeRawMaterialConstraint() {
+    try {
+      const result = _db.exec("SELECT sql FROM sqlite_master WHERE type='table' AND name='product_recipes'");
+      if (!result || !result[0]) return; // jadval hali yo'q — recipeSchema yangi shaklda yaratadi
+      const tableSql = result[0].values[0][0];
+      if (/ingredient_type/i.test(tableSql)) return; // allaqachon yangi shakl
+
+      console.log('🔧 product_recipes maxsus ingredientlar uchun qayta qurilmoqda...');
+
+      const info = _db.exec('PRAGMA table_info(product_recipes)');
+      const existingCols = (info && info[0]) ? info[0].values.map(r => r[1]) : [];
+
+      _db.run('PRAGMA foreign_keys = OFF');
+      _db.run('BEGIN');
+
+      _db.run(`CREATE TABLE product_recipes_new (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        raw_material_id TEXT REFERENCES raw_materials(id),
+        ingredient_type TEXT NOT NULL DEFAULT 'XOM_ASHYO',
+        qty_per_unit REAL NOT NULL DEFAULT 0,
+        unit TEXT NOT NULL DEFAULT 'g',
+        rang TEXT,
+        note TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(product_id, raw_material_id)
+      )`);
+
+      const targetCols = ['id','product_id','raw_material_id','qty_per_unit','unit','note','created_at'];
+      const common = targetCols.filter(c => existingCols.includes(c));
+      const colList = common.join(',');
+      _db.run(`INSERT INTO product_recipes_new (${colList}) SELECT ${colList} FROM product_recipes`);
+      _db.run('DROP TABLE product_recipes');
+      _db.run('ALTER TABLE product_recipes_new RENAME TO product_recipes');
+
+      _db.run('COMMIT');
+      _db.run('PRAGMA foreign_keys = ON');
+      console.log('✅ product_recipes yangi shaklda — kalsiy/rang/drobilka ingredientlari mumkin');
+    } catch (e) {
+      try { _db.run('ROLLBACK'); } catch {}
+      try { _db.run('PRAGMA foreign_keys = ON'); } catch {}
+      console.error('❌ relaxRecipeRawMaterialConstraint xato:', e.message);
     }
   }
 

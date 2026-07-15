@@ -227,6 +227,7 @@ export const productsAPI = {
   getRecipe: (id) => api.get(`/products/${id}/recipe`),
   addRecipeItem: (id, data) => api.post(`/products/${id}/recipe`, data),
   removeRecipeItem: (id, rmId) => api.delete(`/products/${id}/recipe/${rmId}`),
+  removeRecipeItemById: (id, itemId) => api.delete(`/products/${id}/recipe-item/${itemId}`),
   importPricelist: () => api.post('/products/import-pricelist'),
 };
 

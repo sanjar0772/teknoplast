@@ -144,6 +144,75 @@ router.get('/stats/pdf', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Bugungi samaradorlik (reja vs haqiqat, taxminiy yo'qotilgan summa) ────
+// GET /api/machines/efficiency-today?date=YYYY-MM-DD
+// Har stanok: reja (daily_production_capacity) vs bugun operatori chiqargan dona.
+// Narx — bugungi mahsulotlar bo'yicha o'rtacha (bo'lmasa oxirgi 60 kunlik o'rtacha).
+router.get('/efficiency-today', async (req, res, next) => {
+  try {
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date
+      : new Date().toISOString().slice(0, 10);
+    const cutoff = new Date(new Date(date).getTime() - 60 * 86400000).toISOString().slice(0, 10);
+    const branchClause = req.user.branch_id ? ' AND m.branch_id = $1' : ' AND m.branch_id IS NULL';
+    const branchParams = req.user.branch_id ? [req.user.branch_id] : [];
+
+    const machines = (await query(`
+      SELECT m.id, m.name, m.status, m.is_running, m.operator_id, m.daily_production_capacity,
+             e.name AS operator_name, p.price AS current_product_price
+      FROM machines m
+      LEFT JOIN employees e ON m.operator_id = e.id
+      LEFT JOIN products p ON m.current_product_id = p.id
+      WHERE m.is_active = true${branchClause}
+      ORDER BY m.name
+    `, branchParams)).rows;
+
+    const operatorIds = [...new Set(machines.map(m => m.operator_id).filter(Boolean))];
+    let todayMap = {}, fallbackMap = {};
+    if (operatorIds.length) {
+      const ph = operatorIds.map((_, i) => `$${i + 2}`).join(',');
+      const today = (await query(
+        `SELECT ep.employee_id, SUM(ep.quantity_produced) AS qty, SUM(ep.quantity_produced * COALESCE(p.price,0)) AS value
+         FROM employee_production ep LEFT JOIN products p ON ep.product_id = p.id
+         WHERE ep.production_date = $1 AND ep.employee_id IN (${ph})
+         GROUP BY ep.employee_id`,
+        [date, ...operatorIds]
+      )).rows;
+      today.forEach(r => { todayMap[r.employee_id] = { qty: parseFloat(r.qty) || 0, value: parseFloat(r.value) || 0 }; });
+
+      const ph2 = operatorIds.map((_, i) => `$${i + 3}`).join(',');
+      const fallback = (await query(
+        `SELECT ep.employee_id, SUM(ep.quantity_produced * COALESCE(p.price,0)) / NULLIF(SUM(ep.quantity_produced), 0) AS avg_price
+         FROM employee_production ep LEFT JOIN products p ON ep.product_id = p.id
+         WHERE ep.production_date >= $1 AND ep.production_date < $2 AND ep.employee_id IN (${ph2})
+         GROUP BY ep.employee_id`,
+        [cutoff, date, ...operatorIds]
+      )).rows;
+      fallback.forEach(r => { fallbackMap[r.employee_id] = parseFloat(r.avg_price) || null; });
+    }
+
+    const rows = machines.map(m => {
+      const planned = parseInt(m.daily_production_capacity, 10) || 0;
+      const t = todayMap[m.operator_id] || { qty: 0, value: 0 };
+      const actual = t.qty;
+      const todayAvgPrice = actual > 0 ? t.value / actual : null;
+      const price = todayAvgPrice ?? fallbackMap[m.operator_id] ?? parseFloat(m.current_product_price) ?? null;
+      const efficiency_pct = planned > 0 ? Math.round((actual / planned) * 100) : null;
+      const lost_units = planned > 0 ? Math.max(0, planned - actual) : null;
+      const lost_money = (lost_units != null && price) ? Math.round(lost_units * price) : null;
+      return {
+        machine_id: m.id, machine_name: m.name, status: m.status, is_running: !!m.is_running,
+        operator_name: m.operator_name, planned, actual, efficiency_pct, lost_units, lost_money,
+      };
+    }).sort((a, b) => {
+      if (a.efficiency_pct == null) return 1;
+      if (b.efficiency_pct == null) return -1;
+      return a.efficiency_pct - b.efficiency_pct;
+    });
+
+    res.json({ date, machines: rows });
+  } catch (err) { next(err); }
+});
+
 // POST /api/machines
 router.post('/', requireRole('OWNER', 'PRODUCTION_HEAD', 'CYCLE_TIME', 'KIRIMCHI'), [
   body('name').notEmpty().trim(),

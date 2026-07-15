@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw, BarChart3, FileSpreadsheet, FileText, QrCode, Download, Users, Camera, Search, Layers, Pencil, Gauge, MapPin, Zap, Recycle } from 'lucide-react';
+import { Plus, X, Cog, AlertTriangle, CheckCircle, Wrench, Timer, Trash2, Play, Pause, Coffee, RefreshCw, BarChart3, FileSpreadsheet, FileText, QrCode, Download, Users, Camera, Search, Layers, Pencil, Gauge, MapPin, Zap, Recycle, TrendingDown, Banknote } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { machinesAPI, employeesAPI, productsAPI, moldsAPI } from '../services/api';
@@ -132,6 +132,87 @@ function MachineStatsPanel() {
               </tr>
             </tbody>
           </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Bugungi samaradorlik — har stanok reja (kunlik quvvat) vs haqiqiy chiqargani,
+// eng past % (eng ko'p pul yo'qotayotgan stanok) tepada ko'rinadi.
+function EfficiencyTodayPanel() {
+  const today = localDay();
+  const { data, isLoading } = useQuery({
+    queryKey: ['machine-efficiency-today', today],
+    queryFn: () => machinesAPI.getEfficiencyToday({ date: today }).then(r => r.data),
+    refetchInterval: 5 * 60 * 1000,
+  });
+
+  const rows = data?.machines || [];
+  const withPlan = rows.filter(r => r.efficiency_pct != null);
+  const noPlan = rows.filter(r => r.efficiency_pct == null);
+  const totalLost = rows.reduce((a, r) => a + (r.lost_money || 0), 0);
+
+  const badgeCls = (pct) => pct >= 90 ? 'bg-emerald-100 text-emerald-700' : pct >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700';
+  const barCls = (pct) => pct >= 90 ? 'bg-emerald-500' : pct >= 70 ? 'bg-amber-500' : 'bg-red-500';
+
+  if (isLoading || !rows.length) return null;
+
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 className="text-sm font-semibold flex items-center gap-2 text-emerald-700">
+          <TrendingDown size={16} /> Bugungi samaradorlik (reja vs haqiqat)
+        </h2>
+        {totalLost > 0 && (
+          <span className="badge-red flex items-center gap-1 text-xs">
+            <Banknote size={12} /> Taxminan {fmtN(totalLost)} so'm yo'qotilmoqda
+          </span>
+        )}
+      </div>
+
+      {!withPlan.length ? (
+        <p className="text-center text-gray-400 py-4 text-sm">
+          Hech bir stanokka kunlik quvvat (reja) kiritilmagan — stanokni tahrirlab "Kunlik quvvat" maydonini to'ldiring.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
+                <th className="py-2 pr-2">Stanok</th>
+                <th className="py-2 px-2">Operator</th>
+                <th className="py-2 px-2 text-right">Bugun / Reja</th>
+                <th className="py-2 px-2">Samaradorlik</th>
+                <th className="py-2 pl-2 text-right">Taxminiy yo'qotish</th>
+              </tr>
+            </thead>
+            <tbody>
+              {withPlan.map(r => (
+                <tr key={r.machine_id} className="border-b border-gray-50 last:border-0">
+                  <td className="py-2 pr-2 font-medium text-gray-800">{r.machine_name}</td>
+                  <td className="py-2 px-2 text-gray-600">{r.operator_name || '—'}</td>
+                  <td className="py-2 px-2 text-right text-gray-600">{fmtN(r.actual)} / {fmtN(r.planned)} dona</td>
+                  <td className="py-2 px-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${badgeCls(r.efficiency_pct)}`}>{r.efficiency_pct}%</span>
+                      <div className="h-1.5 w-16 rounded-full bg-gray-100 overflow-hidden hidden sm:block">
+                        <div className={`h-full ${barCls(r.efficiency_pct)}`} style={{ width: `${Math.min(100, r.efficiency_pct)}%` }} />
+                      </div>
+                    </div>
+                  </td>
+                  <td className="py-2 pl-2 text-right font-semibold text-red-600">
+                    {r.lost_money > 0 ? `${fmtN(r.lost_money)} so'm` : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {noPlan.length > 0 && (
+            <p className="text-xs text-gray-400 mt-2">
+              {noPlan.map(r => r.machine_name).join(', ')} — kunlik quvvat kiritilmagan, hisoblanmadi.
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -1859,6 +1940,9 @@ export default function MachinesPage() {
           </div>
         </div>
       )}
+
+      {/* Bugungi samaradorlik — qaysi stanok pul yo'qotayotgani */}
+      {canWrite && <EfficiencyTodayPanel />}
 
       {/* Stanoklar ishlab chiqarish statistikasi — PDF/Excel */}
       {canWrite && <MachineStatsPanel />}

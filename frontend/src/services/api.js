@@ -248,6 +248,7 @@ export const machinesAPI = {
   getMoldChanges: (id) => api.get(`/machines/${id}/mold-changes`),
   assignMold: (id, data) => api.post(`/machines/${id}/mold-changes`, data),
   getStats: (params) => api.get('/machines/stats', { params }),
+  getEfficiencyToday: (params) => api.get('/machines/efficiency-today', { params }),
   statsExcel: (params) => api.get('/machines/stats/excel', { params, responseType: 'blob' }),
   statsPdf: (params) => api.get('/machines/stats/pdf', { params, responseType: 'blob' }),
   getRegime: (id) => api.get(`/machines/${id}/regime`),

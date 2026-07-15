@@ -191,7 +191,7 @@ export default function ProductsPage({ embedded = false }) {
   const [pricingModal, setPricingModal] = useState(null);
   const [pricingForm, setPricingForm] = useState({ stanokchi_rate: 0, stanokchi_semi_rate: 0, detalchi_rate: 0 });
   const [bomModal, setBomModal] = useState(null); // { id, name } — tarkibni boshqarish
-  const [bomAddForm, setBomAddForm] = useState({ component_id: '', qty: 1 });
+  const [bomAddForm, setBomAddForm] = useState({ component_id: '', qty: 1, weight_grams: '' });
   const [recipeModal, setRecipeModal] = useState(null); // { id, name } — retsept
   const [recipeAddForm, setRecipeAddForm] = useState({ raw_material_id: '', qty_per_unit: '', unit: 'g', note: '' });
   const [historyProduct, setHistoryProduct] = useState(null); // tarix modal
@@ -327,7 +327,7 @@ export default function ProductsPage({ embedded = false }) {
       toast.success('Komponent qo\'shildi');
       qc.invalidateQueries({ queryKey: ['product-bom', bomModal?.id] });
       qc.invalidateQueries({ queryKey: ['products'] });
-      setBomAddForm({ component_id: '', qty: 1 });
+      setBomAddForm({ component_id: '', qty: 1, weight_grams: '' });
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Xato'),
   });
@@ -847,7 +847,7 @@ export default function ProductsPage({ embedded = false }) {
       {/* BOM (Tarkib) Modal — tayyor mahsulotning komponentlari */}
       <Modal
         open={!!bomModal}
-        onClose={() => { setBomModal(null); setBomAddForm({ component_id: '', qty: 1 }); }}
+        onClose={() => { setBomModal(null); setBomAddForm({ component_id: '', qty: 1, weight_grams: '' }); }}
         title={`Tarkib — ${bomModal?.name || ''}`}
       >
         <div className="space-y-4">
@@ -866,22 +866,33 @@ export default function ProductsPage({ embedded = false }) {
               <div className="space-y-1.5 max-h-56 overflow-y-auto">
                 {(bomData?.bom || []).map(item => (
                   <div key={item.component_id} className="flex items-center justify-between bg-indigo-50 rounded-lg px-3 py-2">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="font-medium text-sm text-gray-900 truncate">{item.name}</div>
                       <div className="text-xs text-gray-500">
-                        × <strong>{item.qty}</strong> {item.unit} · omborda: {item.stock_quantity}
+                        × <strong>{item.qty}</strong> {item.unit}
+                        {parseFloat(item.weight_grams) > 0 && <> · <strong>{item.weight_grams}</strong> gr</>}
+                        {' '}· omborda: {item.stock_quantity}
                       </div>
                     </div>
-                    {canWrite && (
+                    <div className="flex items-center gap-1 flex-shrink-0">
                       <button
-                        onClick={() => removeBomMutation.mutate({ product_id: bomModal.id, component_id: item.component_id })}
-                        disabled={removeBomMutation.isPending}
-                        className="p-1 text-red-400 hover:text-red-600 rounded"
-                        title="Olib tashlash"
+                        onClick={() => { setBomModal(null); setRecipeModal({ id: item.component_id, name: item.name }); }}
+                        className="p-1 text-green-500 hover:text-green-700 rounded"
+                        title="Retsept (xom ashyo)"
                       >
-                        <X size={16} />
+                        <FlaskConical size={15} />
                       </button>
-                    )}
+                      {canWrite && (
+                        <button
+                          onClick={() => removeBomMutation.mutate({ product_id: bomModal.id, component_id: item.component_id })}
+                          disabled={removeBomMutation.isPending}
+                          className="p-1 text-red-400 hover:text-red-600 rounded"
+                          title="Olib tashlash"
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -916,7 +927,15 @@ export default function ProductsPage({ embedded = false }) {
                       type="number" min="1" step="1"
                       value={bomAddForm.qty}
                       onChange={e => setBomAddForm(f => ({ ...f, qty: parseFloat(e.target.value) || 1 }))}
+                      className="input text-sm w-20"
+                    />
+                    <label className="text-xs text-gray-600 whitespace-nowrap">Vazni (gr):</label>
+                    <input
+                      type="number" min="0" step="0.1"
+                      value={bomAddForm.weight_grams}
+                      onChange={e => setBomAddForm(f => ({ ...f, weight_grams: e.target.value }))}
                       className="input text-sm w-24"
+                      placeholder="0"
                     />
                     <button
                       onClick={() => {
@@ -925,6 +944,7 @@ export default function ProductsPage({ embedded = false }) {
                           product_id: bomModal.id,
                           component_id: bomAddForm.component_id,
                           qty: bomAddForm.qty,
+                          weight_grams: parseFloat(bomAddForm.weight_grams) || 0,
                         });
                       }}
                       disabled={addBomMutation.isPending}

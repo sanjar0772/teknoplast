@@ -1165,7 +1165,7 @@ router.post('/colors/set-white', requireRole('OWNER'), async (req, res, next) =>
 router.get('/:id/bom', async (req, res, next) => {
   try {
     const result = await query(`
-      SELECT pb.component_id, pb.qty, p.name, p.unit, p.stock_quantity
+      SELECT pb.component_id, pb.qty, pb.weight_grams, p.name, p.unit, p.stock_quantity
       FROM product_bom pb
       JOIN products p ON p.id = pb.component_id
       WHERE pb.product_id = $1
@@ -1178,24 +1178,25 @@ router.get('/:id/bom', async (req, res, next) => {
 // POST /api/products/:id/bom — komponent qo'shish yoki yangilash (upsert)
 router.post('/:id/bom', requireRole('OWNER', 'PRODUCTION_HEAD'), async (req, res, next) => {
   try {
-    const { component_id, qty } = req.body;
+    const { component_id, qty, weight_grams } = req.body;
     if (!component_id || !qty || parseFloat(qty) <= 0) {
       return res.status(400).json({ error: 'component_id va qty (>0) kerak' });
     }
+    const w = parseFloat(weight_grams) || 0;
     const usePostgres = process.env.USE_POSTGRES === 'true';
     if (usePostgres) {
       await query(
-        'INSERT INTO product_bom (product_id, component_id, qty) VALUES ($1,$2,$3) ON CONFLICT (product_id, component_id) DO UPDATE SET qty=$3',
-        [req.params.id, component_id, parseFloat(qty)]
+        'INSERT INTO product_bom (product_id, component_id, qty, weight_grams) VALUES ($1,$2,$3,$4) ON CONFLICT (product_id, component_id) DO UPDATE SET qty=$3, weight_grams=$4',
+        [req.params.id, component_id, parseFloat(qty), w]
       );
     } else {
       await query(
-        'INSERT OR REPLACE INTO product_bom (product_id, component_id, qty) VALUES ($1,$2,$3)',
-        [req.params.id, component_id, parseFloat(qty)]
+        'INSERT OR REPLACE INTO product_bom (product_id, component_id, qty, weight_grams) VALUES ($1,$2,$3,$4)',
+        [req.params.id, component_id, parseFloat(qty), w]
       );
     }
     const result = await query(`
-      SELECT pb.component_id, pb.qty, p.name, p.unit, p.stock_quantity
+      SELECT pb.component_id, pb.qty, pb.weight_grams, p.name, p.unit, p.stock_quantity
       FROM product_bom pb JOIN products p ON p.id = pb.component_id
       WHERE pb.product_id = $1 ORDER BY p.name
     `, [req.params.id]);

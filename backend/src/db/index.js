@@ -1096,6 +1096,8 @@ if (USE_PG) {
       )`,
       // v199 jadvali rangsiz yaratilgan — mavjud bazaga rang ustunini qo'shamiz
       `ALTER TABLE drobilka_entries ADD COLUMN rang TEXT`,
+      // BOM komponent vazni (gramm)
+      `ALTER TABLE product_bom ADD COLUMN weight_grams REAL DEFAULT 0`,
     ];
     for (const m of migrations) {
       try {

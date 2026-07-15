@@ -27,6 +27,8 @@ const DDL = USE_PG
 async function ensureRecipeSchema() {
   try {
     await db.query(DDL);
+    // BOM komponent vazni (gramm) — PG uchun migratsiya
+    await db.query('ALTER TABLE product_bom ADD COLUMN weight_grams REAL DEFAULT 0').catch(() => {});
     console.log('🧪 product_recipes jadvali tayyor');
   } catch (e) {
     console.error('Recipe schema xato:', e.message);

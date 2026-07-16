@@ -232,6 +232,11 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
   const blink = { green: '1.3s', amber: '1.8s', red: '0.7s' }[active];
   const label = String(name || '').toUpperCase().slice(0, 12);
   const g = `m3d-${theme}`;
+  // LED status displey matni va rangi
+  const [ledTxt, ledCol] = {
+    running: ['RUN', '#4ade80'], service: ['SERVIS', '#fbbf24'],
+    broken: ['XATO', '#f87171'], idle: ['STOP', '#64748b'],
+  }[theme] || ['STOP', '#64748b'];
 
   return (
     <svg viewBox="0 0 640 300" className={className} preserveAspectRatio="xMidYMid slice">
@@ -260,13 +265,41 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
         <filter id={`${g}-soft`} x="-40%" y="-40%" width="180%" height="180%">
           <feGaussianBlur stdDeviation="4" />
         </filter>
+        <linearGradient id={`${g}-refl`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#475569" stopOpacity="0.16" />
+          <stop offset="100%" stopColor="#475569" stopOpacity="0" />
+        </linearGradient>
+        <radialGradient id={`${g}-vig`} cx="0.5" cy="0.42" r="0.78">
+          <stop offset="62%" stopColor="#334155" stopOpacity="0" />
+          <stop offset="100%" stopColor="#334155" stopOpacity="0.2" />
+        </radialGradient>
       </defs>
 
-      {/* Ustaxona foni: devor + pol */}
+      {/* Ustaxona foni: devor + tom + deraza + pol */}
       <rect width="640" height="300" fill={`url(#${g}-wall)`} />
+      <rect width="640" height="10" fill="#c6cfda" />
+      <rect y="10" width="640" height="2" fill="#aab5c2" />
+      {/* Osma chiroq (o'ngda) */}
+      <line x1="608" y1="12" x2="608" y2="34" stroke="#8b96a3" strokeWidth="2" />
+      <path d="M596,34 L620,34 L614,46 L602,46 Z" fill="#94a3b8" stroke="#7b8794" strokeWidth="0.8" />
+      <ellipse cx="608" cy="50" rx="14" ry="5" fill="#fef9c3" opacity="0.35" />
+      {/* Deraza (chapda) */}
+      <g opacity="0.55">
+        <rect x="14" y="22" width="56" height="64" rx="3" fill="#dbeafe" stroke="#b9c6d6" strokeWidth="1.5" />
+        <line x1="42" y1="22" x2="42" y2="86" stroke="#b9c6d6" strokeWidth="1.5" />
+        <line x1="14" y1="54" x2="70" y2="54" stroke="#b9c6d6" strokeWidth="1.5" />
+      </g>
+      {/* Uzoqdagi stanoklar silueti */}
+      <g opacity="0.14" fill="#64748b">
+        <rect x="2" y="188" width="60" height="42" rx="3" />
+        <rect x="10" y="170" width="26" height="18" rx="2" />
+      </g>
       <rect y="230" width="640" height="2" fill="#9aa5b2" />
       <rect y="232" width="640" height="68" fill={`url(#${g}-floor)`} />
       <polygon points="0,300 160,232 224,232 44,300" fill="#ffffff" opacity="0.12" />
+      {/* Poldagi aks (reflection) */}
+      <rect x="84" y="268" width="456" height="28" fill={`url(#${g}-refl)`} />
+      <rect x="576" y="278" width="58" height="18" fill={`url(#${g}-refl)`} />
       <ellipse cx="320" cy="264" rx="272" ry="14" fill="#1e293b" opacity="0.22" filter={`url(#${g}-soft)`} />
 
       {/* Stanina (mashina asosi) — 2.5D: ustki qirra + old yuz + o'ng yon */}
@@ -283,6 +316,19 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
           ))}
         </g>
       ))}
+      {/* Sovutish ventilyatori — ishlaganda aylanadi */}
+      <circle cx="134" cy="226" r="13" fill="#3b4351" stroke="#242b36" strokeWidth="1.5" />
+      <g>
+        {running && (
+          <animateTransform attributeName="transform" type="rotate"
+            from="0 134 226" to="360 134 226" dur="1.1s" repeatCount="indefinite" />
+        )}
+        {[0, 90, 180, 270].map(a => (
+          <path key={a} d="M134,226 L140,216 Q134,212 128,216 Z" transform={`rotate(${a} 134 226)`} fill="#8a93a1" />
+        ))}
+      </g>
+      <circle cx="134" cy="226" r="3" fill="#242b36" />
+
       {/* Ogohlantirish yorlig'i */}
       <rect x="486" y="210" width="26" height="16" rx="2" fill="#facc15" stroke="#a16207" strokeWidth="0.8" />
       <path d="M499,213 L506,223 L492,223 Z" fill="none" stroke="#78350f" strokeWidth="1.4" />
@@ -299,6 +345,9 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
       <rect x="84" y="84" width="156" height="118" rx="8" fill={`url(#${g}-white)`} stroke="#b3bdc9" strokeWidth="1.5" />
       <rect x="92" y="90" width="10" height="106" rx="5" fill="#ffffff" opacity="0.55" />
       <rect x="84" y="172" width="156" height="9" fill="#2563eb" opacity="0.9" />
+      {[[92, 92], [232, 92], [92, 194], [232, 194]].map(([x, y]) => (
+        <circle key={`${x}-${y}`} cx={x} cy={y} r="1.6" fill="#9aa6b4" stroke="#7b8794" strokeWidth="0.5" />
+      ))}
       {label && (
         <text x="162" y="140" textAnchor="middle" fontSize="21" fontWeight="800" fontStyle="italic"
           fill="#1e3a8a" fontFamily="Arial, sans-serif" letterSpacing="1">{label}</text>
@@ -317,12 +366,45 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
           <animateTransform attributeName="transform" type="translate"
             values="0 0; -18 0; -18 0; 0 0" keyTimes="0;0.35;0.6;1" dur="2.8s" repeatCount="indefinite" />
         )}
+        <rect x="312" y="139" width="30" height="8" rx="4" fill={`url(#${g}-steel)`} stroke="#64748b" strokeWidth="0.6" />
         <rect x="296" y="120" width="18" height="46" fill="#94a3b8" stroke="#64748b" strokeWidth="0.8" />
         <rect x="290" y="132" width="6" height="22" fill="#cbd5e1" />
       </g>
+      {/* Tie-bar gaykalari */}
+      {[112, 168].map(y => (
+        <g key={y}>
+          <rect x="239" y={y - 2} width="5" height="10" rx="1" fill="#475569" />
+          <rect x="320" y={y - 2} width="5" height="10" rx="1" fill="#475569" />
+        </g>
+      ))}
+      {/* Buzilgan — uchqunlar */}
+      {theme === 'broken' && [[268, 140, -8, -10], [288, 150, 10, -6], [278, 160, -6, 8]].map(([x, y, dx, dy], i) => (
+        <line key={i} x1={x} y1={y} x2={x + dx} y2={y + dy} stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" opacity="0">
+          <animate attributeName="opacity" values="0;1;0" dur="0.6s" begin={`${i * 0.35}s`} repeatCount="indefinite" />
+        </line>
+      ))}
       <rect x="238" y="88" width="88" height="116" rx="3" fill="none" stroke="#1d4ed8" strokeWidth="4" />
       <rect x="242" y="92" width="80" height="108" fill="#7dd3fc" opacity="0.10" />
       <polygon points="244,92 264,92 252,200 244,200" fill="#ffffff" opacity="0.16" />
+      {/* Ta'mir/nosozlik — eshikka osilgan belgi */}
+      {(theme === 'service' || theme === 'broken') && (
+        <g>
+          <line x1="282" y1="90" x2="282" y2="102" stroke="#475569" strokeWidth="1.5" />
+          <rect x="252" y="102" width="60" height="18" rx="3" fill={theme === 'service' ? '#f59e0b' : '#dc2626'} stroke="#7c2d12" strokeWidth="1" />
+          <text x="282" y="115" textAnchor="middle" fontSize="11" fontWeight="900" fill="#ffffff" fontFamily="Arial, sans-serif">
+            {theme === 'service' ? "TA'MIR" : 'NOSOZ'}
+          </text>
+        </g>
+      )}
+      {/* Yig'ish yashigi + siklda tayyor detal tushishi */}
+      <rect x="258" y="238" width="44" height="26" rx="3" fill="#374151" stroke="#1f2937" strokeWidth="1" />
+      <rect x="262" y="242" width="36" height="8" rx="2" fill="#111827" />
+      {running && (
+        <rect x="272" y="150" width="16" height="10" rx="2" fill="#f8fafc" stroke="#94a3b8" strokeWidth="0.8" opacity="0">
+          <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.55;0.6;0.95;1" dur="2.8s" repeatCount="indefinite" />
+          <animate attributeName="y" values="150;150;150;236;236" keyTimes="0;0.55;0.6;0.93;1" dur="2.8s" repeatCount="indefinite" />
+        </rect>
+      )}
 
       {/* Boshqaruv shkafi — HMI ekran, tugmalar, E-stop */}
       <polygon points="334,76 410,76 396,88 320,88" fill="#7cabf9" />
@@ -360,6 +442,15 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
       {/* Injection blok — ko'k korpus + spec-plastina */}
       <polygon points="410,98 562,98 548,110 396,110" fill="#7cabf9" />
       <rect x="396" y="110" width="152" height="92" rx="5" fill={`url(#${g}-blue)`} stroke="#1e3a8a" strokeWidth="1.5" />
+      <rect x="402" y="113" width="140" height="9" rx="4.5" fill="#ffffff" opacity="0.18" />
+      {/* LED status displey */}
+      <rect x="404" y="126" width="54" height="17" rx="2" fill="#0b1220" stroke="#1e3a8a" strokeWidth="1" />
+      <text x="431" y="138.5" textAnchor="middle" fontSize="10" fontWeight="700" fill={ledCol}
+        fontFamily="Consolas, monospace" letterSpacing="1">
+        {ledTxt}
+        {running && <animate attributeName="opacity" values="1;0.45;1" dur="1.4s" repeatCount="indefinite" />}
+        {theme === 'broken' && <animate attributeName="opacity" values="1;0.25;1" dur="0.7s" repeatCount="indefinite" />}
+      </text>
       <rect x="466" y="150" width="66" height="26" rx="2" fill="#f8fafc" opacity="0.95" />
       <rect x="470" y="155" width="40" height="3" fill="#94a3b8" />
       <rect x="470" y="161" width="52" height="3" fill="#b6c0cc" />
@@ -380,6 +471,16 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
           </rect>
         ))}
       </g>
+      {/* Issiqlik jimirlashi — qizigan barrel ustida */}
+      {running && [0, 1].map(i => (
+        <path key={i} d={`M ${400 + i * 20} 130 q 4 -6 8 0 q 4 6 8 0`} fill="none"
+          stroke="#fb923c" strokeWidth="1.6" strokeLinecap="round" opacity="0">
+          <animate attributeName="opacity" values="0;0.6;0" dur="1.6s" begin={`${i * 0.5}s`} repeatCount="indefinite" />
+          <animate attributeName="d"
+            values={`M ${400 + i * 20} 130 q 4 -6 8 0 q 4 6 8 0; M ${400 + i * 20} 122 q 4 -6 8 0 q 4 6 8 0`}
+            dur="1.6s" begin={`${i * 0.5}s`} repeatCount="indefinite" />
+        </path>
+      ))}
 
       {/* Hopper minorasi: quritgich bunker + yuklagich + qizil shlang */}
       <rect x="483" y="94" width="14" height="18" fill="#cbd5e1" stroke="#94a3b8" strokeWidth="1" />
@@ -396,6 +497,8 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
       <path d="M501,6 C540,0 556,20 552,44" fill="none" stroke="#f87171" strokeWidth="2" strokeLinecap="round" opacity="0.7" />
       <rect x="551" y="62" width="4" height="36" fill="#94a3b8" />
       <rect x="542" y="44" width="22" height="20" rx="3" fill="#dc2626" stroke="#7f1d1d" strokeWidth="1" />
+      <path d="M479,8 C448,2 436,18 438,34" fill="none" stroke="#dc2626" strokeWidth="5" strokeLinecap="round" />
+      <rect x="430" y="34" width="16" height="14" rx="2" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="1" />
       {/* Material granulalari — feed tube ichida tushadi (faqat ishlaganda) */}
       {running && ['0s', '0.35s', '0.7s'].map((b, i) => (
         <circle key={b} cx={487 + i * 3} cy="98" r="1.4" fill="#475569">
@@ -435,6 +538,9 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
           <rect key={x} x={x} y="248" width="2" height="24" fill="#1e3a8a" opacity="0.5" />
         ))}
       </g>
+
+      {/* Vignetka — chetlari qoraytirilgan chuqurlik effekti */}
+      <rect width="640" height="300" fill={`url(#${g}-vig)`} pointerEvents="none" />
     </svg>
   );
 }

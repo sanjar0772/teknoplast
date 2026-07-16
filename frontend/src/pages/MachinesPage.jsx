@@ -219,134 +219,222 @@ function EfficiencyTodayPanel() {
   );
 }
 
-// Inyeksion quyish mashinasi — isometrik 3D ko'rinish (SVG).
-// Rang stanok holatiga qarab, ishlab turgan bo'lsa signal chirog'i miltiraydi,
-// hopper (yuqori bunker) va sikl konveyer chizig'i jonli animatsiya bilan.
-function MachineIllustration({ theme, running, className = '' }) {
-  const palette = {
-    running: { body: '#dbeafe', bodyDk: '#93c5fd', frame: '#1e3a8a', barrel: '#334155', accent: '#10b981', light: '#22c55e', shadow: '#c7d2fe', hopper: '#475569' },
-    idle:    { body: '#e5e7eb', bodyDk: '#9ca3af', frame: '#334155', barrel: '#475569', accent: '#94a3b8', light: '#94a3b8', shadow: '#d1d5db', hopper: '#4b5563' },
-    service: { body: '#fef3c7', bodyDk: '#fbbf24', frame: '#78350f', barrel: '#92400e', accent: '#f59e0b', light: '#f59e0b', shadow: '#fde68a', hopper: '#78350f' },
-    broken:  { body: '#fee2e2', bodyDk: '#f87171', frame: '#7f1d1d', barrel: '#991b1b', accent: '#ef4444', light: '#ef4444', shadow: '#fecaca', hopper: '#7f1d1d' },
-  };
-  const c = palette[theme] || palette.idle;
-  const gid = `mch-${theme}`;
+// Inyeksion quyish mashinasi — foto-realistik uslubdagi 2.5D SVG ko'rinish.
+// Haqiqiy TPA tuzilishi: oq qisish uzeli (clamping), qolip zonasi (himoya eshik +
+// tie-bar + platalar), ko'k boshqaruv shkafi (HMI ekran, E-stop), ko'k injection
+// blok (barrel + isitgich xalqalari + nozzle), hopper minorasi (quritgich, qizil
+// shlang), signal minorasi (qizil/sariq/yashil), kulrang stanina va yashiklar.
+// Holat: running=yashil chiroq + jonli sikl animatsiyasi (qolip yopilishi,
+// material tushishi, isitgich cho'g'i, ekran grafigi), service=sariq, broken=qizil.
+function MachineIllustration({ theme, running, name = '', className = '' }) {
+  const LENS = { running: 'green', service: 'amber', broken: 'red', idle: null };
+  const active = LENS[theme] ?? null;
+  const blink = { green: '1.3s', amber: '1.8s', red: '0.7s' }[active];
+  const label = String(name || '').toUpperCase().slice(0, 12);
+  const g = `m3d-${theme}`;
 
   return (
-    <svg viewBox="0 0 320 120" className={className} preserveAspectRatio="xMidYMid meet">
+    <svg viewBox="0 0 640 300" className={className} preserveAspectRatio="xMidYMid slice">
       <defs>
-        <linearGradient id={`${gid}-bg`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#f8fafc" />
-          <stop offset="100%" stopColor="#e2e8f0" />
+        <linearGradient id={`${g}-wall`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#f1f5f9" /><stop offset="100%" stopColor="#dbe3ec" />
         </linearGradient>
-        <linearGradient id={`${gid}-body`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={c.body} />
-          <stop offset="100%" stopColor={c.bodyDk} />
+        <linearGradient id={`${g}-floor`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#c9d2dd" /><stop offset="100%" stopColor="#aeb8c6" />
         </linearGradient>
-        <linearGradient id={`${gid}-barrel`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={c.barrel} />
-          <stop offset="50%" stopColor="#64748b" />
-          <stop offset="100%" stopColor={c.barrel} />
+        <linearGradient id={`${g}-white`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ffffff" /><stop offset="70%" stopColor="#e8edf3" /><stop offset="100%" stopColor="#cfd8e3" />
         </linearGradient>
-        <radialGradient id={`${gid}-light`} cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0%" stopColor="#fff" stopOpacity="0.9" />
-          <stop offset="60%" stopColor={c.light} />
-          <stop offset="100%" stopColor={c.light} stopOpacity="0.3" />
-        </radialGradient>
+        <linearGradient id={`${g}-blue`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#4f8ef7" /><stop offset="55%" stopColor="#2563eb" /><stop offset="100%" stopColor="#1e3a8a" />
+        </linearGradient>
+        <linearGradient id={`${g}-base`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#b7bfca" /><stop offset="60%" stopColor="#8d95a1" /><stop offset="100%" stopColor="#6b7380" />
+        </linearGradient>
+        <linearGradient id={`${g}-steel`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#f8fafc" /><stop offset="50%" stopColor="#cbd5e1" /><stop offset="100%" stopColor="#94a3b8" />
+        </linearGradient>
+        <linearGradient id={`${g}-barrel`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#e2e8f0" /><stop offset="45%" stopColor="#64748b" /><stop offset="100%" stopColor="#334155" />
+        </linearGradient>
+        <filter id={`${g}-soft`} x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="4" />
+        </filter>
       </defs>
 
-      {/* Fon (ustaxona pol/devor) */}
-      <rect x="0" y="0" width="320" height="120" fill={`url(#${gid}-bg)`} />
-      <path d="M0,95 L320,95 L320,120 L0,120 Z" fill="#cbd5e1" opacity="0.5" />
-      <path d="M20,95 L60,80 L280,80 L320,95 Z" fill="#e2e8f0" opacity="0.6" />
+      {/* Ustaxona foni: devor + pol */}
+      <rect width="640" height="300" fill={`url(#${g}-wall)`} />
+      <rect y="230" width="640" height="2" fill="#9aa5b2" />
+      <rect y="232" width="640" height="68" fill={`url(#${g}-floor)`} />
+      <polygon points="0,300 160,232 224,232 44,300" fill="#ffffff" opacity="0.12" />
+      <ellipse cx="320" cy="264" rx="272" ry="14" fill="#1e293b" opacity="0.22" filter={`url(#${g}-soft)`} />
 
-      {/* Chap: qisish uzeli (clamping unit) — katta blok */}
+      {/* Stanina (mashina asosi) — 2.5D: ustki qirra + old yuz + o'ng yon */}
+      <polygon points="86,184 576,184 560,196 70,196" fill="#c9d0d9" />
+      <polygon points="560,196 576,184 576,244 560,256" fill="#5d6570" />
+      <rect x="70" y="196" width="490" height="60" rx="5" fill={`url(#${g}-base)`} stroke="#5f6771" strokeWidth="1.2" />
+      {/* Shkaf eshiklari + ventilyatsiya */}
+      {[92, 224, 356].map(x => (
+        <g key={x}>
+          <rect x={x} y="204" width="118" height="44" rx="3" fill="#9aa2ae" stroke="#6d7580" strokeWidth="1" />
+          <rect x={x + 8} y="222" width="3" height="10" rx="1.5" fill="#525a66" />
+          {[212, 218, 224, 230, 236].map(y => (
+            <rect key={y} x={x + 60} y={y} width="48" height="2.2" rx="1.1" fill="#6d7580" opacity="0.7" />
+          ))}
+        </g>
+      ))}
+      {/* Ogohlantirish yorlig'i */}
+      <rect x="486" y="210" width="26" height="16" rx="2" fill="#facc15" stroke="#a16207" strokeWidth="0.8" />
+      <path d="M499,213 L506,223 L492,223 Z" fill="none" stroke="#78350f" strokeWidth="1.4" />
+      {/* Oyoqlar */}
+      {[84, 280, 536].map(x => (
+        <g key={x}>
+          <rect x={x} y="256" width="16" height="12" fill="#2f3640" />
+          <rect x={x - 3} y="268" width="22" height="4" rx="2" fill="#1f2530" />
+        </g>
+      ))}
+
+      {/* Qisish uzeli — oq korpus (brend nomi bilan) */}
+      <polygon points="100,72 256,72 240,84 84,84" fill="#f7f9fb" stroke="#c3ccd6" strokeWidth="1" />
+      <rect x="84" y="84" width="156" height="118" rx="8" fill={`url(#${g}-white)`} stroke="#b3bdc9" strokeWidth="1.5" />
+      <rect x="92" y="90" width="10" height="106" rx="5" fill="#ffffff" opacity="0.55" />
+      <rect x="84" y="172" width="156" height="9" fill="#2563eb" opacity="0.9" />
+      {label && (
+        <text x="162" y="140" textAnchor="middle" fontSize="21" fontWeight="800" fontStyle="italic"
+          fill="#1e3a8a" fontFamily="Arial, sans-serif" letterSpacing="1">{label}</text>
+      )}
+      <polygon points="222,150 230,163 214,163" fill="#facc15" stroke="#a16207" strokeWidth="0.8" />
+      <text x="222" y="161.5" textAnchor="middle" fontSize="9" fontWeight="900" fill="#78350f">!</text>
+
+      {/* Qolip zonasi: qora ichki bo'shliq, tie-bar, platalar, himoya eshik */}
+      <rect x="240" y="90" width="84" height="112" fill="#0f172a" stroke="#1e293b" strokeWidth="1" />
+      <rect x="240" y="112" width="84" height="6" rx="3" fill={`url(#${g}-steel)`} />
+      <rect x="240" y="168" width="84" height="6" rx="3" fill={`url(#${g}-steel)`} />
+      <rect x="246" y="120" width="18" height="46" fill="#94a3b8" stroke="#64748b" strokeWidth="0.8" />
+      <rect x="264" y="132" width="6" height="22" fill="#cbd5e1" />
       <g>
-        <rect x="35" y="55" width="90" height="42" rx="4" fill={c.shadow} />
-        <rect x="30" y="50" width="90" height="42" rx="4" fill={`url(#${gid}-body)`} stroke={c.frame} strokeWidth="1.5" />
-        {/* Toolplate — qolip taxtasi */}
-        <rect x="42" y="58" width="66" height="26" rx="2" fill={c.frame} opacity="0.85" />
-        <rect x="46" y="62" width="58" height="18" rx="1" fill={c.bodyDk} opacity="0.6" />
-        {/* Vintlar */}
-        <circle cx="48" cy="66" r="1.6" fill="#0f172a" />
-        <circle cx="102" cy="66" r="1.6" fill="#0f172a" />
-        <circle cx="48" cy="80" r="1.6" fill="#0f172a" />
-        <circle cx="102" cy="80" r="1.6" fill="#0f172a" />
+        {running && (
+          <animateTransform attributeName="transform" type="translate"
+            values="0 0; -18 0; -18 0; 0 0" keyTimes="0;0.35;0.6;1" dur="2.8s" repeatCount="indefinite" />
+        )}
+        <rect x="296" y="120" width="18" height="46" fill="#94a3b8" stroke="#64748b" strokeWidth="0.8" />
+        <rect x="290" y="132" width="6" height="22" fill="#cbd5e1" />
       </g>
+      <rect x="238" y="88" width="88" height="116" rx="3" fill="none" stroke="#1d4ed8" strokeWidth="4" />
+      <rect x="242" y="92" width="80" height="108" fill="#7dd3fc" opacity="0.10" />
+      <polygon points="244,92 264,92 252,200 244,200" fill="#ffffff" opacity="0.16" />
 
-      {/* O'rta: tie-bar (bog'lovchi shtanga) */}
-      <rect x="120" y="60" width="80" height="4" rx="1" fill="#64748b" />
-      <rect x="120" y="80" width="80" height="4" rx="1" fill="#64748b" />
+      {/* Boshqaruv shkafi — HMI ekran, tugmalar, E-stop */}
+      <polygon points="334,76 410,76 396,88 320,88" fill="#7cabf9" />
+      <rect x="320" y="88" width="76" height="114" rx="4" fill={`url(#${g}-blue)`} stroke="#1e3a8a" strokeWidth="1.5" />
+      <rect x="329" y="98" width="58" height="42" rx="3" fill="#0a1526" stroke="#93c5fd" strokeWidth="1.2" />
+      {running ? (
+        <>
+          <rect x="332" y="101" width="52" height="36" rx="2" fill="#082f49" />
+          <rect x="332" y="101" width="52" height="8" fill="#0ea5e9" opacity="0.35" />
+          <polyline points="336,128 342,114 348,124 354,108 360,120 366,112 372,122 378,110 382,118"
+            fill="none" stroke="#fbbf24" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <animate attributeName="opacity" values="1;0.55;1" dur="2s" repeatCount="indefinite" />
+          </polyline>
+        </>
+      ) : theme === 'broken' ? (
+        <>
+          <rect x="332" y="101" width="52" height="36" rx="2" fill="#1c0d0d" />
+          <text x="358" y="126" textAnchor="middle" fontSize="16" fontWeight="900" fill="#ef4444">!
+            <animate attributeName="opacity" values="1;0.3;1" dur="0.9s" repeatCount="indefinite" />
+          </text>
+        </>
+      ) : (
+        <polygon points="332,101 352,101 340,137 332,137" fill="#e2e8f0" opacity="0.07" />
+      )}
+      <circle cx="338" cy="152" r="3.4" fill="#22c55e" stroke="#14532d" strokeWidth="0.8" />
+      <circle cx="350" cy="152" r="3.4" fill="#facc15" stroke="#713f12" strokeWidth="0.8" />
+      <circle cx="362" cy="152" r="3.4" fill="#94a3b8" stroke="#334155" strokeWidth="0.8" />
+      <circle cx="381" cy="152" r="7" fill="#fde047" />
+      <circle cx="381" cy="152" r="4.4" fill="#dc2626" stroke="#7f1d1d" strokeWidth="0.8" />
+      {[168, 174, 180, 186].map(y => (
+        <rect key={y} x="330" y={y} width="56" height="2.5" rx="1.2" fill="#1e3a8a" opacity="0.55" />
+      ))}
+      <path d="M358,202 C356,220 348,226 336,230" fill="none" stroke="#334155" strokeWidth="2" />
 
-      {/* O'ng: injection unit (silindr + shnek) */}
+      {/* Injection blok — ko'k korpus + spec-plastina */}
+      <polygon points="410,98 562,98 548,110 396,110" fill="#7cabf9" />
+      <rect x="396" y="110" width="152" height="92" rx="5" fill={`url(#${g}-blue)`} stroke="#1e3a8a" strokeWidth="1.5" />
+      <rect x="466" y="150" width="66" height="26" rx="2" fill="#f8fafc" opacity="0.95" />
+      <rect x="470" y="155" width="40" height="3" fill="#94a3b8" />
+      <rect x="470" y="161" width="52" height="3" fill="#b6c0cc" />
+      <rect x="470" y="167" width="30" height="3" fill="#b6c0cc" />
+
+      {/* Barrel (silindr) + isitgich xalqalari + nozzle — sikl bilan siljiydi */}
       <g>
-        <rect x="200" y="53" width="90" height="38" rx="4" fill={c.shadow} />
-        <rect x="195" y="48" width="90" height="38" rx="4" fill={`url(#${gid}-body)`} stroke={c.frame} strokeWidth="1.5" />
-        {/* Barrel/silindr */}
-        <rect x="200" y="63" width="80" height="10" rx="5" fill={`url(#${gid}-barrel)`} stroke={c.frame} strokeWidth="0.8" />
-        {/* Isitgich xalqalar */}
-        {[210, 225, 240, 255, 270].map(x => (
-          <rect key={x} x={x} y="61" width="4" height="14" rx="1" fill="#e11d48" opacity={running ? 0.85 : 0.35} />
+        {running && (
+          <animateTransform attributeName="transform" type="translate"
+            values="0 0; 5 0; 0 0" dur="2.8s" repeatCount="indefinite" />
+        )}
+        <polygon points="316,138 304,143 316,148" fill="#64748b" />
+        <rect x="316" y="136" width="112" height="14" rx="7" fill={`url(#${g}-barrel)`} stroke="#334155" strokeWidth="0.8" />
+        {[344, 364, 384, 404].map(x => (
+          <rect key={x} x={x} y="133" width="7" height="20" rx="2"
+            fill={running ? '#f97316' : '#9a3412'} opacity={running ? 0.95 : 0.5}>
+            {running && <animate attributeName="opacity" values="0.95;0.45;0.95" dur="1.9s" repeatCount="indefinite" />}
+          </rect>
         ))}
       </g>
 
-      {/* Hopper (bunker) — yuqori voronka */}
-      <g>
-        <path d="M232,10 L268,10 L262,32 L238,32 Z" fill={c.hopper} stroke={c.frame} strokeWidth="1.2" />
-        <rect x="244" y="32" width="12" height="18" fill={c.hopper} stroke={c.frame} strokeWidth="1" />
-        <ellipse cx="250" cy="12" rx="18" ry="3" fill={c.hopper} stroke={c.frame} strokeWidth="1" />
-        {/* Material tushayotgani (jonli, faqat ishlab turganda) */}
-        {running && (
-          <>
-            <circle cx="250" cy="18" r="1.2" fill="#f1f5f9">
-              <animate attributeName="cy" from="14" to="30" dur="0.8s" repeatCount="indefinite" />
-            </circle>
-            <circle cx="248" cy="22" r="1" fill="#f1f5f9">
-              <animate attributeName="cy" from="14" to="30" dur="0.9s" begin="0.3s" repeatCount="indefinite" />
-            </circle>
-            <circle cx="252" cy="20" r="1" fill="#f1f5f9">
-              <animate attributeName="cy" from="14" to="30" dur="0.7s" begin="0.5s" repeatCount="indefinite" />
-            </circle>
-          </>
-        )}
-      </g>
-
-      {/* Boshqaruv paneli */}
-      <g>
-        <rect x="130" y="35" width="42" height="26" rx="2" fill="#1e293b" stroke={c.frame} strokeWidth="1" />
-        <rect x="133" y="38" width="36" height="14" rx="1" fill={running ? '#0ea5e9' : '#334155'} opacity={running ? 0.85 : 1} />
-        {/* Ekrandagi to'lqin (running bo'lsa) */}
-        {running && (
-          <polyline points="135,45 140,42 145,47 150,43 155,46 160,44 165,45" fill="none" stroke="#22d3ee" strokeWidth="0.8" />
-        )}
-        <circle cx="138" cy="57" r="1.4" fill="#22c55e" />
-        <circle cx="145" cy="57" r="1.4" fill="#eab308" />
-        <circle cx="152" cy="57" r="1.4" fill="#ef4444" />
-      </g>
-
-      {/* Signal chirog'i (mayoq) — ishlab turganda miltiraydi */}
-      <g>
-        <rect x="118" y="18" width="4" height="18" fill="#334155" />
-        <circle cx="120" cy="15" r="6" fill={`url(#${gid}-light)`}>
-          {running && <animate attributeName="opacity" values="1;0.4;1" dur="1.4s" repeatCount="indefinite" />}
+      {/* Hopper minorasi: quritgich bunker + yuklagich + qizil shlang */}
+      <rect x="483" y="94" width="14" height="18" fill="#cbd5e1" stroke="#94a3b8" strokeWidth="1" />
+      <polygon points="452,56 528,56 504,94 476,94" fill={`url(#${g}-steel)`} stroke="#8fa0b3" strokeWidth="1.2" />
+      <rect x="452" y="52" width="76" height="6" rx="2" fill="#94a3b8" />
+      <rect x="452" y="26" width="76" height="28" fill={`url(#${g}-steel)`} stroke="#8fa0b3" strokeWidth="1" />
+      <ellipse cx="490" cy="26" rx="38" ry="8" fill="#eef2f7" stroke="#9fb0c2" strokeWidth="1" />
+      <ellipse cx="490" cy="21" rx="22" ry="6" fill="#dde5ee" stroke="#9fb0c2" strokeWidth="1" />
+      <rect x="479" y="2" width="22" height="14" rx="3" fill="#c3cedb" stroke="#8fa0b3" strokeWidth="1" />
+      <ellipse cx="490" cy="2" rx="11" ry="3.5" fill="#e8eef5" stroke="#9fb0c2" strokeWidth="0.8" />
+      <rect x="484" y="32" width="12" height="18" rx="2" fill="#bae6fd" opacity="0.85" stroke="#7ea4c0" strokeWidth="0.8" />
+      <rect x="484" y="41" width="12" height="9" rx="1" fill="#64748b" />
+      <path d="M501,6 C540,0 556,20 552,44" fill="none" stroke="#dc2626" strokeWidth="6" strokeLinecap="round" />
+      <path d="M501,6 C540,0 556,20 552,44" fill="none" stroke="#f87171" strokeWidth="2" strokeLinecap="round" opacity="0.7" />
+      <rect x="551" y="62" width="4" height="36" fill="#94a3b8" />
+      <rect x="542" y="44" width="22" height="20" rx="3" fill="#dc2626" stroke="#7f1d1d" strokeWidth="1" />
+      {/* Material granulalari — feed tube ichida tushadi (faqat ishlaganda) */}
+      {running && ['0s', '0.35s', '0.7s'].map((b, i) => (
+        <circle key={b} cx={487 + i * 3} cy="98" r="1.4" fill="#475569">
+          <animate attributeName="cy" values="96;112" dur="0.7s" begin={b} repeatCount="indefinite" />
+          <animate attributeName="opacity" values="1;0" dur="0.7s" begin={b} repeatCount="indefinite" />
         </circle>
-        <circle cx="120" cy="15" r="3" fill={c.light} opacity="0.9" />
-      </g>
+      ))}
 
-      {/* Ostki poya (base) */}
-      <rect x="25" y="92" width="270" height="10" rx="2" fill={c.frame} />
-      <rect x="30" y="99" width="8" height="8" fill="#1e293b" />
-      <rect x="282" y="99" width="8" height="8" fill="#1e293b" />
-
-      {/* Konveyer — chiqargan detalning yo'li (jonli) */}
-      {running && (
-        <g opacity="0.6">
-          <rect x="65" y="88" width="30" height="3" fill="#94a3b8" />
-          <circle cx="70" cy="93" r="1.2" fill={c.frame}>
-            <animate attributeName="cx" values="70;90;70" dur="1.8s" repeatCount="indefinite" />
-          </circle>
+      {/* Signal minorasi (andon): qizil/sariq/yashil — holat chirog'i yonadi */}
+      <rect x="103" y="52" width="13" height="4" fill="#1f2937" />
+      <rect x="107" y="54" width="5" height="22" fill="#475569" />
+      <rect x="98" y="10" width="24" height="5" rx="2" fill="#1f2937" />
+      {[['red', 15, '#ef4444'], ['amber', 27.5, '#f59e0b'], ['green', 40, '#22c55e']].map(([k, y, col]) => (
+        <g key={k}>
+          {active === k && (
+            <rect x="99" y={y} width="22" height="12" rx="3" fill={col} filter={`url(#${g}-soft)`} opacity="0.9">
+              {blink && <animate attributeName="opacity" values="0.9;0.2;0.9" dur={blink} repeatCount="indefinite" />}
+            </rect>
+          )}
+          <rect x="99" y={y} width="22" height="12" rx="3" fill={col}
+            opacity={active === k ? 1 : 0.22} stroke="#334155" strokeWidth="0.6">
+            {active === k && blink && <animate attributeName="opacity" values="1;0.45;1" dur={blink} repeatCount="indefinite" />}
+          </rect>
         </g>
-      )}
+      ))}
+
+      {/* Ko'k konteyner yashiklar (tayyor mahsulot) */}
+      <g>
+        <polygon points="584,214 636,214 644,207 592,207" fill="#60a5fa" />
+        <rect x="584" y="214" width="48" height="26" rx="2" fill={`url(#${g}-blue)`} stroke="#1e3a8a" strokeWidth="1" />
+        {[592, 600, 608, 616, 624].map(x => (
+          <rect key={x} x={x} y="217" width="2" height="20" fill="#1e3a8a" opacity="0.5" />
+        ))}
+        <polygon points="576,244 638,244 646,236 584,236" fill="#60a5fa" />
+        <rect x="576" y="244" width="58" height="32" rx="2" fill={`url(#${g}-blue)`} stroke="#1e3a8a" strokeWidth="1" />
+        {[584, 594, 604, 614, 624].map(x => (
+          <rect key={x} x={x} y="248" width="2" height="24" fill="#1e3a8a" opacity="0.5" />
+        ))}
+      </g>
     </svg>
   );
 }
@@ -2120,12 +2208,9 @@ export default function MachinesPage() {
               {/* Yuqori holat chizig'i */}
               <div className={`h-1.5 w-full bg-gradient-to-r ${th.bar} ${th.barGlow || ''}`} />
 
-              {/* 3D stanok ko'rinishi — holat rangida, ishlab turganda jonli animatsiya */}
-              <div className="relative bg-slate-50 border-b border-gray-100">
-                <MachineIllustration theme={th.key} running={!!m.is_running} className="w-full h-[110px]" />
-                <span className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${th.pill} shadow-sm`}>
-                  {m.name}
-                </span>
+              {/* 3D stanok ko'rinishi — holat rangida, ishlab turganda jonli sikl animatsiyasi */}
+              <div className="relative border-b border-gray-100">
+                <MachineIllustration theme={th.key} running={!!m.is_running} name={m.name} className="w-full h-[150px] block" />
                 {th.live && (
                   <span className="absolute top-2 right-2 flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/90 text-emerald-700 shadow-sm">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> LIVE

@@ -95,28 +95,29 @@ export default function Sidebar() {
 
   return (
     <>
-    <aside className="w-64 h-screen bg-white border-r border-gray-200 flex flex-col fixed left-0 top-0 z-30">
+    <aside className="w-64 h-screen bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-r border-slate-800/80 shadow-[8px_0_30px_-15px_rgba(2,6,23,0.6)] flex flex-col fixed left-0 top-0 z-30">
       {/* Logo */}
-      <div className="px-6 py-5 border-b border-gray-100">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
-            <span className="text-white font-bold text-sm">T</span>
+      <div className="relative px-6 py-5 border-b border-white/5 overflow-hidden">
+        <div className="absolute -top-12 -left-12 w-44 h-44 rounded-full bg-blue-600/20 blur-3xl pointer-events-none" />
+        <div className="relative flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-400 via-blue-600 to-indigo-700 shadow-[0_8px_16px_-6px_rgba(59,130,246,0.7),inset_0_1px_0_rgba(255,255,255,0.35)] flex items-center justify-center">
+            <span className="text-white font-bold text-sm drop-shadow">T</span>
           </div>
           <div>
-            <h1 className="font-bold text-gray-900 text-sm leading-tight">TEKNOPLAST</h1>
-            <p className="text-xs text-gray-400">Boshqaruv Tizimi</p>
+            <h1 className="font-bold text-white text-sm leading-tight tracking-wide">TEKNOPLAST</h1>
+            <p className="text-[11px] text-slate-400">Boshqaruv Tizimi</p>
           </div>
         </div>
       </div>
 
       {/* EGA filialga "admin sifatida" kirgan bo'lsa — ogohlantiruvchi banner + chiqish */}
       {activeBranch && (
-        <div className="mx-3 mt-3 rounded-xl bg-amber-50 border border-amber-300 p-3">
-          <div className="flex items-center gap-2 text-amber-800">
+        <div className="mx-3 mt-3 rounded-xl bg-amber-500/10 border border-amber-400/30 p-3">
+          <div className="flex items-center gap-2 text-amber-200">
             <Store size={15} className="flex-shrink-0" />
             <div className="min-w-0">
               <p className="text-xs font-bold truncate">{activeBranch.name}</p>
-              <p className="text-[10px] text-amber-600 leading-tight">Filial ichidasiz (admin)</p>
+              <p className="text-[10px] text-amber-400 leading-tight">Filial ichidasiz (admin)</p>
             </div>
           </div>
           <button
@@ -147,18 +148,18 @@ export default function Sidebar() {
       </nav>
 
       {/* User */}
-      <div className="px-3 py-4 border-t border-gray-100">
-        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 mb-2">
-          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-            <span className="text-blue-700 font-semibold text-sm">
+      <div className="px-3 py-4 border-t border-white/5">
+        <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/5 border border-white/10 mb-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 shadow-[0_4px_10px_-3px_rgba(59,130,246,0.6)] flex items-center justify-center flex-shrink-0">
+            <span className="text-white font-semibold text-sm">
               {user?.full_name?.[0]?.toUpperCase()}
             </span>
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">{user?.full_name}</p>
-            <p className="text-xs text-gray-500">{ROLE_LABELS[user?.role]}</p>
+            <p className="text-sm font-medium text-white truncate">{user?.full_name}</p>
+            <p className="text-xs text-slate-400">{ROLE_LABELS[user?.role]}</p>
             {user?.branch_name && (
-              <p className="text-[11px] text-blue-600 font-medium flex items-center gap-0.5 truncate">
+              <p className="text-[11px] text-blue-300 font-medium flex items-center gap-0.5 truncate">
                 <Store size={10} /> {user.branch_name}
               </p>
             )}
@@ -166,14 +167,14 @@ export default function Sidebar() {
         </div>
         <button
           onClick={() => setShowPwd(true)}
-          className="sidebar-link w-full text-gray-600 hover:bg-gray-100 mb-1"
+          className="sidebar-link w-full mb-1"
         >
           <KeyRound size={16} />
           <span>Parolni o'zgartirish</span>
         </button>
         <button
           onClick={handleLogout}
-          className="sidebar-link w-full text-red-600 hover:bg-red-50 hover:text-red-700"
+          className="sidebar-link w-full text-red-300 hover:bg-red-500/10 hover:text-red-200"
         >
           <LogOut size={16} />
           <span>Chiqish</span>

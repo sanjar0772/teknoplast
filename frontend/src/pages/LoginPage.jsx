@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Eye, EyeOff, Lock, Phone } from 'lucide-react';
+import { Eye, EyeOff, Lock, Phone, Factory } from 'lucide-react';
 import { authAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -30,19 +30,27 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-700 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
+    <div className="relative min-h-screen overflow-hidden bg-slate-950 flex items-center justify-center p-4">
+      {/* 3D fon: chuqur gradient + suzuvchi nur dog'lari + panjara */}
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950" />
+      <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-blue-600/30 blur-3xl animate-float-slow" />
+      <div className="absolute -bottom-40 -right-24 w-[28rem] h-[28rem] rounded-full bg-emerald-500/20 blur-3xl animate-float-slower" />
+      <div className="absolute top-1/3 right-1/4 w-64 h-64 rounded-full bg-indigo-500/20 blur-3xl animate-float-slow" />
+      <div className="absolute inset-0 opacity-[0.05]"
+        style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '44px 44px' }} />
+
+      <div className="relative w-full max-w-md">
+        {/* Logo — 3D kub */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-white/10 backdrop-blur rounded-2xl flex items-center justify-center mx-auto mb-4 border border-white/20">
-            <span className="text-white font-bold text-2xl">T</span>
+          <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-gradient-to-br from-blue-400 via-blue-600 to-indigo-700 shadow-[0_20px_45px_-12px_rgba(59,130,246,0.65),inset_0_2px_0_rgba(255,255,255,0.35)] flex items-center justify-center rotate-3 hover:rotate-0 transition-transform duration-300">
+            <Factory size={34} className="text-white drop-shadow-lg" />
           </div>
-          <h1 className="text-3xl font-bold text-white">TEKNOPLAST</h1>
-          <p className="text-blue-200 mt-1">Boshqaruv Tizimi</p>
+          <h1 className="text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-blue-100 to-blue-300 drop-shadow">TEKNOPLAST</h1>
+          <p className="text-blue-300/80 mt-1 text-sm">Zavod Boshqaruv Tizimi</p>
         </div>
 
-        {/* Form */}
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
+        {/* Form — shisha karta */}
+        <div className="bg-white/95 backdrop-blur-xl rounded-3xl border border-white/20 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.8)] p-8">
           <h2 className="text-xl font-bold text-gray-900 mb-6">Tizimga kirish</h2>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
@@ -113,7 +121,7 @@ export default function LoginPage() {
           </form>
 
           <p className="text-center text-xs text-gray-400 mt-6">
-            Teknoplast Boshqaruv Tizimi v159
+            Teknoplast Boshqaruv Tizimi © 2026
           </p>
         </div>
       </div>

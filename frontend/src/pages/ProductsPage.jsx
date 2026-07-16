@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Package, DollarSign, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory, Calendar, CheckSquare, Square, FileText, FileSpreadsheet, Trash2, FlaskConical } from 'lucide-react';
+import { Plus, X, Package, DollarSign, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory, Calendar, CheckSquare, Square, FileText, FileSpreadsheet, Trash2, FlaskConical, Camera } from 'lucide-react';
 import clsx from 'clsx';
 import { productsAPI, customersAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
@@ -10,6 +10,27 @@ import { RANGLAR, RANG_COLORS } from '../constants/colors';
 import { parseSom } from '../utils/money';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
+
+// Mahsulot foto URL (cache-busting uchun updated_at qo'shiladi)
+const photoUrl = (p) => `/api/products/${p.id}/photo?v=${encodeURIComponent(p.photo_updated_at || '')}`;
+
+// Rasmni brauzerda kichraytirish — telefon fotolari 5-10MB bo'ladi, bazaga ~100-250KB JPEG yozamiz
+const resizeImage = (file, maxDim = 900, quality = 0.82) => new Promise((resolve, reject) => {
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    URL.revokeObjectURL(url);
+    resolve(canvas.toDataURL('image/jpeg', quality));
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Rasm o'qilmadi")); };
+  img.src = url;
+});
 
 // Tarix turi bo'yicha ko'rinish
 const HIST_INFO = {
@@ -205,6 +226,45 @@ export default function ProductsPage({ embedded = false }) {
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [exporting, setExporting] = useState(null); // 'pdf' | 'excel' | null
   const [exportChoice, setExportChoice] = useState(null); // 'excel' | 'pdf' — "umumiy/qisqacha" so'rash oynasi
+  // Foto tizimi: yashirin file input + qaysi mahsulotga yuklanayotgani + lightbox
+  const photoInputRef = useRef(null);
+  const photoTargetRef = useRef(null);
+  const [photoUploading, setPhotoUploading] = useState(null); // product id
+  const [photoView, setPhotoView] = useState(null); // lightbox mahsuloti
+
+  const pickPhoto = (p) => { photoTargetRef.current = p; photoInputRef.current?.click(); };
+
+  const onPhotoFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    const p = photoTargetRef.current;
+    if (!file || !p) return;
+    if (!file.type.startsWith('image/')) return toast.error('Rasm fayl tanlang');
+    setPhotoUploading(p.id);
+    try {
+      const dataUrl = await resizeImage(file);
+      await productsAPI.uploadPhoto(p.id, dataUrl);
+      toast.success('Foto saqlandi');
+      qc.invalidateQueries({ queryKey: ['products'] });
+      const nowIso = new Date().toISOString();
+      setPhotoView(v => (v && v.id === p.id ? { ...v, has_photo: 1, photo_updated_at: nowIso } : v));
+    } catch (err) {
+      toast.error(err?.response?.data?.error || "Foto yuklab bo'lmadi");
+    } finally {
+      setPhotoUploading(null);
+    }
+  };
+
+  const deletePhoto = async (p) => {
+    try {
+      await productsAPI.deletePhoto(p.id);
+      toast.success("Foto o'chirildi");
+      qc.invalidateQueries({ queryKey: ['products'] });
+      setPhotoView(null);
+    } catch {
+      toast.error("O'chirib bo'lmadi");
+    }
+  };
 
   const applyPreset = (preset) => {
     setDatePreset(preset);
@@ -587,6 +647,30 @@ export default function ProductsPage({ embedded = false }) {
           <div key={p.id}
             onClick={selectMode ? () => toggleSelect(p.id) : undefined}
             className={`card ${!p.is_active ? 'opacity-60' : ''} ${selectMode ? 'cursor-pointer transition' : ''} ${selectMode && selectedIds.has(p.id) ? 'ring-2 ring-blue-500 bg-blue-50/40' : ''}`}>
+            {/* Mahsulot fotosi — bosganda kattalashadi, kamera tugmasi bilan yuklanadi */}
+            <div className="relative h-36 mb-3 rounded-xl overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-100">
+              {p.has_photo ? (
+                <img src={photoUrl(p)} alt={p.name} loading="lazy"
+                  className="w-full h-full object-cover cursor-zoom-in"
+                  onClick={selectMode ? undefined : (e) => { e.stopPropagation(); setPhotoView(p); }} />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
+                  <Package size={30} />
+                  <span className="text-[10px] mt-1">Foto yo'q</span>
+                </div>
+              )}
+              {canEdit && !selectMode && (
+                <button type="button"
+                  onClick={(e) => { e.stopPropagation(); pickPhoto(p); }}
+                  disabled={photoUploading === p.id}
+                  className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-white/90 shadow flex items-center justify-center text-gray-600 hover:text-blue-600 hover:bg-white transition"
+                  title={p.has_photo ? 'Fotoni almashtirish' : "Foto qo'shish"}>
+                  {photoUploading === p.id
+                    ? <span className="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                    : <Camera size={15} />}
+                </button>
+              )}
+            </div>
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-start gap-2">
                 {selectMode && (
@@ -1133,6 +1217,41 @@ export default function ProductsPage({ embedded = false }) {
           </div>
         </div>
       </Modal>
+
+      {/* Yashirin fayl tanlagich — foto yuklash uchun */}
+      <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={onPhotoFile} />
+
+      {/* Foto lightbox — katta ko'rish + almashtirish/o'chirish */}
+      {photoView && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setPhotoView(null)}>
+          <div className="absolute inset-0 bg-black/75" />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden" onClick={e => e.stopPropagation()}>
+            <img src={photoUrl(photoView)} alt={photoView.name} className="w-full max-h-[60vh] object-contain bg-gray-950" />
+            <div className="p-4 flex items-center justify-between gap-2 flex-wrap">
+              <div className="min-w-0">
+                <p className="font-bold text-gray-900 truncate">{photoView.name}</p>
+                <p className="text-xs text-gray-500">{photoView.type} · {fmt(photoView.price)} so'm</p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                {canEdit && (
+                  <button onClick={() => pickPhoto(photoView)}
+                    className="btn-sm bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg px-2 py-1.5 flex items-center gap-1">
+                    <Camera size={13} /> Almashtirish
+                  </button>
+                )}
+                {canEdit && (
+                  <button onClick={() => deletePhoto(photoView)}
+                    className="btn-sm bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 rounded-lg px-2 py-1.5 flex items-center gap-1">
+                    <Trash2 size={13} /> O'chirish
+                  </button>
+                )}
+                <button onClick={() => setPhotoView(null)}
+                  className="btn-sm bg-gray-100 hover:bg-gray-200 rounded-lg px-2 py-1.5"><X size={14} /></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Mahsulot tarixi modal */}
       <ProductHistoryModal product={historyProduct} onClose={() => setHistoryProduct(null)} />

@@ -9,7 +9,49 @@ const { addColorStock, getColorStock } = require('../utils/colorStock');
 const { ensureInventoryAuditSchema } = require('../services/inventoryAudit');
 
 const router = express.Router();
+
+// GET /api/products/:id/photo — mahsulot fotosi (autentifikatsiyasiz: <img> tegi
+// Authorization header yubormaydi; foto maxfiy ma'lumot emas)
+router.get('/:id/photo', async (req, res, next) => {
+  try {
+    const r = await query('SELECT mime, data FROM product_photos WHERE product_id = $1', [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error: "Foto yo'q" });
+    res.setHeader('Content-Type', r.rows[0].mime || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(Buffer.from(r.rows[0].data, 'base64'));
+  } catch (err) { next(err); }
+});
+
 router.use(authenticate);
+
+// PUT /api/products/:id/photo — foto yuklash (base64 data URL, frontend kichraytirib yuboradi)
+router.put('/:id/photo', requireRole('OWNER', 'PRODUCTION_HEAD', 'SALES_HEAD', 'KIRIMCHI'), async (req, res, next) => {
+  try {
+    const m = String(req.body.data || '').match(/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/);
+    if (!m) return res.status(400).json({ error: "Foto formati noto'g'ri" });
+    const mime = m[1], b64 = m[2];
+    if (b64.length > 2800000) return res.status(400).json({ error: 'Foto juda katta (max ~2MB)' });
+    const pr = await query('SELECT id FROM products WHERE id = $1', [req.params.id]);
+    if (!pr.rows.length) return res.status(404).json({ error: 'Mahsulot topilmadi' });
+    const exists = await query('SELECT id FROM product_photos WHERE product_id = $1', [req.params.id]);
+    if (exists.rows.length) {
+      await query('UPDATE product_photos SET mime=$1, data=$2, updated_at=NOW() WHERE product_id=$3', [mime, b64, req.params.id]);
+    } else {
+      await query('INSERT INTO product_photos (product_id, mime, data) VALUES ($1,$2,$3)', [req.params.id, mime, b64]);
+    }
+    try { const dbm = require('../db'); if (dbm.saveDB) await dbm.saveDB(); } catch (e) { /* PG'da saveDB yo'q */ }
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/products/:id/photo — fotoni o'chirish
+router.delete('/:id/photo', requireRole('OWNER', 'PRODUCTION_HEAD', 'SALES_HEAD'), async (req, res, next) => {
+  try {
+    await query('DELETE FROM product_photos WHERE product_id = $1', [req.params.id]);
+    try { const dbm = require('../db'); if (dbm.saveDB) await dbm.saveDB(); } catch (e) { /* PG'da saveDB yo'q */ }
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
 
 // base_name + razmer + rang dan to'liq nomni qayta tiklash
 // Masalan: base="Flakon (Premium)", razmer="100ml", rang="oq" => "Flakon 100ml oq (Premium)"
@@ -25,7 +67,9 @@ router.get('/', async (req, res, next) => {
   try {
     const { is_active = 'true', search, type, start_date, end_date, date_from, date_to } = req.query;
     let sql = `
-      SELECT p.*, rm.name as raw_material_name, rm.stock_balance as rm_stock
+      SELECT p.*, rm.name as raw_material_name, rm.stock_balance as rm_stock,
+        (SELECT COUNT(*) FROM product_photos pp WHERE pp.product_id = p.id) AS has_photo,
+        (SELECT pp2.updated_at FROM product_photos pp2 WHERE pp2.product_id = p.id) AS photo_updated_at
       FROM products p LEFT JOIN raw_materials rm ON p.raw_material_id = rm.id
       WHERE 1=1
     `;

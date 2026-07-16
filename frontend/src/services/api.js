@@ -229,6 +229,8 @@ export const productsAPI = {
   removeRecipeItem: (id, rmId) => api.delete(`/products/${id}/recipe/${rmId}`),
   removeRecipeItemById: (id, itemId) => api.delete(`/products/${id}/recipe-item/${itemId}`),
   importPricelist: () => api.post('/products/import-pricelist'),
+  uploadPhoto: (id, data) => api.put(`/products/${id}/photo`, { data }),
+  deletePhoto: (id) => api.delete(`/products/${id}/photo`),
 };
 
 // Machines

@@ -1147,6 +1147,14 @@ if (USE_PG) {
       `ALTER TABLE drobilka_entries ADD COLUMN rang TEXT`,
       // BOM komponent vazni (gramm)
       `ALTER TABLE product_bom ADD COLUMN weight_grams REAL DEFAULT 0`,
+      // Mahsulot fotosi — bazada base64 saqlanadi (Railway fayl tizimi deploy'da o'chadi, baza saqlanadi)
+      `CREATE TABLE IF NOT EXISTS product_photos (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        product_id TEXT NOT NULL UNIQUE REFERENCES products(id),
+        mime TEXT NOT NULL DEFAULT 'image/jpeg',
+        data TEXT NOT NULL,
+        updated_at TEXT DEFAULT (datetime('now'))
+      )`,
     ];
     for (const m of migrations) {
       try {

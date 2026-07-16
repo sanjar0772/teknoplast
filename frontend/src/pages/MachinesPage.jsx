@@ -219,6 +219,138 @@ function EfficiencyTodayPanel() {
   );
 }
 
+// Inyeksion quyish mashinasi — isometrik 3D ko'rinish (SVG).
+// Rang stanok holatiga qarab, ishlab turgan bo'lsa signal chirog'i miltiraydi,
+// hopper (yuqori bunker) va sikl konveyer chizig'i jonli animatsiya bilan.
+function MachineIllustration({ theme, running, className = '' }) {
+  const palette = {
+    running: { body: '#dbeafe', bodyDk: '#93c5fd', frame: '#1e3a8a', barrel: '#334155', accent: '#10b981', light: '#22c55e', shadow: '#c7d2fe', hopper: '#475569' },
+    idle:    { body: '#e5e7eb', bodyDk: '#9ca3af', frame: '#334155', barrel: '#475569', accent: '#94a3b8', light: '#94a3b8', shadow: '#d1d5db', hopper: '#4b5563' },
+    service: { body: '#fef3c7', bodyDk: '#fbbf24', frame: '#78350f', barrel: '#92400e', accent: '#f59e0b', light: '#f59e0b', shadow: '#fde68a', hopper: '#78350f' },
+    broken:  { body: '#fee2e2', bodyDk: '#f87171', frame: '#7f1d1d', barrel: '#991b1b', accent: '#ef4444', light: '#ef4444', shadow: '#fecaca', hopper: '#7f1d1d' },
+  };
+  const c = palette[theme] || palette.idle;
+  const gid = `mch-${theme}`;
+
+  return (
+    <svg viewBox="0 0 320 120" className={className} preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id={`${gid}-bg`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#f8fafc" />
+          <stop offset="100%" stopColor="#e2e8f0" />
+        </linearGradient>
+        <linearGradient id={`${gid}-body`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={c.body} />
+          <stop offset="100%" stopColor={c.bodyDk} />
+        </linearGradient>
+        <linearGradient id={`${gid}-barrel`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={c.barrel} />
+          <stop offset="50%" stopColor="#64748b" />
+          <stop offset="100%" stopColor={c.barrel} />
+        </linearGradient>
+        <radialGradient id={`${gid}-light`} cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0%" stopColor="#fff" stopOpacity="0.9" />
+          <stop offset="60%" stopColor={c.light} />
+          <stop offset="100%" stopColor={c.light} stopOpacity="0.3" />
+        </radialGradient>
+      </defs>
+
+      {/* Fon (ustaxona pol/devor) */}
+      <rect x="0" y="0" width="320" height="120" fill={`url(#${gid}-bg)`} />
+      <path d="M0,95 L320,95 L320,120 L0,120 Z" fill="#cbd5e1" opacity="0.5" />
+      <path d="M20,95 L60,80 L280,80 L320,95 Z" fill="#e2e8f0" opacity="0.6" />
+
+      {/* Chap: qisish uzeli (clamping unit) — katta blok */}
+      <g>
+        <rect x="35" y="55" width="90" height="42" rx="4" fill={c.shadow} />
+        <rect x="30" y="50" width="90" height="42" rx="4" fill={`url(#${gid}-body)`} stroke={c.frame} strokeWidth="1.5" />
+        {/* Toolplate — qolip taxtasi */}
+        <rect x="42" y="58" width="66" height="26" rx="2" fill={c.frame} opacity="0.85" />
+        <rect x="46" y="62" width="58" height="18" rx="1" fill={c.bodyDk} opacity="0.6" />
+        {/* Vintlar */}
+        <circle cx="48" cy="66" r="1.6" fill="#0f172a" />
+        <circle cx="102" cy="66" r="1.6" fill="#0f172a" />
+        <circle cx="48" cy="80" r="1.6" fill="#0f172a" />
+        <circle cx="102" cy="80" r="1.6" fill="#0f172a" />
+      </g>
+
+      {/* O'rta: tie-bar (bog'lovchi shtanga) */}
+      <rect x="120" y="60" width="80" height="4" rx="1" fill="#64748b" />
+      <rect x="120" y="80" width="80" height="4" rx="1" fill="#64748b" />
+
+      {/* O'ng: injection unit (silindr + shnek) */}
+      <g>
+        <rect x="200" y="53" width="90" height="38" rx="4" fill={c.shadow} />
+        <rect x="195" y="48" width="90" height="38" rx="4" fill={`url(#${gid}-body)`} stroke={c.frame} strokeWidth="1.5" />
+        {/* Barrel/silindr */}
+        <rect x="200" y="63" width="80" height="10" rx="5" fill={`url(#${gid}-barrel)`} stroke={c.frame} strokeWidth="0.8" />
+        {/* Isitgich xalqalar */}
+        {[210, 225, 240, 255, 270].map(x => (
+          <rect key={x} x={x} y="61" width="4" height="14" rx="1" fill="#e11d48" opacity={running ? 0.85 : 0.35} />
+        ))}
+      </g>
+
+      {/* Hopper (bunker) — yuqori voronka */}
+      <g>
+        <path d="M232,10 L268,10 L262,32 L238,32 Z" fill={c.hopper} stroke={c.frame} strokeWidth="1.2" />
+        <rect x="244" y="32" width="12" height="18" fill={c.hopper} stroke={c.frame} strokeWidth="1" />
+        <ellipse cx="250" cy="12" rx="18" ry="3" fill={c.hopper} stroke={c.frame} strokeWidth="1" />
+        {/* Material tushayotgani (jonli, faqat ishlab turganda) */}
+        {running && (
+          <>
+            <circle cx="250" cy="18" r="1.2" fill="#f1f5f9">
+              <animate attributeName="cy" from="14" to="30" dur="0.8s" repeatCount="indefinite" />
+            </circle>
+            <circle cx="248" cy="22" r="1" fill="#f1f5f9">
+              <animate attributeName="cy" from="14" to="30" dur="0.9s" begin="0.3s" repeatCount="indefinite" />
+            </circle>
+            <circle cx="252" cy="20" r="1" fill="#f1f5f9">
+              <animate attributeName="cy" from="14" to="30" dur="0.7s" begin="0.5s" repeatCount="indefinite" />
+            </circle>
+          </>
+        )}
+      </g>
+
+      {/* Boshqaruv paneli */}
+      <g>
+        <rect x="130" y="35" width="42" height="26" rx="2" fill="#1e293b" stroke={c.frame} strokeWidth="1" />
+        <rect x="133" y="38" width="36" height="14" rx="1" fill={running ? '#0ea5e9' : '#334155'} opacity={running ? 0.85 : 1} />
+        {/* Ekrandagi to'lqin (running bo'lsa) */}
+        {running && (
+          <polyline points="135,45 140,42 145,47 150,43 155,46 160,44 165,45" fill="none" stroke="#22d3ee" strokeWidth="0.8" />
+        )}
+        <circle cx="138" cy="57" r="1.4" fill="#22c55e" />
+        <circle cx="145" cy="57" r="1.4" fill="#eab308" />
+        <circle cx="152" cy="57" r="1.4" fill="#ef4444" />
+      </g>
+
+      {/* Signal chirog'i (mayoq) — ishlab turganda miltiraydi */}
+      <g>
+        <rect x="118" y="18" width="4" height="18" fill="#334155" />
+        <circle cx="120" cy="15" r="6" fill={`url(#${gid}-light)`}>
+          {running && <animate attributeName="opacity" values="1;0.4;1" dur="1.4s" repeatCount="indefinite" />}
+        </circle>
+        <circle cx="120" cy="15" r="3" fill={c.light} opacity="0.9" />
+      </g>
+
+      {/* Ostki poya (base) */}
+      <rect x="25" y="92" width="270" height="10" rx="2" fill={c.frame} />
+      <rect x="30" y="99" width="8" height="8" fill="#1e293b" />
+      <rect x="282" y="99" width="8" height="8" fill="#1e293b" />
+
+      {/* Konveyer — chiqargan detalning yo'li (jonli) */}
+      {running && (
+        <g opacity="0.6">
+          <rect x="65" y="88" width="30" height="3" fill="#94a3b8" />
+          <circle cx="70" cy="93" r="1.2" fill={c.frame}>
+            <animate attributeName="cx" values="70;90;70" dur="1.8s" repeatCount="indefinite" />
+          </circle>
+        </g>
+      )}
+    </svg>
+  );
+}
+
 const STATUS = {
   WORKING: { label: 'Ishlayapti', cls: 'badge-green', icon: CheckCircle },
   SERVICE: { label: "Ta'mirda", cls: 'badge-yellow', icon: Wrench },
@@ -1987,6 +2119,19 @@ export default function MachinesPage() {
               className={`relative rounded-2xl shadow-sm border ${th.cardRing} ${th.cardBg} overflow-hidden transition hover:shadow-lg hover:-translate-y-0.5 duration-200 ${th.live ? 'shadow-md shadow-emerald-100/60' : ''}`}>
               {/* Yuqori holat chizig'i */}
               <div className={`h-1.5 w-full bg-gradient-to-r ${th.bar} ${th.barGlow || ''}`} />
+
+              {/* 3D stanok ko'rinishi — holat rangida, ishlab turganda jonli animatsiya */}
+              <div className="relative bg-slate-50 border-b border-gray-100">
+                <MachineIllustration theme={th.key} running={!!m.is_running} className="w-full h-[110px]" />
+                <span className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${th.pill} shadow-sm`}>
+                  {m.name}
+                </span>
+                {th.live && (
+                  <span className="absolute top-2 right-2 flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/90 text-emerald-700 shadow-sm">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> LIVE
+                  </span>
+                )}
+              </div>
 
               <div className="p-5">
                 {/* Sarlavha */}

@@ -8,8 +8,14 @@ import {
   LogOut, ChevronRight, UserSquare2, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X, Sparkles, ShoppingBag, Boxes, History, RotateCcw, Scale, Store, MapPin, Recycle
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
+import useThemeStore from '../../store/themeStore';
 import { authAPI } from '../../services/api';
 import clsx from 'clsx';
+
+const THEMES = [
+  { id: 'white-red', label: 'Oq-Qizil', color: '#dc2626' },
+  { id: 'indigo', label: 'Zangori', color: '#6366f1' },
+];
 
 const ROLE_LABELS = {
   OWNER: 'Ega / Rahbar',
@@ -56,7 +62,9 @@ const NAV_ITEMS = [
 
 export default function Sidebar() {
   const { user, logout, activeBranch, exitBranch } = useAuthStore();
+  const { theme, setTheme } = useThemeStore();
   const navigate = useNavigate();
+  const isIndigo = theme === 'indigo';
 
   const [showPwd, setShowPwd] = useState(false);
   const [pwd, setPwd] = useState({ old_password: '', new_password: '', confirm: '' });
@@ -95,34 +103,48 @@ export default function Sidebar() {
 
   return (
     <>
-    <aside className="w-64 h-screen bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-r border-slate-800/80 shadow-[8px_0_30px_-15px_rgba(2,6,23,0.6)] flex flex-col fixed left-0 top-0 z-30">
-      {/* Logo */}
-      <div className="relative px-6 py-5 border-b border-white/5 overflow-hidden">
-        <div className="absolute -top-12 -left-12 w-44 h-44 rounded-full bg-blue-600/20 blur-3xl pointer-events-none" />
-        <div className="relative flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-400 via-blue-600 to-indigo-700 shadow-[0_8px_16px_-6px_rgba(59,130,246,0.7),inset_0_1px_0_rgba(255,255,255,0.35)] flex items-center justify-center">
-            <span className="text-white font-bold text-sm drop-shadow">T</span>
-          </div>
+    <aside className={clsx(
+      "w-64 h-screen flex flex-col fixed left-0 top-0 z-30",
+      isIndigo
+        ? "bg-gradient-to-b from-[#1e1b4b] via-[#1e1b4b] to-[#0f0d2e] border-r border-indigo-900/50 shadow-[8px_0_30px_-15px_rgba(2,6,23,0.6)]"
+        : "bg-white border-r border-gray-200 shadow-[2px_0_12px_-4px_rgba(0,0,0,0.08)]"
+    )}>
+      {/* Logo — 14-chi variant: Qizil qalqon */}
+      <div className={clsx("px-5 py-4 border-b", isIndigo ? "border-white/5" : "border-gray-100")}>
+        <div className="flex items-center gap-3">
+          <svg width="38" height="38" viewBox="0 0 100 100" className="flex-shrink-0">
+            {isIndigo ? (<>
+              <path d="M50 5 L90 28 L90 72 L50 95 L10 72 L10 28Z" fill="#4338ca"/>
+              <path d="M50 15 L82 34 L82 66 L50 85 L18 66 L18 34Z" fill="#6366f1"/>
+              <path d="M38 42 L50 28 L62 42 L62 58 L50 68 L38 58Z" fill="#a5b4fc" opacity="0.3"/>
+              <text x="35" y="60" fontFamily="system-ui" fontSize="32" fontWeight="900" fill="#fff">T</text>
+            </>) : (<>
+              <path d="M50 5 L90 28 L90 72 L50 95 L10 72 L10 28Z" fill="#b91c1c"/>
+              <path d="M50 15 L82 34 L82 66 L50 85 L18 66 L18 34Z" fill="#dc2626"/>
+              <path d="M38 42 L50 28 L62 42 L62 58 L50 68 L38 58Z" fill="#fca5a5" opacity="0.3"/>
+              <text x="35" y="60" fontFamily="system-ui" fontSize="32" fontWeight="900" fill="#fff">T</text>
+            </>)}
+          </svg>
           <div>
-            <h1 className="font-bold text-white text-sm leading-tight tracking-wide">TEKNOPLAST</h1>
-            <p className="text-[11px] text-slate-400">Boshqaruv Tizimi</p>
+            <h1 className={clsx("font-bold text-sm leading-tight tracking-wide", isIndigo ? "text-white" : "text-gray-900")}>TEKNOPLAST</h1>
+            <p className={clsx("text-[11px]", isIndigo ? "text-indigo-300" : "text-gray-400")}>Boshqaruv Tizimi</p>
           </div>
         </div>
       </div>
 
       {/* EGA filialga "admin sifatida" kirgan bo'lsa — ogohlantiruvchi banner + chiqish */}
       {activeBranch && (
-        <div className="mx-3 mt-3 rounded-xl bg-amber-500/10 border border-amber-400/30 p-3">
-          <div className="flex items-center gap-2 text-amber-200">
+        <div className={clsx("mx-3 mt-3 rounded-xl p-3", isIndigo ? "bg-amber-500/10 border border-amber-400/30" : "bg-amber-50 border border-amber-200")}>
+          <div className={clsx("flex items-center gap-2", isIndigo ? "text-amber-200" : "text-amber-700")}>
             <Store size={15} className="flex-shrink-0" />
             <div className="min-w-0">
-              <p className="text-xs font-bold truncate">{activeBranch.name}</p>
-              <p className="text-[10px] text-amber-400 leading-tight">Filial ichidasiz (admin)</p>
+              <p className={clsx("text-xs font-bold truncate", isIndigo ? "text-amber-200" : "text-amber-800")}>{activeBranch.name}</p>
+              <p className={clsx("text-[10px] leading-tight", isIndigo ? "text-amber-400" : "text-amber-600")}>Filial ichidasiz (admin)</p>
             </div>
           </div>
           <button
             onClick={() => exitBranch()}
-            className="mt-2 w-full text-xs font-medium bg-amber-600 text-white rounded-lg py-1.5 hover:bg-amber-700 flex items-center justify-center gap-1"
+            className="mt-2 w-full text-xs font-medium bg-amber-500 text-white rounded-lg py-1.5 hover:bg-amber-600 flex items-center justify-center gap-1"
           >
             <LogOut size={12} /> Zavodga qaytish
           </button>
@@ -148,18 +170,36 @@ export default function Sidebar() {
       </nav>
 
       {/* User */}
-      <div className="px-3 py-4 border-t border-white/5">
-        <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/5 border border-white/10 mb-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 shadow-[0_4px_10px_-3px_rgba(59,130,246,0.6)] flex items-center justify-center flex-shrink-0">
+      <div className={clsx("px-3 py-4 border-t", isIndigo ? "border-white/5" : "border-gray-100")}>
+        {/* Tema almashtirish */}
+        <div className="flex gap-1.5 px-1 mb-3">
+          {THEMES.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTheme(t.id)}
+              className={clsx(
+                "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-all",
+                theme === t.id
+                  ? (isIndigo ? "bg-indigo-600 text-white" : "bg-red-50 text-red-700 ring-1 ring-red-200")
+                  : (isIndigo ? "text-slate-400 hover:bg-white/5" : "text-gray-500 hover:bg-gray-100")
+              )}
+            >
+              <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: t.color }} />
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div className={clsx("flex items-center gap-3 px-3 py-2 rounded-xl mb-2", isIndigo ? "bg-white/5 border border-white/10" : "bg-gray-50 border border-gray-200")}>
+          <div className={clsx("w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0", isIndigo ? "bg-gradient-to-br from-indigo-400 to-indigo-700 shadow-[0_4px_10px_-3px_rgba(99,102,241,0.6)]" : "bg-gradient-to-br from-red-500 to-red-700 shadow-[0_4px_10px_-3px_rgba(220,38,38,0.5)]")}>
             <span className="text-white font-semibold text-sm">
               {user?.full_name?.[0]?.toUpperCase()}
             </span>
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-medium text-white truncate">{user?.full_name}</p>
-            <p className="text-xs text-slate-400">{ROLE_LABELS[user?.role]}</p>
+            <p className={clsx("text-sm font-medium truncate", isIndigo ? "text-white" : "text-gray-900")}>{user?.full_name}</p>
+            <p className={clsx("text-xs", isIndigo ? "text-slate-400" : "text-gray-500")}>{ROLE_LABELS[user?.role]}</p>
             {user?.branch_name && (
-              <p className="text-[11px] text-blue-300 font-medium flex items-center gap-0.5 truncate">
+              <p className={clsx("text-[11px] font-medium flex items-center gap-0.5 truncate", isIndigo ? "text-indigo-300" : "text-red-600")}>
                 <Store size={10} /> {user.branch_name}
               </p>
             )}
@@ -174,7 +214,7 @@ export default function Sidebar() {
         </button>
         <button
           onClick={handleLogout}
-          className="sidebar-link w-full text-red-300 hover:bg-red-500/10 hover:text-red-200"
+          className={clsx("sidebar-link w-full", isIndigo ? "!text-red-300 hover:!bg-red-500/10 hover:!text-red-200" : "!text-red-500 hover:!bg-red-50 hover:!text-red-600")}
         >
           <LogOut size={16} />
           <span>Chiqish</span>

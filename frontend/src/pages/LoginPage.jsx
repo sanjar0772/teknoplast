@@ -30,27 +30,32 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-950 flex items-center justify-center p-4">
-      {/* 3D fon: chuqur gradient + suzuvchi nur dog'lari + panjara */}
-      <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950" />
-      <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-blue-600/30 blur-3xl animate-float-slow" />
-      <div className="absolute -bottom-40 -right-24 w-[28rem] h-[28rem] rounded-full bg-emerald-500/20 blur-3xl animate-float-slower" />
-      <div className="absolute top-1/3 right-1/4 w-64 h-64 rounded-full bg-indigo-500/20 blur-3xl animate-float-slow" />
-      <div className="absolute inset-0 opacity-[0.05]"
-        style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '44px 44px' }} />
+    <div className="relative min-h-screen overflow-hidden bg-gray-50 flex items-center justify-center p-4">
+      {/* Oq fon — yumshoq nur dog'lari */}
+      <div className="absolute inset-0 bg-gradient-to-br from-gray-50 via-red-50/30 to-gray-100" />
+      <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-red-400/15 blur-3xl animate-float-slow" />
+      <div className="absolute -bottom-40 -right-24 w-[28rem] h-[28rem] rounded-full bg-red-300/10 blur-3xl animate-float-slower" />
+      <div className="absolute top-1/3 right-1/4 w-64 h-64 rounded-full bg-red-200/15 blur-3xl animate-float-slow" />
+      <div className="absolute inset-0 opacity-[0.04]"
+        style={{ backgroundImage: 'linear-gradient(#94a3b8 1px, transparent 1px), linear-gradient(90deg, #94a3b8 1px, transparent 1px)', backgroundSize: '44px 44px' }} />
 
       <div className="relative w-full max-w-md">
-        {/* Logo — 3D kub */}
+        {/* Logo — qizil qalqon */}
         <div className="text-center mb-8">
-          <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-gradient-to-br from-blue-400 via-blue-600 to-indigo-700 shadow-[0_20px_45px_-12px_rgba(59,130,246,0.65),inset_0_2px_0_rgba(255,255,255,0.35)] flex items-center justify-center rotate-3 hover:rotate-0 transition-transform duration-300">
-            <Factory size={34} className="text-white drop-shadow-lg" />
+          <div className="w-20 h-20 mx-auto mb-4 flex items-center justify-center">
+            <svg width="72" height="72" viewBox="0 0 100 100">
+              <path d="M50 5 L90 28 L90 72 L50 95 L10 72 L10 28Z" fill="#b91c1c"/>
+              <path d="M50 15 L82 34 L82 66 L50 85 L18 66 L18 34Z" fill="#dc2626"/>
+              <path d="M38 42 L50 28 L62 42 L62 58 L50 68 L38 58Z" fill="#fca5a5" opacity="0.3"/>
+              <text x="35" y="60" fontFamily="system-ui" fontSize="32" fontWeight="900" fill="#fff">T</text>
+            </svg>
           </div>
-          <h1 className="text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-blue-100 to-blue-300 drop-shadow">TEKNOPLAST</h1>
-          <p className="text-blue-300/80 mt-1 text-sm">Zavod Boshqaruv Tizimi</p>
+          <h1 className="text-4xl font-extrabold tracking-tight text-gray-900">TEKNOPLAST</h1>
+          <p className="text-gray-500 mt-1 text-sm">Zavod Boshqaruv Tizimi</p>
         </div>
 
         {/* Form — shisha karta */}
-        <div className="bg-white/95 backdrop-blur-xl rounded-3xl border border-white/20 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.8)] p-8">
+        <div className="bg-white rounded-3xl border border-gray-200 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.12)] p-8">
           <h2 className="text-xl font-bold text-gray-900 mb-6">Tizimga kirish</h2>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>

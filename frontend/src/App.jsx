@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import useAuthStore from './store/authStore';
+import useThemeStore from './store/themeStore';
 import useAutoUpdate from './hooks/useAutoUpdate';
 import Layout from './components/layout/Layout';
 import LoginPage from './pages/LoginPage';
@@ -46,8 +47,10 @@ function PublicRoute({ children }) {
   return isAuthenticated ? <Navigate to="/" replace /> : children;
 }
 
+useThemeStore.getState().initTheme();
+
 export default function App() {
-  useAutoUpdate(); // yangi deploy chiqsa ilovani avtomatik yangilaydi
+  useAutoUpdate();
   return (
     <BrowserRouter>
       <Routes>

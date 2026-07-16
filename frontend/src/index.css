@@ -134,12 +134,8 @@
   body {
     font-family: 'Inter', system-ui, sans-serif;
     @apply text-gray-900;
-    /* 3D muhit: yumshoq gradient fon + nur dog'lari */
-    background-color: #eef2f7;
-    background-image:
-      radial-gradient(1100px 550px at 88% -10%, rgba(59, 130, 246, 0.10), transparent 60%),
-      radial-gradient(900px 500px at -10% 110%, rgba(16, 185, 129, 0.08), transparent 60%);
-    background-attachment: fixed;
+    background-color: #f8f9fb;
+    background-image: none;
   }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { @apply bg-gray-100; }
@@ -197,7 +193,7 @@
   .table td {
     @apply px-4 py-3 text-gray-700 border-b border-gray-100 last:border-0;
   }
-  .table tr:hover td { @apply bg-blue-50/30; }
+  .table tr:hover td { @apply bg-red-50/30; }
 
   .kpi-card {
     @apply card flex items-center gap-4;
@@ -233,13 +229,13 @@
 }
 
 .btn-primary {
-  background-image: linear-gradient(180deg, #4f8ef7 0%, #2563eb 55%, #1d4ed8 100%);
-  border: 1px solid rgba(29, 78, 216, 0.65);
-  box-shadow: 0 1px 2px rgba(29, 78, 216, 0.35), 0 8px 18px -8px rgba(37, 99, 235, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  background-image: linear-gradient(180deg, #ef4444 0%, #dc2626 55%, #b91c1c 100%);
+  border: 1px solid rgba(185, 28, 28, 0.65);
+  box-shadow: 0 1px 2px rgba(185, 28, 28, 0.35), 0 8px 18px -8px rgba(220, 38, 38, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.3);
   text-shadow: 0 1px 1px rgba(15, 23, 42, 0.15);
 }
-.btn-primary:hover { background-image: linear-gradient(180deg, #5f9bff 0%, #2f6ded 55%, #2050e0 100%); }
-.btn-primary:active { transform: translateY(1px); box-shadow: 0 1px 2px rgba(29, 78, 216, 0.3), inset 0 2px 6px rgba(15, 23, 42, 0.25); }
+.btn-primary:hover { background-image: linear-gradient(180deg, #f87171 0%, #ef4444 55%, #dc2626 100%); }
+.btn-primary:active { transform: translateY(1px); box-shadow: 0 1px 2px rgba(185, 28, 28, 0.3), inset 0 2px 6px rgba(15, 23, 42, 0.25); }
 
 .btn-success {
   background-image: linear-gradient(180deg, #34d399 0%, #10b981 55%, #059669 100%);
@@ -271,8 +267,8 @@
   box-shadow: inset 0 1.5px 3px rgba(15, 23, 42, 0.06);
 }
 .input:focus, .select:focus {
-  border-color: #3b82f6;
-  box-shadow: inset 0 1.5px 3px rgba(15, 23, 42, 0.04), 0 0 0 3px rgba(59, 130, 246, 0.18);
+  border-color: #dc2626;
+  box-shadow: inset 0 1.5px 3px rgba(15, 23, 42, 0.04), 0 0 0 3px rgba(220, 38, 38, 0.15);
 }
 
 .badge-green, .badge-yellow, .badge-red, .badge-blue, .badge-gray {
@@ -284,17 +280,17 @@
 
 .kpi-icon { box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.6), 0 8px 16px -8px rgba(15, 23, 42, 0.3); }
 
-/* Sidebar — qora "shisha" fon uchun havolalar */
+/* Sidebar — oq fon, qizil aktsent */
 .sidebar-link {
-  @apply flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 text-slate-300 hover:bg-white/10 hover:text-white;
+  @apply flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 text-gray-600 hover:bg-gray-100 hover:text-gray-900;
 }
 .sidebar-link.active {
   @apply text-white hover:text-white;
-  background-image: linear-gradient(135deg, #3b82f6 0%, #2563eb 60%, #1d4ed8 100%);
-  box-shadow: 0 8px 18px -8px rgba(59, 130, 246, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  background-image: linear-gradient(135deg, #dc2626 0%, #b91c1c 60%, #991b1b 100%);
+  box-shadow: 0 8px 18px -8px rgba(220, 38, 38, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
-/* Qora sidebar ichidagi scrollbar */
-aside nav::-webkit-scrollbar-thumb { background: #334155; }
+/* Oq sidebar ichidagi scrollbar */
+aside nav::-webkit-scrollbar-thumb { background: #d1d5db; }
 aside nav::-webkit-scrollbar-track { background: transparent; }
 
 /* Mashinalar — ishlab turgan stanok tishli g'ildiragi sekin aylanadi */
@@ -306,3 +302,40 @@ aside nav::-webkit-scrollbar-track { background: transparent; }
 .animate-float-slow { animation: float-slow 7s ease-in-out infinite; }
 @keyframes float-slower { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(14px); } }
 .animate-float-slower { animation: float-slower 10s ease-in-out infinite; }
+
+/* ═══ QUYUQ ZANGORI TEMA ═══════════════════════════════════════════════════ */
+[data-app-theme="indigo"] body {
+  background-color: #f5f3ff;
+  background-image:
+    radial-gradient(1100px 550px at 88% -10%, rgba(99, 102, 241, 0.10), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(16, 185, 129, 0.08), transparent 60%);
+  background-attachment: fixed;
+}
+[data-app-theme="indigo"] .sidebar-link {
+  color: rgba(255,255,255,0.5);
+}
+[data-app-theme="indigo"] .sidebar-link:hover {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+}
+[data-app-theme="indigo"] .sidebar-link.active {
+  color: #fff;
+  background-image: linear-gradient(135deg, #818cf8 0%, #6366f1 60%, #4f46e5 100%);
+  box-shadow: 0 8px 18px -8px rgba(99, 102, 241, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+[data-app-theme="indigo"] .btn-primary {
+  background-image: linear-gradient(180deg, #818cf8 0%, #6366f1 55%, #4f46e5 100%);
+  border: 1px solid rgba(79, 70, 229, 0.65);
+  box-shadow: 0 1px 2px rgba(79, 70, 229, 0.35), 0 8px 18px -8px rgba(99, 102, 241, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+[data-app-theme="indigo"] .btn-primary:hover {
+  background-image: linear-gradient(180deg, #a5b4fc 0%, #818cf8 55%, #6366f1 100%);
+}
+[data-app-theme="indigo"] .input:focus,
+[data-app-theme="indigo"] .select:focus {
+  border-color: #6366f1;
+  box-shadow: inset 0 1.5px 3px rgba(15, 23, 42, 0.04), 0 0 0 3px rgba(99, 102, 241, 0.18);
+}
+[data-app-theme="indigo"] .table tr:hover td { background: rgba(99, 102, 241, 0.06); }
+[data-app-theme="indigo"] aside nav::-webkit-scrollbar-thumb { background: #334155; }
+[data-app-theme="indigo"] .table th { background-image: linear-gradient(180deg, #ede9fe 0%, #e0daf6 100%); }

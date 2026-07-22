@@ -35,6 +35,7 @@ import AgentProfilePage from './pages/AgentProfilePage';
 import DeliveriesPage from './pages/DeliveriesPage';
 import VozvratKartaPage from './pages/VozvratKartaPage';
 import AgentLocationsPage from './pages/AgentLocationsPage';
+import MijozlarKartaPage from './pages/MijozlarKartaPage';
 import TaroziChekPage from './pages/TaroziChekPage';
 
 function PrivateRoute({ children }) {
@@ -90,6 +91,7 @@ export default function App() {
           <Route path="deliveries" element={<DeliveriesPage />} />
           <Route path="vozvrat-karta" element={<VozvratKartaPage />} />
           <Route path="agent-locations" element={<AgentLocationsPage />} />
+          <Route path="mijozlar-karta" element={<MijozlarKartaPage />} />
           <Route path="ai" element={<AIPage />} />
           <Route path="worker" element={<WorkerPage />} />
         </Route>

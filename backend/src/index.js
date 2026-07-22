@@ -68,18 +68,8 @@ app.get('/api/health', (req, res) => {
 });
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
-app.get('/api/version', async (req, res) => {
-  // v223 VAQTINCHALIK diagnostika: filial savdolari tozalanganini tasdiqlash uchun
-  // (tasdiqlangach keyingi deployda olib tashlanadi)
-  let filialSales = null, filialWiped = false;
-  try {
-    const dbi = require('./db');
-    const r = await dbi.query('SELECT COUNT(*) AS cnt FROM sales WHERE branch_id IS NOT NULL');
-    filialSales = parseInt(r.rows[0]?.cnt ?? r.rows[0]?.['COUNT(*)'] ?? 0);
-    const f = await dbi.query('SELECT 1 AS x FROM app_flags WHERE key = $1 LIMIT 1', ['branch_sales_wiped_2026_07_22']);
-    filialWiped = f.rows.length > 0;
-  } catch (e) { /* diagnostika ixtiyoriy */ }
-  res.json({ version: 'filial-savdo-tozalash', commit: 'v223', filial_sales: filialSales, filial_wiped: filialWiped });
+app.get('/api/version', (req, res) => {
+  res.json({ version: 'filial-savdo-tozalash-diag-olib-tashlandi', commit: 'v224' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

@@ -68,8 +68,18 @@ app.get('/api/health', (req, res) => {
 });
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
-app.get('/api/version', (req, res) => {
-  res.json({ version: 'oq-qizil-tema', commit: 'v221' });
+app.get('/api/version', async (req, res) => {
+  // v223 VAQTINCHALIK diagnostika: filial savdolari tozalanganini tasdiqlash uchun
+  // (tasdiqlangach keyingi deployda olib tashlanadi)
+  let filialSales = null, filialWiped = false;
+  try {
+    const dbi = require('./db');
+    const r = await dbi.query('SELECT COUNT(*) AS cnt FROM sales WHERE branch_id IS NOT NULL');
+    filialSales = parseInt(r.rows[0]?.cnt ?? r.rows[0]?.['COUNT(*)'] ?? 0);
+    const f = await dbi.query('SELECT 1 AS x FROM app_flags WHERE key = $1 LIMIT 1', ['branch_sales_wiped_2026_07_22']);
+    filialWiped = f.rows.length > 0;
+  } catch (e) { /* diagnostika ixtiyoriy */ }
+  res.json({ version: 'filial-savdo-tozalash', commit: 'v223', filial_sales: filialSales, filial_wiped: filialWiped });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)
@@ -201,7 +211,12 @@ require('./services/salesReset')
   // sotuv+qarzlarni yana tozalash. Backup avtomatik olinadi; ombor/mahsulot/mijoz saqlanadi.
   // Yangi sentinel bayroq → faqat bir marta ishlaydi, keyingi sotuvlar xavfsiz.
   .then(() => require('./services/salesReset').ensureSalesWiped('sales_wiped_2026_06_26'))
-  .catch(e => console.error('Sotuv tozalash (2026-06-26) init xato:', e.message));
+  .catch(e => console.error('Sotuv tozalash (2026-06-26) init xato:', e.message))
+  // BIR MARTALIK (egasi talabi 2026-07-22): FILIAL tizimidagi SINOV savdolarini tozalash.
+  // FAQAT filial savdolari (branch_id bor) + ularning to'lovlari/vozvratlari o'chadi.
+  // Zavod savdolari, filial ombori/mahsulot/mijozlarga TEGILMAYDI. Backup avtomatik.
+  .then(() => require('./services/branchSalesReset').ensureBranchSalesWiped())
+  .catch(e => console.error('Filial savdo tozalash init xato:', e.message));
 
 // BIR MARTALIK: eski sessiya sanasi tufayli noto'g'ri yozilган savdo sanalarini
 // order_ref (haqiqiy yaratilган kun) bo'yicha to'g'rilash (sentinel bilan himoyalangan).

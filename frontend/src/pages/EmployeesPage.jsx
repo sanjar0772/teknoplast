@@ -18,6 +18,10 @@ const SHIFTS = { '1-SMENA': '1-Smena', '2-SMENA': '2-Smena' };
 // STANOKCHI/DETALCHI — dona haqi (mahsulotga bog'liq). Qolganlari — oylik (belgilangan yoki foiz).
 const PIECE_RATE = ['STANOKCHI', 'DETALCHI'];
 const isPieceRate = (t) => PIECE_RATE.includes(t);
+// Ikki bo'lim (egasi talabi): ishlab chiqarish xodimlari (dona bay) ALOHIDA,
+// qolganlari (oylik maosh) ALOHIDA ko'rsatiladi.
+const PROD_TYPES = { STANOKCHI: TYPES.STANOKCHI, DETALCHI: TYPES.DETALCHI };
+const MONTHLY_TYPES = Object.fromEntries(Object.entries(TYPES).filter(([k]) => !PIECE_RATE.includes(k)));
 // STANOKCHI va DETALCHI 2 smenada ishlaydi — smena (1-Smena / 2-Smena) tanlanadi.
 const HAS_SHIFT = ['STANOKCHI', 'DETALCHI'];
 const hasShift = (t) => HAS_SHIFT.includes(t);
@@ -88,6 +92,10 @@ export default function EmployeesPage() {
   const [filter, setFilter] = useState({ type: '', search: '' });
   const [qrEmployee, setQrEmployee] = useState(null);
   const [qrBulk, setQrBulk] = useState(false);
+  // Bo'lim: PRODUCTION = stanokchi/detalchi (dona bay), MONTHLY = qolganlar (oylik).
+  // KIRIMCHI faqat ishlab chiqarish xodimlarini boshqaradi — unga faqat shu bo'lim.
+  const [tab, setTab] = useState('PRODUCTION');
+  const switchTab = (t) => { setTab(t); setFilter(f => ({ ...f, type: '', shift: '' })); };
 
   // Begiklarni BITTA tugma bilan to'g'ridan-to'g'ri rasm (PNG) qilib yuklab olish.
   // Yangi oyna OCHILMAYDI — QR to'liq chiqadi, keyin chop etib bejik qilib tarqatasiz.
@@ -175,7 +183,9 @@ export default function EmployeesPage() {
   const watchedSalaryType = watch('salary_type');
 
   const openCreate = () => {
-    reset({ type: 'STANOKCHI', shift: '1-SMENA', salary_type: 'FIXED', monthly_salary: '', salary_percent: '', bonus_percent: '', hire_date: new Date().toISOString().slice(0, 10) });
+    // Ochilgan bo'limga mos tur: ishlab chiqarishda STANOKCHI, oylikda ISHCHI
+    const defType = tab === 'PRODUCTION' ? 'STANOKCHI' : 'ISHCHI';
+    reset({ type: defType, shift: '1-SMENA', salary_type: 'FIXED', monthly_salary: '', salary_percent: '', bonus_percent: '', hire_date: new Date().toISOString().slice(0, 10) });
     setEditEmployee(null);
     setShowModal(true);
   };
@@ -209,20 +219,32 @@ export default function EmployeesPage() {
   const canAdd = canWrite || isKirimchi();
   const canEditPiece = isKirimchi(); // faqat stanokchi/detalchi tahrirlash
 
-  const typeCount = (data?.employees || []).reduce((acc, e) => {
+  // Ochiq bo'limga tegishli xodimlar (ishlab chiqarish yoki oylik)
+  const tabEmployees = (data?.employees || []).filter(e =>
+    tab === 'PRODUCTION' ? isPieceRate(e.type) : !isPieceRate(e.type)
+  );
+  const prodCount = (data?.employees || []).filter(e => e.is_active && isPieceRate(e.type)).length;
+  const monthlyCount = (data?.employees || []).filter(e => e.is_active && !isPieceRate(e.type)).length;
+
+  const typeCount = tabEmployees.reduce((acc, e) => {
     if (e.is_active) acc[e.type] = (acc[e.type] || 0) + 1;
     return acc;
   }, {});
+
+  // Bo'limga mos tur ro'yxati (filtr va modal uchun)
+  const tabTypes = tab === 'PRODUCTION' ? PROD_TYPES : MONTHLY_TYPES;
 
   return (
     <div className="space-y-6">
       <div className="page-header">
         <h1 className="page-title">Xodimlar</h1>
         <div className="flex gap-2">
-          <button onClick={() => setQrBulk(true)}
-            className="btn-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 flex items-center gap-1">
-            <QrCode size={14} /> Hamma QR
-          </button>
+          {tab === 'PRODUCTION' && (
+            <button onClick={() => setQrBulk(true)}
+              className="btn-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 flex items-center gap-1">
+              <QrCode size={14} /> Hamma QR
+            </button>
+          )}
           {canAdd && (
             <button onClick={openCreate} className="btn-primary btn-sm">
               <Plus size={14} /> Xodim qo'shish
@@ -231,9 +253,37 @@ export default function EmployeesPage() {
         </div>
       </div>
 
-      {/* Stats — faqat xodimi bor turlar ko'rsatiladi */}
+      {/* Ikki bo'lim: ishlab chiqarish (dona bay) va oylik xodimlar */}
+      <div className="flex gap-2">
+        <button onClick={() => switchTab('PRODUCTION')}
+          className={`flex-1 rounded-xl border px-4 py-3 text-left transition-all ${
+            tab === 'PRODUCTION'
+              ? 'bg-orange-50 border-orange-300 ring-1 ring-orange-200'
+              : 'bg-white border-gray-200 hover:border-gray-300'
+          }`}>
+          <div className={`font-bold text-sm ${tab === 'PRODUCTION' ? 'text-orange-700' : 'text-gray-700'}`}>
+            🏭 Ishlab chiqarish xodimlari <span className="ml-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-700 px-2 py-0.5">{prodCount}</span>
+          </div>
+          <div className="text-[11px] text-gray-500 mt-0.5">Stanokchi va detalchilar — haqi chiqargan mahsulotga qarab (dona bay)</div>
+        </button>
+        {!kirimchiOnly && (
+          <button onClick={() => switchTab('MONTHLY')}
+            className={`flex-1 rounded-xl border px-4 py-3 text-left transition-all ${
+              tab === 'MONTHLY'
+                ? 'bg-emerald-50 border-emerald-300 ring-1 ring-emerald-200'
+                : 'bg-white border-gray-200 hover:border-gray-300'
+            }`}>
+            <div className={`font-bold text-sm ${tab === 'MONTHLY' ? 'text-emerald-700' : 'text-gray-700'}`}>
+              💼 Oylik xodimlar <span className="ml-1 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5">{monthlyCount}</span>
+            </div>
+            <div className="text-[11px] text-gray-500 mt-0.5">Qolgan barcha xodimlar — belgilangan oylik yoki foiz bilan</div>
+          </button>
+        )}
+      </div>
+
+      {/* Stats — faqat xodimi bor turlar ko'rsatiladi (ochiq bo'lim bo'yicha) */}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-        {Object.entries(TYPES).filter(([key]) => (typeCount[key] || 0) > 0).map(([key, label]) => (
+        {Object.entries(tabTypes).filter(([key]) => (typeCount[key] || 0) > 0).map(([key, label]) => (
           <div key={key} className="card-sm text-center">
             <p className="text-2xl font-bold text-blue-600">{typeCount[key] || 0}</p>
             <p className="text-xs text-gray-500">{label}</p>
@@ -248,7 +298,7 @@ export default function EmployeesPage() {
           className="input w-48" />
         <select value={filter.type} onChange={e => setFilter(f => ({ ...f, type: e.target.value }))} className="select w-40">
           <option value="">Barcha turlar</option>
-          {Object.entries(kirimchiOnly ? { STANOKCHI: TYPES.STANOKCHI, DETALCHI: TYPES.DETALCHI } : TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          {Object.entries(tabTypes).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         {hasShift(filter.type) && (
           <select value={filter.shift || ''} onChange={e => setFilter(f => ({ ...f, shift: e.target.value }))} className="select w-36">
@@ -262,30 +312,32 @@ export default function EmployeesPage() {
       <div className="table-container">
         <table className="table">
           <thead>
-            <tr><th>Ismi</th><th>Turi</th><th>Smena</th><th>Oylik / Haq</th><th>Telefon</th><th>Yollangan sana</th><th>Holat</th>{(canWrite || canEditPiece) && <th>Amal</th>}</tr>
+            <tr><th>Ismi</th><th>Turi</th>{tab === 'PRODUCTION' && <th>Smena</th>}<th>{tab === 'PRODUCTION' ? 'Haq' : 'Oylik'}</th><th>Telefon</th><th>Yollangan sana</th><th>Holat</th>{(canWrite || canEditPiece) && <th>Amal</th>}</tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr><td colSpan={8} className="text-center py-8 text-gray-400">Yuklanmoqda...</td></tr>
-            ) : !data?.employees?.length ? (
+            ) : !tabEmployees.length ? (
               <tr><td colSpan={8} className="text-center py-8 text-gray-400">
                 <Users size={32} className="mx-auto mb-2 opacity-30" /><br />Xodim topilmadi
               </td></tr>
-            ) : data.employees.map(emp => (
+            ) : tabEmployees.map(emp => (
               <tr key={emp.id}>
                 <td className="font-medium">{emp.name}</td>
                 <td><span className="badge-blue">{TYPES[emp.type] || emp.type}</span></td>
-                <td>
-                  {hasShift(emp.type)
-                    ? <span className={`badge ${emp.shift === '2-SMENA' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
-                        {SHIFTS[emp.shift] || emp.shift || '1-Smena'}
-                      </span>
-                    : <span className="text-gray-400">—</span>
-                  }
-                </td>
+                {tab === 'PRODUCTION' && (
+                  <td>
+                    {hasShift(emp.type)
+                      ? <span className={`badge ${emp.shift === '2-SMENA' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
+                          {SHIFTS[emp.shift] || emp.shift || '1-Smena'}
+                        </span>
+                      : <span className="text-gray-400">—</span>
+                    }
+                  </td>
+                )}
                 <td>
                   {isPieceRate(emp.type)
-                    ? <span className="text-xs text-orange-600">Dona haqi</span>
+                    ? <span className="text-xs text-orange-600">Dona haqi (mahsulotga qarab)</span>
                     : emp.salary_type === 'PERCENT'
                       ? <span className="badge bg-emerald-100 text-emerald-800">{emp.salary_percent || 0}%</span>
                       : (emp.monthly_salary > 0
@@ -402,8 +454,9 @@ export default function EmployeesPage() {
           </div>
           <div>
             <label className="label">Turi *</label>
+            {/* Tur ro'yxati ochiq bo'limga mos: ishlab chiqarishda stanokchi/detalchi, oylikda qolganlar */}
             <select {...register('type', { required: true })} className="select">
-              {Object.entries(kirimchiOnly ? { STANOKCHI: TYPES.STANOKCHI, DETALCHI: TYPES.DETALCHI } : TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              {Object.entries(kirimchiOnly ? PROD_TYPES : tabTypes).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
             {(watchedType === 'STANOKCHI' || watchedType === 'DETALCHI') && (
               <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-700">

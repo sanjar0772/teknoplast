@@ -3,42 +3,120 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import {
   TrendingUp, TrendingDown, Users, Package, AlertTriangle,
-  ShoppingCart, Banknote, Cog, RefreshCw, Target
+  ShoppingCart, Banknote, Cog, RefreshCw, Target, Receipt, Wallet, Clock
 } from 'lucide-react';
 import { reportsAPI, salariesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 const MONTH_NAMES = {
   '01':'Yan','02':'Fev','03':'Mar','04':'Apr','05':'May','06':'Iyn',
   '07':'Iyl','08':'Avg','09':'Sen','10':'Okt','11':'Noy','12':'Dek'
 };
 
-function KpiCard({ icon: Icon, iconBg, title, value, sub, trend }) {
+// Mashina holati bo'yicha rang (tartibga bog'liq emas)
+const MACHINE_COLORS = { 'Ishlayapti': '#10b981', 'Buzilgan': '#ef4444', "Ta'mirda": '#f59e0b' };
+
+// Raqam "o'sib chiqadi" — kuchli jonli effekt (v234 3D dashboard).
+// MUHIM: oyna fon rejimida bo'lsa rAF ishlamaydi — setTimeout zaxirasi
+// baribir oxirgi to'g'ri qiymatni qo'yadi (raqam 0 da qotib qolmaydi).
+function useCountUp(target, duration = 900) {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    const t = parseFloat(target) || 0;
+    if (!t) { setVal(t); return; }
+    let raf;
+    const start = performance.now();
+    const step = (now) => {
+      const p = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3); // ease-out
+      setVal(t * eased);
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    const safety = setTimeout(() => setVal(t), duration + 200);
+    return () => { cancelAnimationFrame(raf); clearTimeout(safety); };
+  }, [target, duration]);
+  return val;
+}
+
+// 3D KPI plitka — rangli shisha, gloss, hover'da nur o'tadi, raqam o'sib chiqadi
+function Kpi3D({ icon: Icon, color, title, value, sub, isMoney = false }) {
+  const n = useCountUp(value);
   return (
-    <div className="kpi-card">
-      <div className={`kpi-icon ${iconBg}`}>
-        <Icon size={22} className="text-white" />
-      </div>
-      <div className="min-w-0">
-        <p className="text-xs text-gray-500 font-medium">{title}</p>
-        <p className="text-xl font-bold text-gray-900 truncate">{value}</p>
-        {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
-      </div>
-      {trend !== undefined && (
-        <div className={`ml-auto flex items-center gap-1 text-sm font-semibold ${trend >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-          {trend >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-          {Math.abs(trend)}%
+    <div className={`kpi3d kpi3d-${color}`}>
+      <div className="relative z-10 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-white/75">{title}</p>
+          <p className="text-2xl font-extrabold text-white truncate mt-1" style={{ textShadow: '0 2px 4px rgba(15,23,42,0.25)' }}>
+            {fmt(n)}{isMoney ? <span className="text-sm font-semibold text-white/80"> so'm</span> : ''}
+          </p>
+          {sub && <p className="text-[11px] text-white/70 mt-1">{sub}</p>}
         </div>
-      )}
+        <div className="kpi3d-icon"><Icon size={22} className="text-white" /></div>
+      </div>
     </div>
   );
 }
+
+// Qora "kokpit" hero panel — salomlashuv, jonli soat, yangilash
+function Hero3D({ user, onRefresh }) {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="hero3d">
+      <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-extrabold" style={{ textShadow: '0 2px 6px rgba(0,0,0,0.4)' }}>
+            Xush kelibsiz, {user?.full_name?.split(' ')[0]}! 👋
+          </h1>
+          <p className="text-sm text-white/60 mt-1 capitalize">
+            {now.toLocaleDateString('uz-UZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 bg-white/10 border border-white/15 rounded-2xl px-4 py-2.5"
+            style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), 0 8px 20px -10px rgba(0,0,0,0.5)' }}>
+            <Clock size={18} className="text-white/70" />
+            <span className="font-mono text-xl font-bold tracking-widest tabular-nums">
+              {now.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
+          </div>
+          <button onClick={onRefresh}
+            className="flex items-center gap-1.5 text-sm font-semibold bg-white/10 hover:bg-white/20 border border-white/15 rounded-xl px-3.5 py-2.5 transition"
+            style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15)' }}>
+            <RefreshCw size={14} /> Yangilash
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Grafik kartasi sarlavhasi — rangli chip bilan
+function ChartTitle({ icon: Icon, color, children }) {
+  return (
+    <div className="flex items-center gap-2 mb-4">
+      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${color}`}
+        style={{ boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,0.5), 0 4px 10px -4px rgba(15,23,42,0.35)' }}>
+        <Icon size={14} className="text-white" />
+      </div>
+      <h2 className="text-sm font-bold text-gray-800">{children}</h2>
+    </div>
+  );
+}
+
+const tooltipStyle = {
+  borderRadius: 12, border: '1px solid #e5e7eb',
+  boxShadow: '0 12px 28px -12px rgba(15,23,42,0.3)', fontSize: 12,
+};
 
 export default function Dashboard() {
   const { user, isOwner } = useAuthStore();
@@ -84,6 +162,7 @@ export default function Dashboard() {
     name: k === 'WORKING' ? 'Ishlayapti' : k === 'BROKEN' ? 'Buzilgan' : 'Ta\'mirda',
     value: v,
   }));
+  const machineTotal = machineData.reduce((s, m) => s + (parseInt(m.value) || 0), 0);
 
   const profit = parseFloat(d.month?.profit || 0);
 
@@ -95,47 +174,38 @@ export default function Dashboard() {
     const topProducts = d.top_products || [];
     return (
       <div className="space-y-6">
-        <div className="page-header">
-          <div>
-            <h1 className="page-title">Xush kelibsiz, {user?.full_name?.split(' ')[0]}!</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              {new Date().toLocaleDateString('uz-UZ', { weekday: 'long', day: 'numeric', month: 'long' })}
-            </p>
-          </div>
-          <button onClick={() => refetch()} className="btn-secondary btn-sm">
-            <RefreshCw size={14} /> Yangilash
-          </button>
-        </div>
+        <Hero3D user={user} onRefresh={() => refetch()} />
 
-        {/* Sotuv KPI'lari */}
+        {/* Sotuv KPI'lari — 3D plitkalar */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <KpiCard icon={ShoppingCart} iconBg="bg-blue-500" title="Bugungi sotuv"
-            value={`${fmt(d.today?.sales?.total)} so'm`} sub={`${d.today?.sales?.count || 0} ta sotuv`} />
-          <KpiCard icon={TrendingUp} iconBg="bg-green-500" title="Bu oylik sotuv"
-            value={`${fmt(monthTotal)} so'm`} sub="jami daromad" />
-          <KpiCard icon={Banknote} iconBg="bg-emerald-500" title="To'langan"
-            value={`${fmt(monthPaid)} so'm`} sub="bu oy" />
-          <KpiCard icon={TrendingDown} iconBg="bg-amber-500" title="Qarz (kutilmoqda)"
-            value={`${fmt(monthDebt)} so'm`} sub="to'lanmagan" />
+          <Kpi3D icon={ShoppingCart} color="blue" title="Bugungi sotuv"
+            value={d.today?.sales?.total} isMoney sub={`${d.today?.sales?.count || 0} ta sotuv`} />
+          <Kpi3D icon={TrendingUp} color="green" title="Bu oylik sotuv"
+            value={monthTotal} isMoney sub="jami daromad" />
+          <Kpi3D icon={Banknote} color="purple" title="To'langan"
+            value={monthPaid} isMoney sub="bu oy" />
+          <Kpi3D icon={TrendingDown} color="orange" title="Qarz (kutilmoqda)"
+            value={monthDebt} isMoney sub="to'lanmagan" />
         </div>
 
         {/* 6 oylik sotuv trendi (tarix) */}
         <div className="card">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">6 Oylik Sotuv Tarixi</h2>
+          <ChartTitle icon={TrendingUp} color="bg-blue-500">6 Oylik Sotuv Tarixi</ChartTitle>
           {salesTrend.length > 0 ? (
             <ResponsiveContainer width="100%" height={240}>
               <AreaChart data={salesTrend}>
                 <defs>
                   <linearGradient id="shSalesGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} tickFormatter={v => `${(v / 1000000).toFixed(0)}M`} />
-                <Tooltip formatter={(v) => [`${fmt(v)} so'm`, 'Sotuv']} />
-                <Area type="monotone" dataKey="sotuv" stroke="#3b82f6" fill="url(#shSalesGrad)" strokeWidth={2} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                <XAxis dataKey="month" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 12 }} tickFormatter={v => `${(v / 1000000).toFixed(0)}M`} axisLine={false} tickLine={false} />
+                <Tooltip formatter={(v) => [`${fmt(v)} so'm`, 'Sotuv']} contentStyle={tooltipStyle} />
+                <Area type="monotone" dataKey="sotuv" stroke="#3b82f6" fill="url(#shSalesGrad)" strokeWidth={3}
+                  dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} activeDot={{ r: 6 }} />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
@@ -146,15 +216,21 @@ export default function Dashboard() {
         {/* Top mahsulotlar — diagramma + jadval */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <div className="card">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">Bu Oylik Top Mahsulotlar</h2>
+            <ChartTitle icon={Package} color="bg-indigo-500">Bu Oylik Top Mahsulotlar</ChartTitle>
             {topProducts.length > 0 ? (
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={topProducts} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} />
-                  <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={v => [`${fmt(v)} so'm`]} />
-                  <Bar dataKey="revenue" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                  <defs>
+                    <linearGradient id="shBarGrad" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#60a5fa" />
+                      <stop offset="100%" stopColor="#2563eb" />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={v => [`${fmt(v)} so'm`]} contentStyle={tooltipStyle} />
+                  <Bar dataKey="revenue" fill="url(#shBarGrad)" radius={[0, 8, 8, 0]} barSize={18} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -163,7 +239,7 @@ export default function Dashboard() {
           </div>
 
           <div className="card">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">Top Mahsulotlar — tafsilot</h2>
+            <ChartTitle icon={Receipt} color="bg-emerald-500">Top Mahsulotlar — tafsilot</ChartTitle>
             <div className="table-container">
               <table className="table">
                 <thead>
@@ -191,25 +267,16 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Xush kelibsiz, {user?.full_name?.split(' ')[0]}!</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {new Date().toLocaleDateString('uz-UZ', { weekday: 'long', day: 'numeric', month: 'long' })}
-          </p>
-        </div>
-        <button onClick={() => refetch()} className="btn-secondary btn-sm">
-          <RefreshCw size={14} /> Yangilash
-        </button>
-      </div>
+      {/* Hero — qora kokpit panel, jonli soat */}
+      <Hero3D user={user} onRefresh={() => refetch()} />
 
       {/* Oylik savdo reja — faqat EGA belgilaydi */}
       {isOwner() && (
         <div className="card p-5 border-2 border-indigo-200 bg-gradient-to-r from-indigo-50 to-white">
           <div className="flex flex-wrap items-center gap-4 justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 bg-indigo-600 rounded-xl flex items-center justify-center flex-shrink-0">
+              <div className="w-11 h-11 bg-indigo-600 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ boxShadow: 'inset 0 2px 0 rgba(255,255,255,0.4), 0 8px 16px -8px rgba(79,70,229,0.6)' }}>
                 <Target size={22} className="text-white" />
               </div>
               <div>
@@ -254,28 +321,28 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* KPI Cards */}
+      {/* KPI 3D plitkalar */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <KpiCard
-          icon={ShoppingCart} iconBg="bg-blue-500"
+        <Kpi3D
+          icon={ShoppingCart} color="blue"
           title="Bugungi sotuv"
-          value={`${fmt(d.today?.sales?.total)} so'm`}
+          value={d.today?.sales?.total} isMoney
           sub={`${d.today?.sales?.count || 0} ta sotuv`}
         />
-        <KpiCard
-          icon={TrendingUp} iconBg={profit >= 0 ? 'bg-green-500' : 'bg-red-500'}
+        <Kpi3D
+          icon={profit >= 0 ? TrendingUp : TrendingDown} color={profit >= 0 ? 'green' : 'red'}
           title="Bu oylik foyda"
-          value={`${fmt(profit)} so'm`}
+          value={profit} isMoney
           sub={`Daromad: ${fmt(d.month?.sales?.total)} so'm`}
         />
-        <KpiCard
-          icon={Users} iconBg="bg-purple-500"
+        <Kpi3D
+          icon={Users} color="purple"
           title="Faol xodimlar"
           value={d.employees?.active || 0}
           sub={`Jami: ${d.employees?.total || 0} nafar`}
         />
-        <KpiCard
-          icon={Package} iconBg="bg-orange-500"
+        <Kpi3D
+          icon={Package} color="orange"
           title="Kam ombordagi"
           value={d.low_stock || 0}
           sub="mahsulot kamayib ketgan"
@@ -286,21 +353,22 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Sotuv trendi */}
         <div className="card xl:col-span-2">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">6 Oylik Sotuv Trendi</h2>
+          <ChartTitle icon={TrendingUp} color="bg-blue-500">6 Oylik Sotuv Trendi</ChartTitle>
           {salesTrend.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={salesTrend}>
                 <defs>
                   <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35}/>
                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} tickFormatter={v => `${(v/1000000).toFixed(0)}M`} />
-                <Tooltip formatter={(v) => [`${fmt(v)} so'm`, 'Sotuv']} />
-                <Area type="monotone" dataKey="sotuv" stroke="#3b82f6" fill="url(#salesGrad)" strokeWidth={2} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                <XAxis dataKey="month" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 12 }} tickFormatter={v => `${(v/1000000).toFixed(0)}M`} axisLine={false} tickLine={false} />
+                <Tooltip formatter={(v) => [`${fmt(v)} so'm`, 'Sotuv']} contentStyle={tooltipStyle} />
+                <Area type="monotone" dataKey="sotuv" stroke="#3b82f6" fill="url(#salesGrad)" strokeWidth={3}
+                  dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} activeDot={{ r: 6 }} />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
@@ -308,27 +376,40 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Mashinalar holati */}
+        {/* Mashinalar holati — markazida jami soni */}
         <div className="card">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Mashinalar Holati</h2>
+          <ChartTitle icon={Cog} color="bg-slate-600">Mashinalar Holati</ChartTitle>
           {machineData.length > 0 ? (
             <>
-              <ResponsiveContainer width="100%" height={160}>
-                <PieChart>
-                  <Pie data={machineData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value">
-                    {machineData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              <div className="relative">
+                <ResponsiveContainer width="100%" height={170}>
+                  <PieChart>
+                    <Pie data={machineData} cx="50%" cy="50%" innerRadius={50} outerRadius={75}
+                      paddingAngle={4} cornerRadius={6} dataKey="value">
+                      {machineData.map((m, i) => <Cell key={i} fill={MACHINE_COLORS[m.name] || '#94a3b8'} />)}
+                    </Pie>
+                    <Tooltip contentStyle={tooltipStyle} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="text-center">
+                    <p className="text-2xl font-extrabold text-gray-900 leading-none">{machineTotal}</p>
+                    <p className="text-[10px] text-gray-400 font-medium mt-0.5">stanok</p>
+                  </div>
+                </div>
+              </div>
               <div className="space-y-2 mt-2">
                 {machineData.map((m, i) => (
-                  <div key={i} className="flex items-center justify-between text-sm">
+                  <div key={i} className="flex items-center justify-between text-sm px-3 py-1.5 rounded-lg bg-gray-50"
+                    style={{ boxShadow: 'inset 0 1px 2px rgba(15,23,42,0.04)' }}>
                     <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                      <div className="w-2.5 h-2.5 rounded-full" style={{
+                        background: MACHINE_COLORS[m.name] || '#94a3b8',
+                        boxShadow: `0 0 6px ${MACHINE_COLORS[m.name] || '#94a3b8'}66`,
+                      }} />
                       <span className="text-gray-600">{m.name}</span>
                     </div>
-                    <span className="font-semibold text-gray-900">{m.value}</span>
+                    <span className="font-bold text-gray-900">{m.value}</span>
                   </div>
                 ))}
               </div>
@@ -348,15 +429,21 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {/* Top mahsulotlar */}
         <div className="card">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Bu Oylik Top Mahsulotlar</h2>
+          <ChartTitle icon={Package} color="bg-indigo-500">Bu Oylik Top Mahsulotlar</ChartTitle>
           {(d.top_products || []).length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={d.top_products} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `${(v/1000000).toFixed(1)}M`} />
-                <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={v => [`${fmt(v)} so'm`]} />
-                <Bar dataKey="revenue" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                <defs>
+                  <linearGradient id="barGrad" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#60a5fa" />
+                    <stop offset="100%" stopColor="#2563eb" />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `${(v/1000000).toFixed(1)}M`} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip formatter={v => [`${fmt(v)} so'm`]} contentStyle={tooltipStyle} />
+                <Bar dataKey="revenue" fill="url(#barGrad)" radius={[0, 8, 8, 0]} barSize={18} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -364,27 +451,48 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Moliyaviy xulosa */}
+        {/* Moliyaviy xulosa — 3D plitkali */}
         <div className="card">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Bu Oylik Moliyaviy Xulosa</h2>
+          <ChartTitle icon={Wallet} color="bg-emerald-500">Bu Oylik Moliyaviy Xulosa</ChartTitle>
           <div className="space-y-3">
             {[
-              { label: 'Jami daromad', value: fmt(d.month?.sales?.total), color: 'text-blue-600', bg: 'bg-blue-50' },
-              { label: 'To\'langan', value: fmt(d.month?.sales?.paid), color: 'text-green-600', bg: 'bg-green-50' },
-              { label: 'Jami xarajat', value: fmt(d.month?.expenses), color: 'text-red-600', bg: 'bg-red-50' },
-              { label: 'Sof foyda', value: fmt(profit), color: profit >= 0 ? 'text-green-700' : 'text-red-700', bg: profit >= 0 ? 'bg-green-50' : 'bg-red-50' },
-            ].map(({ label, value, color, bg }) => (
-              <div key={label} className={`flex items-center justify-between px-4 py-3 rounded-lg ${bg}`}>
-                <span className="text-sm text-gray-600">{label}</span>
+              { label: 'Jami daromad', value: fmt(d.month?.sales?.total), icon: TrendingUp, color: 'text-blue-700', bg: 'bg-blue-50', ibg: 'bg-blue-500' },
+              { label: 'To\'langan', value: fmt(d.month?.sales?.paid), icon: Banknote, color: 'text-green-700', bg: 'bg-green-50', ibg: 'bg-green-500' },
+              { label: 'Jami xarajat', value: fmt(d.month?.expenses), icon: Receipt, color: 'text-red-700', bg: 'bg-red-50', ibg: 'bg-red-500' },
+            ].map(({ label, value, icon: Icon, color, bg, ibg }) => (
+              <div key={label} className={`flex items-center justify-between px-4 py-3 rounded-xl ${bg}`}
+                style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7), 0 4px 10px -6px rgba(15,23,42,0.15)' }}>
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${ibg}`}
+                    style={{ boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,0.5), 0 4px 8px -4px rgba(15,23,42,0.3)' }}>
+                    <Icon size={13} className="text-white" />
+                  </div>
+                  <span className="text-sm text-gray-600 font-medium">{label}</span>
+                </div>
                 <span className={`font-bold text-sm ${color}`}>{value} so'm</span>
               </div>
             ))}
+            {/* Sof foyda — katta 3D plitka */}
+            <div className={`kpi3d ${profit >= 0 ? 'kpi3d-green' : 'kpi3d-red'} !p-4`}>
+              <div className="relative z-10 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="kpi3d-icon !w-9 !h-9 !rounded-xl">
+                    {profit >= 0 ? <TrendingUp size={17} className="text-white" /> : <TrendingDown size={17} className="text-white" />}
+                  </div>
+                  <span className="text-sm font-bold text-white/90">Sof foyda</span>
+                </div>
+                <span className="text-xl font-extrabold text-white" style={{ textShadow: '0 2px 4px rgba(15,23,42,0.3)' }}>
+                  {fmt(profit)} so'm
+                </span>
+              </div>
+            </div>
           </div>
 
           {d.low_stock > 0 && (
-            <div className="mt-4 flex items-center gap-2 px-4 py-3 bg-orange-50 rounded-lg border border-orange-200">
+            <div className="mt-4 flex items-center gap-2 px-4 py-3 bg-orange-50 rounded-xl border border-orange-200"
+              style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7), 0 6px 14px -8px rgba(245,158,11,0.4)' }}>
               <AlertTriangle size={16} className="text-orange-500 flex-shrink-0" />
-              <p className="text-sm text-orange-700">
+              <p className="text-sm text-orange-700 font-medium">
                 {d.low_stock} ta mahsulot omborda kam!
               </p>
             </div>

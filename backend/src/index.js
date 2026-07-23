@@ -67,30 +67,36 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString(), env: process.env.NODE_ENV });
 });
 
-// Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
-app.get('/api/version', async (req, res) => {
-  // v227 VAQTINCHALIK diagnostika: disk + baza tarkibi (faqat O'LCHAMLAR MB'da,
-  // biznes ma'lumoti YO'Q) — tozalash rejasini tuzgach olib tashlanadi
-  let disk = null, inside = null;
-  try { disk = require('./services/backupService').backupStats(); } catch (e) { /* ixtiyoriy */ }
+// v228 VAQTINCHALIK diagnostika: qaysi jadval katta joy egallashini BIR MARTA
+// (startupdan 15s keyin) hisoblab keshlaymiz — /api/version uni shunchaki qaytaradi.
+// Faqat jadval nomi + qator soni + MB (biznes ma'lumoti YO'Q). Keyin olib tashlanadi.
+let _tableSizes = null;
+setTimeout(async () => {
   try {
-    const mb = (b) => Math.round((parseFloat(b || 0) / 1024 / 1024) * 10) / 10;
-    const one = async (sql) => {
-      try { const r = await db.query(sql); return r.rows[0] || {}; } catch { return {}; }
-    };
-    const photos = await one('SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(data)),0) AS b FROM product_photos');
-    const audit = await one('SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(COALESCE(old_values,\'\'))+LENGTH(COALESCE(new_values,\'\'))),0) AS b FROM audit_logs');
-    const ai = await one('SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(COALESCE(question,\'\'))+LENGTH(COALESCE(answer,\'\'))+LENGTH(COALESCE(context_data,\'\'))),0) AS b FROM ai_chat_history');
-    const free = await one('SELECT * FROM pragma_freelist_count()');
-    const page = await one('SELECT * FROM pragma_page_size()');
-    inside = {
-      photos_count: parseInt(photos.c || 0), photos_mb: mb(photos.b),
-      audit_count: parseInt(audit.c || 0), audit_mb: mb(audit.b),
-      ai_count: parseInt(ai.c || 0), ai_mb: mb(ai.b),
-      free_mb: mb(parseFloat(free.freelist_count || 0) * parseFloat(page.page_size || 4096)),
-    };
-  } catch (e) { /* ixtiyoriy */ }
-  res.json({ version: 'disk-diagnostika', commit: 'v227', disk, inside });
+    const tabs = (await db.query("SELECT name FROM sqlite_master WHERE type='table'")).rows;
+    const out = [];
+    for (const t of tabs) {
+      const name = t.name;
+      if (!/^[A-Za-z0-9_]+$/.test(name)) continue;
+      try {
+        const cols = (await db.query(`SELECT name FROM pragma_table_info('${name}')`)).rows.map(r => r.name);
+        if (!cols.length) continue;
+        const expr = cols.map(c => `COALESCE(LENGTH("${c}"),0)`).join('+');
+        const r = (await db.query(`SELECT COUNT(*) AS c, COALESCE(SUM(${expr}),0) AS b FROM "${name}"`)).rows[0];
+        out.push({ t: name, rows: parseInt(r.c || 0), mb: Math.round((parseFloat(r.b || 0) / 1048576) * 100) / 100 });
+      } catch (e) { /* jadvalni o'tkazib yuboramiz */ }
+    }
+    out.sort((a, b) => b.mb - a.mb);
+    _tableSizes = out.slice(0, 12);
+    console.log('📊 Eng katta jadvallar:', JSON.stringify(_tableSizes));
+  } catch (e) { console.error('Jadval o\'lchami diag xato:', e.message); }
+}, 15000);
+
+// Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
+app.get('/api/version', (req, res) => {
+  let disk = null;
+  try { disk = require('./services/backupService').backupStats(); } catch (e) { /* ixtiyoriy */ }
+  res.json({ version: 'jadval-diagnostika', commit: 'v228', disk, tables: _tableSizes });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

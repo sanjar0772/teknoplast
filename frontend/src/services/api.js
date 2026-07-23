@@ -283,6 +283,7 @@ export const moldsAPI = {
 // Reports
 export const reportsAPI = {
   getDashboard: () => api.get('/reports/dashboard'),
+  getTopProducts: (params) => api.get('/reports/top-products', { params }),
   getMonthly: (params) => api.get('/reports/monthly', { params }),
   getDebts: (params) => api.get('/reports/debts', { params }),
   getCreditors: () => api.get('/reports/creditors'),

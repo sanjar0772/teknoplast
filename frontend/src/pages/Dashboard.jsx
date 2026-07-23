@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import {
   TrendingUp, TrendingDown, Users, Package, AlertTriangle,
-  ShoppingCart, Banknote, Cog, RefreshCw, Target, Receipt, Wallet, Clock
+  ShoppingCart, Banknote, Cog, RefreshCw, Target, Receipt, Wallet, Clock, X, ChevronRight
 } from 'lucide-react';
 import { reportsAPI, salariesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
@@ -100,15 +100,24 @@ function Hero3D({ user, onRefresh }) {
   );
 }
 
-// Grafik kartasi sarlavhasi — rangli chip bilan
-function ChartTitle({ icon: Icon, color, children }) {
+// Grafik kartasi sarlavhasi — rangli chip bilan. onClick berilsa bosiladigan bo'ladi
+// ("Bu Oylik Top Mahsulotlar" — to'liq ro'yxatni ochish uchun).
+function ChartTitle({ icon: Icon, color, children, onClick }) {
   return (
-    <div className="flex items-center gap-2 mb-4">
-      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${color}`}
-        style={{ boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,0.5), 0 4px 10px -4px rgba(15,23,42,0.35)' }}>
-        <Icon size={14} className="text-white" />
+    <div className={`flex items-center justify-between gap-2 mb-4 ${onClick ? 'cursor-pointer group' : ''}`}
+      onClick={onClick} role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined}>
+      <div className="flex items-center gap-2">
+        <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${color}`}
+          style={{ boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,0.5), 0 4px 10px -4px rgba(15,23,42,0.35)' }}>
+          <Icon size={14} className="text-white" />
+        </div>
+        <h2 className={`text-sm font-bold text-gray-800 ${onClick ? 'group-hover:text-blue-700' : ''}`}>{children}</h2>
       </div>
-      <h2 className="text-sm font-bold text-gray-800">{children}</h2>
+      {onClick && (
+        <span className="text-[11px] font-semibold text-blue-600 flex items-center gap-0.5 opacity-70 group-hover:opacity-100">
+          Barchasi <ChevronRight size={13} />
+        </span>
+      )}
     </div>
   );
 }
@@ -118,6 +127,64 @@ const tooltipStyle = {
   boxShadow: '0 12px 28px -12px rgba(15,23,42,0.3)', fontSize: 12,
 };
 
+// "Bu Oylik Top Mahsulotlar" bosilganda — to'liq ro'yxat (dashboard'da faqat 5 tasi ko'rinadi)
+function TopProductsModal({ month, onClose }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['top-products-full', month],
+    queryFn: () => reportsAPI.getTopProducts({ month }).then(r => r.data),
+  });
+  const products = data?.products || [];
+  const totalRevenue = products.reduce((s, p) => s + (parseFloat(p.revenue) || 0), 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between p-5 pb-4 border-b border-gray-100">
+          <div>
+            <h3 className="font-bold text-gray-900 flex items-center gap-2"><Package size={18} className="text-indigo-500" /> Bu Oylik Top Mahsulotlar</h3>
+            <p className="text-xs text-gray-400 mt-0.5">{month} · {products.length} ta mahsulot · jami {fmt(totalRevenue)} so'm</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+        </div>
+        <div className="overflow-y-auto p-5 pt-3">
+          {isLoading ? (
+            <p className="text-center text-gray-400 text-sm py-10">Yuklanmoqda...</p>
+          ) : !products.length ? (
+            <p className="text-center text-gray-400 text-sm py-10">Bu oyda sotuv yo'q</p>
+          ) : (
+            <div className="space-y-1.5">
+              {products.map((p, i) => {
+                const share = totalRevenue > 0 ? (parseFloat(p.revenue) / totalRevenue) * 100 : 0;
+                return (
+                  <div key={p.name} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50">
+                    <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                      i === 0 ? 'bg-amber-100 text-amber-700' : i === 1 ? 'bg-gray-100 text-gray-600' : i === 2 ? 'bg-orange-50 text-orange-600' : 'bg-gray-50 text-gray-400'}`}>
+                      {i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className="font-medium text-gray-900 text-sm truncate">{p.name}</p>
+                        <p className="font-bold text-gray-900 text-sm whitespace-nowrap">{fmt(p.revenue)} so'm</p>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.max(2, share)}%` }} />
+                        </div>
+                        <span className="text-[11px] text-gray-400 whitespace-nowrap">{fmt(p.qty)} {p.unit || 'dona'}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { user, isOwner } = useAuthStore();
   const qc = useQueryClient();
@@ -126,6 +193,7 @@ export default function Dashboard() {
     queryFn: () => reportsAPI.getDashboard().then(r => r.data),
     refetchInterval: 5 * 60 * 1000,
   });
+  const [showTopProducts, setShowTopProducts] = useState(false);
 
   // Oylik savdo reja (faqat EGA belgilaydi) — bosh sahifada ko'rinadi
   const planMonth = new Date().toISOString().slice(0, 7);
@@ -216,7 +284,7 @@ export default function Dashboard() {
         {/* Top mahsulotlar — diagramma + jadval */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <div className="card">
-            <ChartTitle icon={Package} color="bg-indigo-500">Bu Oylik Top Mahsulotlar</ChartTitle>
+            <ChartTitle icon={Package} color="bg-indigo-500" onClick={() => setShowTopProducts(true)}>Bu Oylik Top Mahsulotlar</ChartTitle>
             {topProducts.length > 0 ? (
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={topProducts} layout="vertical">
@@ -261,6 +329,8 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        {showTopProducts && <TopProductsModal month={planMonth} onClose={() => setShowTopProducts(false)} />}
       </div>
     );
   }
@@ -429,7 +499,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {/* Top mahsulotlar */}
         <div className="card">
-          <ChartTitle icon={Package} color="bg-indigo-500">Bu Oylik Top Mahsulotlar</ChartTitle>
+          <ChartTitle icon={Package} color="bg-indigo-500" onClick={() => setShowTopProducts(true)}>Bu Oylik Top Mahsulotlar</ChartTitle>
           {(d.top_products || []).length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={d.top_products} layout="vertical">
@@ -499,6 +569,8 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {showTopProducts && <TopProductsModal month={planMonth} onClose={() => setShowTopProducts(false)} />}
     </div>
   );
 }

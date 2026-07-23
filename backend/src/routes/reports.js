@@ -70,6 +70,26 @@ router.get('/dashboard', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/reports/top-products?month=YYYY-MM — Bosh sahifadagi "Top Mahsulotlar"
+// bosilganda to'liq ro'yxat (dashboard'da faqat 5 tasi ko'rinadi).
+router.get('/top-products', async (req, res, next) => {
+  try {
+    const month = req.query.month || new Date().toISOString().slice(0, 7);
+    const bFilter = req.user.branch_id
+      ? ` AND s.branch_id='${String(req.user.branch_id).replace(/'/g, "''")}'`
+      : ` AND s.branch_id IS NULL`;
+    const rows = await query(`
+      SELECT p.name, p.unit, SUM(s.quantity) as qty, SUM(s.total_amount) as revenue,
+             COUNT(*) as sale_count
+      FROM sales s JOIN products p ON s.product_id = p.id
+      WHERE TO_CHAR(s.sale_date,'YYYY-MM') = $1${bFilter}
+        AND (p.description IS NULL OR p.description != 'MANUAL_DEBT')
+      GROUP BY p.name, p.unit ORDER BY revenue DESC
+    `, [month]);
+    res.json({ month, products: rows.rows });
+  } catch (err) { next(err); }
+});
+
 // GET /api/reports/debts — Qarzdorlik (aging) hisoboti
 router.get('/debts', async (req, res, next) => {
   try {

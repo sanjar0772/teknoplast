@@ -71,9 +71,33 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString(), env: process.env.NODE_ENV });
 });
 
-// Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
-app.get('/api/version', (req, res) => {
-  res.json({ version: 'filial-ai-mashina-ochirildi', commit: 'v238' });
+// v239 VAQTINCHALIK diagnostika: filialda -297 ming so'm qayerdan chiqayotganini
+// topish uchun — faqat summalar, biznes tafsilot YO'Q. Tekshirilgach olib tashlanadi.
+app.get('/api/version', async (req, res) => {
+  let branchDiag = null;
+  try {
+    const month = new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 7);
+    const branches = (await db.query('SELECT id, name FROM branches')).rows;
+    branchDiag = [];
+    for (const b of branches) {
+      const one = async (sql, params) => {
+        try { const r = await db.query(sql, params); return r.rows[0] || {}; } catch { return {}; }
+      };
+      const sales = await one("SELECT COALESCE(SUM(total_amount),0) AS s FROM sales WHERE branch_id=$1 AND TO_CHAR(sale_date,'YYYY-MM')=$2", [b.id, month]);
+      const exp = await one("SELECT COALESCE(SUM(amount),0) AS s FROM expenses WHERE branch_id=$1 AND TO_CHAR(expense_date,'YYYY-MM')=$2", [b.id, month]);
+      const debt = await one('SELECT COALESCE(SUM(total_amount-payment_amount),0) AS s FROM sales WHERE branch_id=$1', [b.id]);
+      const sal = await one("SELECT COALESCE(SUM(net_amount),0) AS s FROM salaries WHERE month=$2 AND employee_id IN (SELECT id FROM employees WHERE branch_id=$1)", [b.id, month]);
+      branchDiag.push({
+        branch: b.name,
+        month_sales: parseFloat(sales.s || 0),
+        month_expenses: parseFloat(exp.s || 0),
+        month_profit: parseFloat(sales.s || 0) - parseFloat(exp.s || 0),
+        total_debt: parseFloat(debt.s || 0),
+        month_salaries_net: parseFloat(sal.s || 0),
+      });
+    }
+  } catch (e) { /* ixtiyoriy */ }
+  res.json({ version: 'filial-ai-mashina-ochirildi', commit: 'v239', branchDiag });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

@@ -39,12 +39,15 @@ router.get('/dashboard', async (req, res, next) => {
       GROUP BY strftime('%Y-%m', sale_date) ORDER BY month
     `, [sixMonthsAgoStr]);
 
-    // Top 5 mahsulot (join'da branch_id ambiguity bo'lmasligi uchun s. bilan aniqlaymiz)
+    // Top 5 mahsulot (join'da branch_id ambiguity bo'lmasligi uchun s. bilan aniqlaymiz).
+    // "Qo'lda qarz" (MANUAL_DEBT) — haqiqiy mahsulot emas, faqat qarz/haqdor yozish uchun
+    // ishlatiladigan yashirin placeholder — Top Mahsulotlar ro'yxatidan chiqarib tashlanadi.
     const bFilterS = bFilter.replace('branch_id', 's.branch_id');
     const topProducts = await query(`
       SELECT p.name, SUM(s.quantity) as qty, SUM(s.total_amount) as revenue
       FROM sales s JOIN products p ON s.product_id = p.id
       WHERE TO_CHAR(s.sale_date,'YYYY-MM') = $1${bFilterS}
+        AND (p.description IS NULL OR p.description != 'MANUAL_DEBT')
       GROUP BY p.name ORDER BY revenue DESC LIMIT 5
     `, [thisMonth]);
 

@@ -12,6 +12,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const cron = require('node-cron');
 
@@ -21,6 +22,9 @@ const db = require('./db');
 const app = express();
 
 app.set('trust proxy', 1);
+// GZIP siqish (v233 upgrade): JS/CSS/JSON javoblar ~4x kichik yuklanadi —
+// dastur ochilishi va API javoblari sezilarli tezlashadi.
+app.use(compression());
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false
@@ -69,7 +73,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'xodim-amallar-premiya-avans-jarima', commit: 'v232' });
+  res.json({ version: 'tizim-upgrade-gzip-lazy-indeks', commit: 'v233' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)
@@ -161,6 +165,23 @@ cron.schedule('30 2 * * *', async () => {
     console.error('Alert tozalashda xato:', err.message);
   }
 });
+
+// Oylik texnik xizmat (v233): har oyning 1-kuni 03:00 da VACUUM — baza siqiladi,
+// o'chirilgan yozuvlar joyi bo'shatiladi (ma'lumotga tegmaydi, faqat fayl kichrayadi).
+cron.schedule('0 3 1 * *', async () => {
+  try {
+    await db.query('VACUUM');
+    if (db.saveDBSync) db.saveDBSync();
+    console.log('🗜️ Oylik VACUUM bajarildi — baza siqildi');
+  } catch (err) {
+    console.error('Oylik VACUUM xato:', err.message);
+  }
+});
+
+// Baza indekslari (v233 upgrade) — so'rovlar tez ishlashi uchun, idempotent
+require('./services/dbIndexes')
+  .ensureIndexes()
+  .catch(e => console.error('Indeks yaratish xato:', e.message));
 
 // Xom ashyo aylma daftarini tayyorlash (idempotent, crash-proof)
 require('./services/rawMaterialLedger')

@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -45,9 +46,13 @@ export default function Layout() {
           </div>
         </header>
 
-        {/* Page content */}
+        {/* Page content — sahifa bo'lagi yuklanayotganda sidebar joyida qoladi (v233) */}
         <main className="p-6">
-          <Outlet />
+          <Suspense fallback={
+            <div className="flex items-center justify-center py-20 text-gray-400 text-sm">Yuklanmoqda...</div>
+          }>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

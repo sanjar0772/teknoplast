@@ -69,7 +69,11 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'mijozlar-xaritasi', commit: 'v225' });
+  // v226 VAQTINCHALIK diagnostika: disk holati (faqat fayl o'lchamlari MB'da,
+  // biznes ma'lumoti YO'Q) — tozalash natijasini ko'rgach olib tashlanadi
+  let disk = null;
+  try { disk = require('./services/backupService').backupStats(); } catch (e) { /* ixtiyoriy */ }
+  res.json({ version: 'disk-tozalash', commit: 'v226', disk });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)
@@ -116,11 +120,15 @@ app.use(notFound);
 app.use(errorHandler);
 
 // Avtomatik zaxira — har kuni soat 02:00 da
-const { runBackup } = require('./services/backupService');
+const { runBackup, pruneBackups } = require('./services/backupService');
 cron.schedule('0 2 * * *', () => {
   console.log('🕑 Kunlik avtomatik backup boshlandi...');
   runBackup();
 });
+
+// Disk tozalash: eski backup nusxalari startupda ham tozalanadi
+// (Railway diski to'lib qolmasligi uchun — KEEP=5, avval 14 edi)
+try { pruneBackups(); } catch (e) { console.error('Backup prune xato:', e.message); }
 
 // Smart alerts — har soat tekshirish
 cron.schedule('0 * * * *', async () => {

@@ -67,36 +67,9 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString(), env: process.env.NODE_ENV });
 });
 
-// v228 VAQTINCHALIK diagnostika: qaysi jadval katta joy egallashini BIR MARTA
-// (startupdan 15s keyin) hisoblab keshlaymiz — /api/version uni shunchaki qaytaradi.
-// Faqat jadval nomi + qator soni + MB (biznes ma'lumoti YO'Q). Keyin olib tashlanadi.
-let _tableSizes = null;
-setTimeout(async () => {
-  try {
-    const tabs = (await db.query("SELECT name FROM sqlite_master WHERE type='table'")).rows;
-    const out = [];
-    for (const t of tabs) {
-      const name = t.name;
-      if (!/^[A-Za-z0-9_]+$/.test(name)) continue;
-      try {
-        const cols = (await db.query(`SELECT name FROM pragma_table_info('${name}')`)).rows.map(r => r.name);
-        if (!cols.length) continue;
-        const expr = cols.map(c => `COALESCE(LENGTH("${c}"),0)`).join('+');
-        const r = (await db.query(`SELECT COUNT(*) AS c, COALESCE(SUM(${expr}),0) AS b FROM "${name}"`)).rows[0];
-        out.push({ t: name, rows: parseInt(r.c || 0), mb: Math.round((parseFloat(r.b || 0) / 1048576) * 100) / 100 });
-      } catch (e) { /* jadvalni o'tkazib yuboramiz */ }
-    }
-    out.sort((a, b) => b.mb - a.mb);
-    _tableSizes = out.slice(0, 12);
-    console.log('📊 Eng katta jadvallar:', JSON.stringify(_tableSizes));
-  } catch (e) { console.error('Jadval o\'lchami diag xato:', e.message); }
-}, 15000);
-
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  let disk = null;
-  try { disk = require('./services/backupService').backupStats(); } catch (e) { /* ixtiyoriy */ }
-  res.json({ version: 'alerts-tozalash', commit: 'v229', disk, tables: _tableSizes });
+  res.json({ version: 'disk-tozalash-yakun', commit: 'v230' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

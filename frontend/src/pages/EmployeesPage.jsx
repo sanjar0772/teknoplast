@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Users, Trash2, QrCode, Download } from 'lucide-react';
+import { Plus, X, Users, Trash2, QrCode, Download, Wallet } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { employeesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
@@ -22,6 +22,17 @@ const isPieceRate = (t) => PIECE_RATE.includes(t);
 // qolganlari (oylik maosh) ALOHIDA ko'rsatiladi.
 const PROD_TYPES = { STANOKCHI: TYPES.STANOKCHI, DETALCHI: TYPES.DETALCHI };
 const MONTHLY_TYPES = Object.fromEntries(Object.entries(TYPES).filter(([k]) => !PIECE_RATE.includes(k)));
+
+// Xodim moliyaviy amallari: Premiya/Qo'shimcha oylik oylikka QO'SHILADI,
+// Avans/Jarima/Boshqa rashodlar oylikdan AYRILADI ("Oylik hisoblash"da avtomatik).
+const TXN_TYPES = {
+  PREMIYA: { label: 'Premiya', sign: '+', cls: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+  QOSHIMCHA: { label: "Qo'shimcha oylik", sign: '+', cls: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+  AVANS: { label: 'Avans', sign: '−', cls: 'text-amber-700 bg-amber-50 border-amber-200' },
+  JARIMA: { label: 'Jarima', sign: '−', cls: 'text-red-700 bg-red-50 border-red-200' },
+  BOSHQA: { label: 'Boshqa rashod', sign: '−', cls: 'text-gray-700 bg-gray-50 border-gray-200' },
+};
+const ADD_TXN_TYPES = ['PREMIYA', 'QOSHIMCHA'];
 // STANOKCHI va DETALCHI 2 smenada ishlaydi — smena (1-Smena / 2-Smena) tanlanadi.
 const HAS_SHIFT = ['STANOKCHI', 'DETALCHI'];
 const hasShift = (t) => HAS_SHIFT.includes(t);
@@ -83,8 +94,133 @@ function Modal({ open, onClose, title, children }) {
   );
 }
 
+// Xodimga Premiya/Qo'shimcha oylik/Avans/Jarima/Boshqa rashod qo'shish va tarixini ko'rish.
+// Oy davomida istalgan kuni qo'shiladi; "Oylik hisoblash" bularni avtomatik yig'adi.
+function TransactionsModal({ emp, canAdd, canDelete, onClose }) {
+  const qc = useQueryClient();
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [form, setForm] = useState({ type: 'PREMIYA', amount: '', txn_date: new Date().toISOString().slice(0, 10), notes: '' });
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['employee-transactions', emp.id, month],
+    queryFn: () => employeesAPI.getTransactions(emp.id, { month }).then(r => r.data),
+    enabled: !!emp,
+  });
+
+  const addMutation = useMutation({
+    mutationFn: (d) => employeesAPI.addTransaction(emp.id, d),
+    onSuccess: () => {
+      toast.success("Amal qo'shildi");
+      qc.invalidateQueries({ queryKey: ['employee-transactions', emp.id] });
+      setForm(f => ({ ...f, amount: '', notes: '' }));
+    },
+    onError: (err) => toast.error(err?.response?.data?.error || err?.response?.data?.errors?.[0]?.msg || 'Xato'),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (txnId) => employeesAPI.removeTransaction(txnId),
+    onSuccess: () => {
+      toast.success("Amal o'chirildi");
+      qc.invalidateQueries({ queryKey: ['employee-transactions', emp.id] });
+    },
+    onError: (err) => toast.error(err?.response?.data?.error || 'Xato'),
+  });
+
+  const submit = (e) => {
+    e.preventDefault();
+    const amt = Number(form.amount);
+    if (!amt || amt <= 0) return toast.error("Summani to'g'ri kiriting");
+    addMutation.mutate(form);
+  };
+
+  const totals = data?.totals || { add: 0, sub: 0, net: 0 };
+  const txns = data?.transactions || [];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-bold text-gray-900 flex items-center gap-1.5"><Wallet size={18} /> {emp.name}</h3>
+          <button onClick={onClose}><X size={20} className="text-gray-400" /></button>
+        </div>
+        <p className="text-xs text-gray-400 mb-4">Premiya, qo'shimcha oylik, avans, jarima, boshqa rashodlar</p>
+
+        <div className="flex items-center gap-2 mb-4">
+          <label className="label mb-0">Oy:</label>
+          <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="input w-40" />
+        </div>
+
+        {/* Oy jamlanmasi */}
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-center">
+            <p className="text-[10px] text-emerald-600">Qo'shiladi</p>
+            <p className="font-bold text-emerald-700 text-sm">+{fmt(totals.add)}</p>
+          </div>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-center">
+            <p className="text-[10px] text-red-600">Ayriladi</p>
+            <p className="font-bold text-red-700 text-sm">-{fmt(totals.sub)}</p>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-center">
+            <p className="text-[10px] text-blue-600">Sof ta'sir</p>
+            <p className="font-bold text-blue-700 text-sm">{totals.net >= 0 ? '+' : ''}{fmt(totals.net)}</p>
+          </div>
+        </div>
+
+        {/* Yangi amal qo'shish */}
+        {canAdd && (
+          <form onSubmit={submit} className="border border-gray-200 rounded-xl p-3 space-y-2 mb-4 bg-gray-50">
+            <div className="grid grid-cols-2 gap-2">
+              <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className="select">
+                {Object.entries(TXN_TYPES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+              <input type="number" min="0" step="0.01" placeholder="Summa (so'm)" value={form.amount}
+                onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className="input" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input type="date" value={form.txn_date}
+                onChange={e => setForm(f => ({ ...f, txn_date: e.target.value }))} className="input" />
+              <input placeholder="Izoh (ixtiyoriy)" value={form.notes}
+                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className="input" />
+            </div>
+            <button type="submit" disabled={addMutation.isPending} className="btn-primary btn-sm w-full flex items-center justify-center gap-1.5">
+              <Plus size={14} /> {addMutation.isPending ? 'Qo\'shilmoqda...' : "Qo'shish"}
+            </button>
+          </form>
+        )}
+
+        {/* Tarix */}
+        <div className="space-y-1.5">
+          {isLoading ? (
+            <p className="text-center text-gray-400 text-sm py-4">Yuklanmoqda...</p>
+          ) : !txns.length ? (
+            <p className="text-center text-gray-400 text-sm py-4">Bu oyda amal yo'q</p>
+          ) : txns.map(t => (
+            <div key={t.id} className={`flex items-center justify-between gap-2 border rounded-lg px-3 py-2 text-sm ${TXN_TYPES[t.type]?.cls || 'bg-gray-50 border-gray-200'}`}>
+              <div className="min-w-0">
+                <div className="font-medium">
+                  {TXN_TYPES[t.type]?.label || t.type} <span className="opacity-70">{TXN_TYPES[t.type]?.sign}{fmt(t.amount)} so'm</span>
+                </div>
+                <div className="text-[11px] opacity-70 truncate">
+                  {new Date(t.txn_date).toLocaleDateString('uz-UZ')}{t.notes ? ` · ${t.notes}` : ''}
+                </div>
+              </div>
+              {canDelete && (
+                <button onClick={() => { if (window.confirm("Bu amalni o'chirasizmi?")) removeMutation.mutate(t.id); }}
+                  className="text-current opacity-60 hover:opacity-100 flex-shrink-0">
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EmployeesPage() {
-  const { isOwner, isProductionHead, isKirimchi, user } = useAuthStore();
+  const { isOwner, isProductionHead, isAccountant, isKirimchi, user } = useAuthStore();
   const kirimchiOnly = user?.role === 'KIRIMCHI';
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
@@ -92,6 +228,7 @@ export default function EmployeesPage() {
   const [filter, setFilter] = useState({ type: '', search: '' });
   const [qrEmployee, setQrEmployee] = useState(null);
   const [qrBulk, setQrBulk] = useState(false);
+  const [txnEmployee, setTxnEmployee] = useState(null); // Premiya/Avans/Jarima modal ochilgan xodim
   // Bo'lim: PRODUCTION = stanokchi/detalchi (dona bay), MONTHLY = qolganlar (oylik).
   // KIRIMCHI faqat ishlab chiqarish xodimlarini boshqaradi — unga faqat shu bo'lim.
   const [tab, setTab] = useState('PRODUCTION');
@@ -218,6 +355,8 @@ export default function EmployeesPage() {
   // KIRIMCHI faqat yangi xodim (stanokchi/detalchi) qo'shishi va tahrirlashi mumkin
   const canAdd = canWrite || isKirimchi();
   const canEditPiece = isKirimchi(); // faqat stanokchi/detalchi tahrirlash
+  // Premiya/Qo'shimcha/Avans/Jarima/Boshqa rashod qo'sha oladigan rollar (backend bilan bir xil)
+  const canTxn = isOwner() || isAccountant() || isProductionHead();
 
   // Ochiq bo'limga tegishli xodimlar (ishlab chiqarish yoki oylik)
   const tabEmployees = (data?.employees || []).filter(e =>
@@ -312,7 +451,7 @@ export default function EmployeesPage() {
       <div className="table-container">
         <table className="table">
           <thead>
-            <tr><th>Ismi</th><th>Turi</th>{tab === 'PRODUCTION' && <th>Smena</th>}<th>{tab === 'PRODUCTION' ? 'Haq' : 'Oylik'}</th><th>Telefon</th><th>Yollangan sana</th><th>Holat</th>{(canWrite || canEditPiece) && <th>Amal</th>}</tr>
+            <tr><th>Ismi</th><th>Turi</th>{tab === 'PRODUCTION' && <th>Smena</th>}<th>{tab === 'PRODUCTION' ? 'Haq' : 'Oylik'}</th><th>Telefon</th><th>Yollangan sana</th><th>Holat</th>{(canWrite || canEditPiece || canTxn) && <th>Amal</th>}</tr>
           </thead>
           <tbody>
             {isLoading ? (
@@ -352,7 +491,7 @@ export default function EmployeesPage() {
                     {emp.is_active ? 'Faol' : 'Nofaol'}
                   </span>
                 </td>
-                {(canWrite || (canEditPiece && isPieceRate(emp.type))) && (
+                {(canWrite || (canEditPiece && isPieceRate(emp.type)) || canTxn) && (
                   <td className="flex gap-1 flex-wrap">
                     {(emp.type === 'STANOKCHI' || emp.type === 'DETALCHI') && (
                       <button onClick={() => setQrEmployee(emp)}
@@ -361,7 +500,16 @@ export default function EmployeesPage() {
                         <QrCode size={12} /> Begik
                       </button>
                     )}
-                    <button onClick={() => openEdit(emp)} className="btn-secondary btn-sm">Tahrirlash</button>
+                    {canTxn && (
+                      <button onClick={() => setTxnEmployee(emp)}
+                        title="Premiya / Qo'shimcha / Avans / Jarima / Boshqa rashod"
+                        className="btn-sm bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200 rounded-lg px-2 flex items-center gap-1">
+                        <Wallet size={12} /> Amallar
+                      </button>
+                    )}
+                    {(canWrite || (canEditPiece && isPieceRate(emp.type))) && (
+                      <button onClick={() => openEdit(emp)} className="btn-secondary btn-sm">Tahrirlash</button>
+                    )}
                     {canWrite && (
                       <>
                         <button
@@ -390,6 +538,11 @@ export default function EmployeesPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Premiya / Qo'shimcha oylik / Avans / Jarima / Boshqa rashod */}
+      {txnEmployee && (
+        <TransactionsModal emp={txnEmployee} canAdd={canTxn} canDelete={isOwner()} onClose={() => setTxnEmployee(null)} />
+      )}
 
       {/* Bitta xodim QR begik */}
       {qrEmployee && (

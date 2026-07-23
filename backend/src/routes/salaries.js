@@ -3,6 +3,7 @@ const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
 const { logAudit } = require('../services/auditService');
+const { ensureEmployeeTransactionsSchema, getMonthTotals } = require('../services/employeeTransactions');
 
 const router = express.Router();
 router.use(authenticate);
@@ -28,9 +29,9 @@ router.get('/', async (req, res, next) => {
         FROM employee_production WHERE month = $1
         GROUP BY employee_id
       ) ep ON ep.employee_id = s.employee_id
-      WHERE s.month = $1
+      WHERE s.month = $2
       ORDER BY e.name
-    `, [period]);
+    `, [period, period]);
 
     const summary = await query(`
       SELECT
@@ -99,6 +100,7 @@ router.post('/calculate', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, n
   try {
     const { month, tax_rate = 0.05, social_rate = 0.03 } = req.body;
     if (!month) return res.status(400).json({ error: 'Oy kiritilmagan (YYYY-MM)' });
+    await ensureEmployeeTransactionsSchema();
 
     // REJA BONUSI: oy savdosi rejadan oshsa — oshgan foiz (overage) hisoblanadi.
     // Bonus oylik/foizli xodimlarga beriladi (stanokchi/detalchi — dona haqi, kirmaydi).
@@ -144,18 +146,24 @@ router.post('/calculate', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, n
         if (bp) bonuses += Math.round(salaryBase * bp / 100);
       }
 
+      // Xodimlar sahifasida qo'shilgan amallar: Premiya/Qo'shimcha oylik → bonusga,
+      // Avans/Jarima/Boshqa rashodlar → jarimaga. BARCHA turdagi xodimga (stanokchi/detalchi ham) tegishli.
+      const txnTotals = await getMonthTotals(emp.id, month);
+      bonuses += txnTotals.add;
+      const penalties = txnTotals.sub;
+
       // Soliq va ijtimoiy sug'urta (bonusgacha bo'lgan summadan)
       const tax_amount = Math.round(total_calculated * tax_rate);
       const social_security = Math.round(total_calculated * social_rate);
-      const net_amount = total_calculated - tax_amount - social_security + bonuses;
+      const net_amount = total_calculated - tax_amount - social_security + bonuses - penalties;
 
       const r = await query(
-        `INSERT INTO salaries (employee_id, month, total_calculated, tax_amount, social_security, work_days, total_produced, bonuses, net_amount, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'CALCULATED')
+        `INSERT INTO salaries (employee_id, month, total_calculated, tax_amount, social_security, work_days, total_produced, bonuses, penalties, net_amount, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'CALCULATED')
          ON CONFLICT (employee_id, month)
-         DO UPDATE SET total_calculated=$3, tax_amount=$4, social_security=$5, work_days=$6, total_produced=$7, bonuses=$8, net_amount=$9, status='CALCULATED', updated_at=NOW()
+         DO UPDATE SET total_calculated=$3, tax_amount=$4, social_security=$5, work_days=$6, total_produced=$7, bonuses=$8, penalties=$9, net_amount=$10, status='CALCULATED', updated_at=NOW()
          RETURNING *`,
-        [emp.id, month, total_calculated, tax_amount, social_security, work_days, total_produced, bonuses, net_amount]
+        [emp.id, month, total_calculated, tax_amount, social_security, work_days, total_produced, bonuses, penalties, net_amount]
       );
       results.push(r.rows[0]);
     }

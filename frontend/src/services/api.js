@@ -157,6 +157,10 @@ export const employeesAPI = {
   update: (id, data) => api.put(`/employees/${id}`, data),
   remove: (id) => api.delete(`/employees/${id}`),        // bitta xodimni butunlay o'chirish
   removeAll: () => api.delete('/employees/all'),          // hamma xodimni o'chirish
+  // Premiya / Qo'shimcha oylik / Avans / Jarima / Boshqa rashodlar
+  getTransactions: (id, params) => api.get(`/employees/${id}/transactions`, { params }),
+  addTransaction: (id, data) => api.post(`/employees/${id}/transactions`, data),
+  removeTransaction: (txnId) => api.delete(`/employees/transactions/${txnId}`),
 };
 
 // Production

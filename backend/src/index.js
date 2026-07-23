@@ -68,12 +68,29 @@ app.get('/api/health', (req, res) => {
 });
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
-app.get('/api/version', (req, res) => {
-  // v226 VAQTINCHALIK diagnostika: disk holati (faqat fayl o'lchamlari MB'da,
-  // biznes ma'lumoti YO'Q) — tozalash natijasini ko'rgach olib tashlanadi
-  let disk = null;
+app.get('/api/version', async (req, res) => {
+  // v227 VAQTINCHALIK diagnostika: disk + baza tarkibi (faqat O'LCHAMLAR MB'da,
+  // biznes ma'lumoti YO'Q) — tozalash rejasini tuzgach olib tashlanadi
+  let disk = null, inside = null;
   try { disk = require('./services/backupService').backupStats(); } catch (e) { /* ixtiyoriy */ }
-  res.json({ version: 'disk-tozalash', commit: 'v226', disk });
+  try {
+    const mb = (b) => Math.round((parseFloat(b || 0) / 1024 / 1024) * 10) / 10;
+    const one = async (sql) => {
+      try { const r = await db.query(sql); return r.rows[0] || {}; } catch { return {}; }
+    };
+    const photos = await one('SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(data)),0) AS b FROM product_photos');
+    const audit = await one('SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(COALESCE(old_values,\'\'))+LENGTH(COALESCE(new_values,\'\'))),0) AS b FROM audit_logs');
+    const ai = await one('SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(COALESCE(question,\'\'))+LENGTH(COALESCE(answer,\'\'))+LENGTH(COALESCE(context_data,\'\'))),0) AS b FROM ai_chat_history');
+    const free = await one('SELECT * FROM pragma_freelist_count()');
+    const page = await one('SELECT * FROM pragma_page_size()');
+    inside = {
+      photos_count: parseInt(photos.c || 0), photos_mb: mb(photos.b),
+      audit_count: parseInt(audit.c || 0), audit_mb: mb(audit.b),
+      ai_count: parseInt(ai.c || 0), ai_mb: mb(ai.b),
+      free_mb: mb(parseFloat(free.freelist_count || 0) * parseFloat(page.page_size || 4096)),
+    };
+  } catch (e) { /* ixtiyoriy */ }
+  res.json({ version: 'disk-diagnostika', commit: 'v227', disk, inside });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

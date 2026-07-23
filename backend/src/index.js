@@ -96,7 +96,7 @@ setTimeout(async () => {
 app.get('/api/version', (req, res) => {
   let disk = null;
   try { disk = require('./services/backupService').backupStats(); } catch (e) { /* ixtiyoriy */ }
-  res.json({ version: 'jadval-diagnostika', commit: 'v228', disk, tables: _tableSizes });
+  res.json({ version: 'alerts-tozalash', commit: 'v229', disk, tables: _tableSizes });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)
@@ -159,19 +159,33 @@ cron.schedule('0 * * * *', async () => {
     const aiService = require('./services/aiService');
     const alerts = await aiService.checkAlerts(db);
     for (const alert of alerts) {
+      // MUHIM: $3 ni subquery'da QAYTA ishlatib bo'lmaydi — SQLite adapter
+      // parametrlarni tartib bo'yicha joylaydi, message=$3 NULL bo'lib qolib
+      // dedup ishlamasdi (558k takror qator, 77MB — 2026-07-23 tozalandi).
+      // Shuning uchun $4 + parametr ikki marta beriladi.
       await db.query(
         `INSERT INTO smart_alerts (type, severity, message)
          SELECT $1, $2, $3
          WHERE NOT EXISTS (
-           SELECT 1 FROM smart_alerts WHERE message=$3 AND is_resolved=false
-             AND triggered_date > NOW() - INTERVAL '24 hours'
+           SELECT 1 FROM smart_alerts WHERE message=$4 AND is_resolved=false
          )`,
-        [alert.type, alert.severity, alert.message]
+        [alert.type, alert.severity, alert.message, alert.message]
       );
     }
-    if (alerts.length) console.log(`🔔 ${alerts.length} ta yangi alert yaratildi`);
+    if (alerts.length) console.log(`🔔 ${alerts.length} ta alert tekshirildi`);
   } catch (err) {
     console.error('Alert tekshirishda xato:', err.message);
+  }
+});
+
+// Eski alertlarni kunlik tozalash (30 kundan oshgan) — jadval qayta shishmasin.
+// Sana JS'da hisoblanadi (adapterdagi INTERVAL konversiyasiga ishonmaymiz).
+cron.schedule('30 2 * * *', async () => {
+  try {
+    const cutoff = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    await db.query('DELETE FROM smart_alerts WHERE triggered_date < $1', [cutoff]);
+  } catch (err) {
+    console.error('Alert tozalashda xato:', err.message);
   }
 });
 
@@ -237,7 +251,11 @@ require('./services/salesReset')
   // FAQAT filial savdolari (branch_id bor) + ularning to'lovlari/vozvratlari o'chadi.
   // Zavod savdolari, filial ombori/mahsulot/mijozlarga TEGILMAYDI. Backup avtomatik.
   .then(() => require('./services/branchSalesReset').ensureBranchSalesWiped())
-  .catch(e => console.error('Filial savdo tozalash init xato:', e.message));
+  .catch(e => console.error('Filial savdo tozalash init xato:', e.message))
+  // BIR MARTALIK (2026-07-23): smart_alerts'dagi 558k takror qatorni tozalash,
+  // VACUUM bilan bazani siqish, shishgan backuplarni yangilash (disk bo'shaydi).
+  .then(() => require('./services/alertsCleanup').ensureAlertsCleaned())
+  .catch(e => console.error('Alerts tozalash init xato:', e.message));
 
 // BIR MARTALIK: eski sessiya sanasi tufayli noto'g'ri yozilган savdo sanalarini
 // order_ref (haqiqiy yaratilган kun) bo'yicha to'g'rilash (sentinel bilan himoyalangan).

@@ -32,6 +32,26 @@ function pruneBackups() {
   }
 }
 
+// BARCHA kunlik nusxalarni o'chirish — faqat bir martalik katta tozalashda
+// ishlatiladi (smart_alerts spami bilan shishgan eski nusxalar o'rniga darhol
+// yangi kichik nusxa olinadi — runBackup keyin chaqiriladi).
+function deleteAllBackups() {
+  try {
+    if (!fs.existsSync(BACKUP_DIR)) return 0;
+    const files = fs.readdirSync(BACKUP_DIR)
+      .filter(f => f.startsWith('teknoplast-') && f.endsWith('.sqlite'));
+    let removed = 0;
+    for (const f of files) {
+      try { fs.unlinkSync(path.join(BACKUP_DIR, f)); removed++; } catch {}
+    }
+    if (removed) console.log(`🧹 Eski (shishgan) backuplar o'chirildi: ${removed} ta`);
+    return removed;
+  } catch (e) {
+    console.error('deleteAllBackups xato:', e.message);
+    return 0;
+  }
+}
+
 // Disk holati (diagnostika uchun) — fayl o'lchamlari MB'da
 function backupStats() {
   const mb = (b) => Math.round((b / 1024 / 1024) * 10) / 10;
@@ -80,7 +100,7 @@ function runBackup() {
   }
 }
 
-module.exports = { runBackup, pruneBackups, backupStats };
+module.exports = { runBackup, pruneBackups, deleteAllBackups, backupStats };
 
 // To'g'ridan-to'g'ri ishga tushirilsa (node src/services/backupService.js)
 if (require.main === module) {

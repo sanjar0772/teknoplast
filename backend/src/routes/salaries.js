@@ -95,6 +95,97 @@ router.put('/plan', requireRole('OWNER'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/salaries/preview?month=YYYY-MM — Oylik hisob-kitobini KO'RISH (bazaga YOZMAYDI).
+// Xodimlar sahifasidagi "Oylik xodimlar" bo'limi uchun: har bir xodimning shu oydagi
+// hisoblangan sof oyligini ko'rsatadi. /calculate bilan AYNAN bir xil formula, lekin
+// FAQAT o'qiydi — hech nima saqlamaydi, shuning uchun to'langan/tasdiqlangan oyliklarga
+// ta'sir qilmaydi. Filial ajratish "Xodimlar" ro'yxati bilan bir xil (o'z filiali yoki zavod).
+router.get('/preview', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, next) => {
+  try {
+    const month = req.query.month || new Date().toISOString().slice(0, 7);
+    const tax_rate = 0.05, social_rate = 0.03; // /calculate bilan bir xil standart stavkalar
+    await ensureEmployeeTransactionsSchema();
+
+    const plan = await getPlanAmount();
+    const actualSales = await getMonthSales(month);
+    const overage = calcOverage(actualSales, plan);
+
+    // Filial scope — employees.js GET bilan bir xil qoida
+    let empSql = 'SELECT id, name, type, salary_type, monthly_salary, salary_percent, bonus_percent FROM employees WHERE is_active = true';
+    const empParams = [];
+    if (req.user.branch_id) { empSql += ' AND branch_id = $1'; empParams.push(req.user.branch_id); }
+    else { empSql += ' AND branch_id IS NULL'; }
+    empSql += ' ORDER BY name';
+    const employees = await query(empSql, empParams);
+
+    const salaries = [];
+    for (const emp of employees.rows) {
+      const prod = await query(`
+        SELECT
+          COALESCE(SUM(calculated_amount), 0) as total_earned,
+          COUNT(DISTINCT production_date) as work_days,
+          COALESCE(SUM(quantity_produced), 0) as total_produced
+        FROM employee_production
+        WHERE employee_id = $1 AND month = $2
+      `, [emp.id, month]);
+
+      let total_calculated = parseFloat(prod.rows[0]?.total_earned || 0);
+      let salaryBase = 0;
+      if (emp.salary_type === 'FIXED' && emp.monthly_salary) {
+        salaryBase = parseFloat(emp.monthly_salary) || 0;
+        total_calculated += salaryBase;
+      } else if (emp.salary_type === 'PERCENT' && emp.salary_percent) {
+        salaryBase = Math.round(actualSales * (parseFloat(emp.salary_percent) || 0) / 100);
+        total_calculated += salaryBase;
+      }
+      const work_days = parseInt(prod.rows[0]?.work_days || 0);
+      const total_produced = parseInt(prod.rows[0]?.total_produced || 0);
+
+      let bonuses = 0;
+      if (salaryBase > 0) {
+        bonuses += Math.round(salaryBase * overage);           // reja bonusi
+        const bp = parseFloat(emp.bonus_percent) || 0;
+        if (bp) bonuses += Math.round(salaryBase * bp / 100);  // doimiy qo'shimcha foiz
+      }
+      const txnTotals = await getMonthTotals(emp.id, month);   // premiya/avans/jarima...
+      bonuses += txnTotals.add;
+      const penalties = txnTotals.sub;
+
+      const tax_amount = Math.round(total_calculated * tax_rate);
+      const social_security = Math.round(total_calculated * social_rate);
+      const net_amount = total_calculated - tax_amount - social_security + bonuses - penalties;
+
+      // Shu oyning saqlangan holati (bo'lsa): CALCULATED/APPROVED/PAID
+      const st = await query('SELECT status FROM salaries WHERE employee_id=$1 AND month=$2', [emp.id, month]);
+
+      salaries.push({
+        employee_id: emp.id,
+        employee_name: emp.name,
+        employee_type: emp.type,
+        salary_type: emp.salary_type,
+        salary_base: salaryBase,
+        total_calculated,
+        bonuses,
+        penalties,
+        tax_amount,
+        social_security,
+        work_days,
+        total_produced,
+        net_amount,
+        saved_status: st.rows.length ? st.rows[0].status : null,
+      });
+    }
+
+    res.json({
+      month,
+      plan,
+      actual_sales: actualSales,
+      overage_pct: Math.round(overage * 10000) / 100,
+      salaries,
+    });
+  } catch (err) { next(err); }
+});
+
 // POST /api/salaries/calculate — Oylik hisoblash (TAX, SOCIAL + REJA BONUSI bilan)
 router.post('/calculate', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, next) => {
   try {

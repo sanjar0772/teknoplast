@@ -188,6 +188,7 @@ export const productionAPI = {
 // Salaries
 export const salariesAPI = {
   getAll: (params) => api.get('/salaries', { params }),
+  preview: (params) => api.get('/salaries/preview', { params }), // oylik hisob-kitobini ko'rish (bazaga yozmaydi)
   calculate: (data) => api.post('/salaries/calculate', data),
   adjust: (id, data) => api.put(`/salaries/${id}/adjust`, data),
   approve: (id) => api.put(`/salaries/${id}/approve`),

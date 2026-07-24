@@ -2,12 +2,18 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Users, Trash2, QrCode, Download, Wallet } from 'lucide-react';
+import { Plus, X, Users, Trash2, QrCode, Download, Wallet, Calculator } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { employeesAPI } from '../services/api';
+import { employeesAPI, salariesAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
+// Saqlangan oylik holati belgilari ("Oylik chiqarish" jadvalidagi Holat ustuni uchun)
+const SAL_STATUS = {
+  CALCULATED: { label: 'Hisoblangan', cls: 'badge-yellow' },
+  APPROVED: { label: 'Tasdiqlangan', cls: 'badge-blue' },
+  PAID: { label: "To'langan", cls: 'badge-green' },
+};
 const TYPES = {
   STANOKCHI: 'Stanokchi', DETALCHI: 'Detalchi', ISHCHI: 'Ishchi', OSHPAZ: 'Oshpaz', SHOFIR: 'Shofir',
   BUGALTER: 'Bugalter', SIFAT: 'Sifat nazorati', CALL_CENTER: 'Call center', YORDAMCHI: 'Yordamchi',
@@ -373,6 +379,55 @@ export default function EmployeesPage() {
   // Bo'limga mos tur ro'yxati (filtr va modal uchun)
   const tabTypes = tab === 'PRODUCTION' ? PROD_TYPES : MONTHLY_TYPES;
 
+  // ─────────── OYLIK XODIMLAR: oylik chiqarish + statistika ───────────
+  // Faqat EGA/Buxgalter oylik summalarini ko'radi (Maoshlar sahifasi bilan bir xil huquq).
+  const canViewSalary = isOwner() || isAccountant();
+  const [salMonth, setSalMonth] = useState(new Date().toISOString().slice(0, 7));
+
+  // Tanlangan oy uchun har bir xodimning hisoblangan oyligi (bazaga yozmaydi — faqat ko'rish)
+  const { data: previewData, isLoading: previewLoading, isFetching: previewFetching } = useQuery({
+    queryKey: ['employee-salary-preview', salMonth],
+    queryFn: () => salariesAPI.preview({ month: salMonth }).then(r => r.data),
+    enabled: tab === 'MONTHLY' && canViewSalary,
+  });
+  // Faqat oylik (dona bay bo'lmagan) xodimlar
+  const monthlySalary = (previewData?.salaries || []).filter(s => !isPieceRate(s.employee_type));
+
+  // Statistika (faol oylik xodimlar bo'yicha)
+  const activeMonthly = tabEmployees.filter(e => e.is_active);
+  const fixedList = activeMonthly.filter(e => e.salary_type !== 'PERCENT' && Number(e.monthly_salary) > 0);
+  const percentCount = activeMonthly.filter(e => e.salary_type === 'PERCENT').length;
+  const salaryFond = fixedList.reduce((s, e) => s + Number(e.monthly_salary || 0), 0);
+  const avgSalary = fixedList.length ? Math.round(salaryFond / fixedList.length) : 0;
+  const totalNet = monthlySalary.reduce((s, r) => s + Number(r.net_amount || 0), 0);
+  const totalBonus = monthlySalary.reduce((s, r) => s + Number(r.bonuses || 0), 0);
+  const totalDeduction = monthlySalary.reduce((s, r) =>
+    s + Number(r.tax_amount || 0) + Number(r.social_security || 0) + Number(r.penalties || 0), 0);
+
+  // Oylik ro'yxatini Excel (CSV) qilib yuklab olish — brauzerda, serversiz
+  const downloadSalaryCsv = () => {
+    if (!monthlySalary.length) return toast.error("Ma'lumot yo'q");
+    const head = ['Ism', 'Turi', 'Asosiy hisob', 'Bonus', 'Soliq+Ijtimoiy', 'Jarima', 'Sof oylik'];
+    const body = monthlySalary.map(r => [
+      r.employee_name,
+      TYPES[r.employee_type] || r.employee_type,
+      Math.round(r.total_calculated || 0),
+      Math.round(r.bonuses || 0),
+      Math.round((r.tax_amount || 0) + (r.social_security || 0)),
+      Math.round(r.penalties || 0),
+      Math.round(r.net_amount || 0),
+    ]);
+    body.push(['JAMI', '', '', Math.round(totalBonus), '', '', Math.round(totalNet)]);
+    const csv = [head, ...body].map(row => row.join(';')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `oylik-xodimlar-${salMonth}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast.success('Yuklab olindi');
+  };
+
   return (
     <div className="space-y-6">
       <div className="page-header">
@@ -419,6 +474,103 @@ export default function EmployeesPage() {
           </button>
         )}
       </div>
+
+      {/* OYLIK XODIMLAR: oylik chiqarish + statistika (faqat EGA/Buxgalter) */}
+      {tab === 'MONTHLY' && canViewSalary && (
+        <div className="card p-4 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Calculator size={18} className="text-emerald-600" />
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Oylik chiqarish va statistika</p>
+                <p className="text-xs text-gray-400">Tanlangan oy uchun har bir oylik xodim maoshi — bonus/avans/jarima bilan (ko'rish; bazaga yozmaydi)</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="month" value={salMonth} onChange={e => setSalMonth(e.target.value)} className="input w-40" />
+              <button onClick={downloadSalaryCsv} disabled={!monthlySalary.length} className="btn-secondary btn-sm">
+                <Download size={14} /> Excel
+              </button>
+            </div>
+          </div>
+
+          {/* Statistika kartalari */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="card-sm text-center">
+              <p className="text-xs text-gray-500">Oylik xodimlar</p>
+              <p className="text-lg font-bold text-gray-900">{monthlyCount}</p>
+              <p className="text-[10px] text-gray-400">{fixedList.length} belgilangan · {percentCount} foizli</p>
+            </div>
+            <div className="card-sm text-center">
+              <p className="text-xs text-gray-500">Oylik fond</p>
+              <p className="text-lg font-bold text-emerald-700">{fmt(salaryFond)}</p>
+              <p className="text-[10px] text-gray-400">belgilangan oyliklar yig'indisi</p>
+            </div>
+            <div className="card-sm text-center">
+              <p className="text-xs text-gray-500">O'rtacha oylik</p>
+              <p className="text-lg font-bold text-gray-900">{fmt(avgSalary)}</p>
+              <p className="text-[10px] text-gray-400">so'm</p>
+            </div>
+            <div className="card-sm text-center">
+              <p className="text-xs text-gray-500">Bonus (bu oy)</p>
+              <p className="text-lg font-bold text-blue-600">+{fmt(totalBonus)}</p>
+              <p className="text-[10px] text-gray-400">premiya/reja bonusi</p>
+            </div>
+            <div className="card-sm text-center">
+              <p className="text-xs text-gray-500">{salMonth} sof to'lov</p>
+              <p className="text-lg font-bold text-blue-700">{fmt(totalNet)}</p>
+              <p className="text-[10px] text-gray-400">jami sof oylik</p>
+            </div>
+          </div>
+
+          {/* Oylik jadvali */}
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Xodim</th><th>Turi</th><th>Asosiy hisob</th><th>Bonus</th>
+                  <th>Ushlanma</th><th>Sof oylik</th><th>Holat</th>
+                </tr>
+              </thead>
+              <tbody>
+                {previewLoading || previewFetching ? (
+                  <tr><td colSpan={7} className="text-center py-6 text-gray-400">Hisoblanmoqda...</td></tr>
+                ) : !monthlySalary.length ? (
+                  <tr><td colSpan={7} className="text-center py-6 text-gray-400">Oylik xodim topilmadi</td></tr>
+                ) : (
+                  <>
+                    {monthlySalary.map(r => (
+                      <tr key={r.employee_id}>
+                        <td className="font-medium">{r.employee_name}</td>
+                        <td><span className="badge-blue">{TYPES[r.employee_type] || r.employee_type}</span></td>
+                        <td>{fmt(r.total_calculated)} so'm</td>
+                        <td className="text-emerald-600">+{fmt(r.bonuses)}</td>
+                        <td className="text-red-600">-{fmt((r.tax_amount || 0) + (r.social_security || 0) + (r.penalties || 0))}</td>
+                        <td className="font-bold text-blue-700">{fmt(r.net_amount)} so'm</td>
+                        <td>
+                          {r.saved_status
+                            ? <span className={SAL_STATUS[r.saved_status]?.cls || 'badge-gray'}>{SAL_STATUS[r.saved_status]?.label || r.saved_status}</span>
+                            : <span className="text-gray-400 text-xs">Hisoblanmagan</span>}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="bg-gray-50 font-bold">
+                      <td colSpan={3} className="text-right">JAMI:</td>
+                      <td className="text-emerald-700">+{fmt(totalBonus)}</td>
+                      <td className="text-red-700">-{fmt(totalDeduction)}</td>
+                      <td className="text-blue-700">{fmt(totalNet)} so'm</td>
+                      <td></td>
+                    </tr>
+                  </>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-gray-400">
+            Bu yerda faqat hisob-kitob ko'rsatiladi. Oylikni rasmiy tasdiqlash va to'lash "Maoshlar" bo'limida amalga oshiriladi.
+          </p>
+        </div>
+      )}
 
       {/* Stats — faqat xodimi bor turlar ko'rsatiladi (ochiq bo'lim bo'yicha) */}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-3">

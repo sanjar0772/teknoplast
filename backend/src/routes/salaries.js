@@ -151,8 +151,13 @@ router.get('/preview', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, next
       bonuses += txnTotals.add;
       const penalties = txnTotals.sub;
 
-      const tax_amount = Math.round(total_calculated * tax_rate);
-      const social_security = Math.round(total_calculated * social_rate);
+      // Belgilangan oylik (FIXED, dona bay bo'lmagan) xodimlarga soliq/ijtimoiy ushlanma
+      // qo'llanmaydi — ularning oyligi shartnoma bo'yicha aynan belgilangan summa bo'lishi kerak.
+      // Stanokchi/detalchi (dona bay) uchun salary_type ustuni ahamiyatsiz defolt 'FIXED'
+      // bo'lishi mumkin, shuning uchun ular bu istisnoga kirmaydi.
+      const isFixedSalaried = emp.salary_type === 'FIXED' && !['STANOKCHI', 'DETALCHI'].includes(emp.type);
+      const tax_amount = isFixedSalaried ? 0 : Math.round(total_calculated * tax_rate);
+      const social_security = isFixedSalaried ? 0 : Math.round(total_calculated * social_rate);
       const net_amount = total_calculated - tax_amount - social_security + bonuses - penalties;
 
       // Shu oyning saqlangan holati (bo'lsa): CALCULATED/APPROVED/PAID
@@ -200,7 +205,7 @@ router.post('/calculate', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, n
     const overage = calcOverage(actualSales, plan); // 0.10 = savdo rejadan 10% oshgan
 
     const employees = await query(
-      'SELECT id, salary_type, monthly_salary, salary_percent, bonus_percent FROM employees WHERE is_active = true'
+      'SELECT id, type, salary_type, monthly_salary, salary_percent, bonus_percent FROM employees WHERE is_active = true'
     );
 
     const results = [];
@@ -243,9 +248,12 @@ router.post('/calculate', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, n
       bonuses += txnTotals.add;
       const penalties = txnTotals.sub;
 
-      // Soliq va ijtimoiy sug'urta (bonusgacha bo'lgan summadan)
-      const tax_amount = Math.round(total_calculated * tax_rate);
-      const social_security = Math.round(total_calculated * social_rate);
+      // Soliq va ijtimoiy sug'urta (bonusgacha bo'lgan summadan) — Belgilangan oylik (FIXED,
+      // dona bay bo'lmagan) xodimlarga qo'llanmaydi, ularning oyligi aynan belgilangan
+      // summa bo'lishi kerak. Stanokchi/detalchida salary_type ahamiyatsiz bo'lishi mumkin.
+      const isFixedSalaried = emp.salary_type === 'FIXED' && !['STANOKCHI', 'DETALCHI'].includes(emp.type);
+      const tax_amount = isFixedSalaried ? 0 : Math.round(total_calculated * tax_rate);
+      const social_security = isFixedSalaried ? 0 : Math.round(total_calculated * social_rate);
       const net_amount = total_calculated - tax_amount - social_security + bonuses - penalties;
 
       const r = await query(

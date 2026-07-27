@@ -17,11 +17,23 @@ export default function ProductionPage() {
   const localMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
   // Kechagi kun — tungi (2-) smena o'tgan kunga hisoblanadi
   const yesterdayDate = () => { const d = new Date(); d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
-  // Ertalab 7:00–10:00 orasi (KIRIMCHI uchun): tungi 2-smena hisoboti kiritiladi →
-  // avtomatik 2-SMENA tanlanadi va sana KECHAGI kun bo'ladi.
-  const morningShift = isKirimchi() && (() => { const h = new Date().getHours(); return h >= 7 && h < 10; })();
+  // Avto sana/smena (faqat KIRIMCHI uchun) — HAR SAFAR joriy vaqtga qarab hisoblanadi:
+  //  • ertalab 7:00–10:00 → tungi 2-SMENA hisoboti, sana KECHAGI kun (tungi smena o'tgan kunga tegishli)
+  //  • boshqa har qanday vaqt (12:00, 17:00, ...) → BUGUNGI kun + hamma smena
+  // MUHIM: bu "Kunlik kiritish" har ochilganda va har saqlashdan keyin qayta hisoblanadi (pastda),
+  // shuning uchun sahifa ertalab ochilib qolsa ham, kunduzi kiritilganda sana DOIM to'g'ri bo'ladi.
+  const computeAuto = () => {
+    const h = new Date().getHours();
+    const morning = isKirimchi() && h >= 7 && h < 10;
+    return { morning, date: morning ? yesterdayDate() : localDate(), shift: morning ? '2-SMENA' : '' };
+  };
+  const auto0 = computeAuto();
+  const [morningShift, setMorningShift] = useState(auto0.morning);
   const [month, setMonth] = useState(localMonth);
-  const [date, setDate] = useState(() => morningShift ? yesterdayDate() : localDate());
+  const [date, setDate] = useState(auto0.date);
+  // Avto oxirgi qo'ygan sana — foydalanuvchi sanani QO'LDA o'zgartirganini aniqlash uchun.
+  // Qo'lda o'zgartirsa (sana tanlagich yoki "Shu kun" tugmasi) avto yangilash to'xtaydi.
+  const lastAutoDate = useRef(auto0.date);
   const [showBulk, setShowBulk] = useState(false);
   const [historyEmpId, setHistoryEmpId] = useState('');
   // QR skaner — stanokchi begikini o'qib, kunlik kiritishni ochish
@@ -33,7 +45,7 @@ export default function ProductionPage() {
   const [rangeStart, setRangeStart] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; });
   const [rangeEnd, setRangeEnd] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
   const [selectedEmpIds, setSelectedEmpIds] = useState([]);
-  const [shiftFilter, setShiftFilter] = useState(morningShift ? '2-SMENA' : ''); // '' = hammasi, '1-SMENA', '2-SMENA' — faqat Stanokchiga ta'sir qiladi (ertalab 7-10 → avto 2-SMENA)
+  const [shiftFilter, setShiftFilter] = useState(auto0.shift); // '' = hammasi, '1-SMENA', '2-SMENA' — faqat Stanokchiga ta'sir qiladi (ertalab 7-10 → avto 2-SMENA)
   const [compactMode, setCompactMode] = useState(false);
   const empIdsInitialized = useRef(false);
   // Davr statistikasida "Ish kunlari"ga bosilganda — o'sha xodimning kunlik tafsiloti
@@ -158,6 +170,16 @@ export default function ProductionPage() {
       toast.success(`${res.data.count} ta xodim kiritildi`);
       qc.invalidateQueries({ queryKey: ['production'] });
       setShowBulk(false);
+      // Saqlashdan keyin — KIRIMCHI uchun sana/smenani joriy vaqtga qaytaramiz.
+      // (Masalan "Shu kun" bilan o'tmishdagi kunni tuzatib saqlansa ham, keyingi kiritish
+      //  DOIM to'g'ri — joriy vaqtdagi — sana bilan boshlanadi.)
+      if (isKirimchi()) {
+        const a = computeAuto();
+        setMorningShift(a.morning);
+        setShiftFilter(a.shift);
+        setDate(a.date);
+        lastAutoDate.current = a.date;
+      }
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Saqlashda xato'),
   });
@@ -215,6 +237,26 @@ export default function ProductionPage() {
     setEntries(prev => [...prev, { employee_id: '', items: [newItem()] }]);
   };
 
+  // KIRIMCHI sanani qo'lda o'zgartirmagan bo'lsa — joriy vaqtga qarab sana/smenani yangilaymiz.
+  // Qo'lda o'zgartirgan bo'lsa (date !== lastAutoDate) — tegmaymiz, tanlangan sana saqlanadi.
+  // OWNER/PRODUCTION_HEAD ga umuman ta'sir qilmaydi (faqat KIRIMCHI).
+  const applyAutoDate = () => {
+    if (!isKirimchi()) return;
+    if (date !== lastAutoDate.current) return;
+    const a = computeAuto();
+    setMorningShift(a.morning);
+    setShiftFilter(a.shift);
+    setDate(a.date);
+    lastAutoDate.current = a.date;
+  };
+
+  // "Kunlik kiritish" tugmasi — yangi bo'sh modalni ochadi (avval sanani joriy vaqtga yangilaydi)
+  const openBulkNew = () => {
+    applyAutoDate();
+    setEntries([{ employee_id: '', items: [newItem()] }]);
+    setShowBulk(true);
+  };
+
   // QR begik ichidagi qiymat: "teknoplast-emp-<id>" — id'ni ajratib olamiz
   const parseEmpId = (raw) => {
     const s = String(raw || '').trim();
@@ -227,6 +269,7 @@ export default function ProductionPage() {
     const id = parseEmpId(raw);
     const emp = empMap[id];
     if (!emp) { toast.error('Xodim topilmadi — QR begik mos kelmadi'); return; }
+    if (!showBulk) applyAutoDate(); // modal yangi ochilyapti — sanani joriy vaqtga yangilaymiz
     setEntries(prev => {
       // Modal allaqachon ochiq bo'lsa — yangi qator qo'shamiz (dublikat bo'lmasin)
       if (showBulk && prev.some(e => e.employee_id === emp.id)) return prev;
@@ -266,6 +309,7 @@ export default function ProductionPage() {
       item.tarif = emp ? autoTarif(emp.id, product.id, item.production_type) : '';
     }
 
+    if (!showBulk) applyAutoDate(); // modal yangi ochilyapti — sanani joriy vaqtga yangilaymiz
     setEntries(prev => {
       if (showBulk && emp && prev.some(e => e.employee_id === emp.id)) return prev;
       const entry = { employee_id: emp?.id || '', items: [item] };
@@ -471,7 +515,7 @@ export default function ProductionPage() {
             </button>
           )}
           {canWrite && (
-            <button onClick={() => { setEntries([{ employee_id: '', items: [newItem()] }]); setShowBulk(true); }}
+            <button onClick={openBulkNew}
               className="btn-primary btn-sm">
               <Plus size={14} /> Kunlik kiritish
             </button>

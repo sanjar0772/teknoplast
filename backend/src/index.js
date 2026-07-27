@@ -76,6 +76,41 @@ app.get('/api/version', (req, res) => {
   res.json({ version: 'stanoklar-3d-kuchaytirildi', commit: 'v245' });
 });
 
+// VAQTINCHALIK TEKSHIRUV — ishlab chiqarish kunlarini sanash uchun (tekshiruvdan keyin O'CHIRILADI).
+// Maxfiy kalit bilan himoyalangan; faqat O'QISH (SELECT).
+app.get('/api/_diag/diag-3dd6a25557cbd695/daycount', async (req, res) => {
+  try {
+    const { query } = require('./db');
+    const month = req.query.month || new Date().toISOString().slice(0, 7);
+    // Shu oydagi barcha FARQLI sanalar (hamma xodim) + har sanadagi yozuvlar soni
+    const dates = await query(
+      `SELECT production_date, COUNT(*) AS rows, COUNT(DISTINCT employee_id) AS employees
+       FROM employee_production WHERE month=$1
+       GROUP BY production_date ORDER BY production_date`, [month]);
+    // Har xodim bo'yicha: kun soni (distinct sana), yozuvlar soni, jami dona
+    const perEmp = await query(
+      `SELECT e.name, e.type,
+              COUNT(DISTINCT ep.production_date) AS work_days,
+              COUNT(*) AS rows,
+              COALESCE(SUM(ep.quantity_produced),0) AS qty
+       FROM employee_production ep JOIN employees e ON ep.employee_id=e.id
+       WHERE ep.month=$1 GROUP BY e.id, e.name, e.type ORDER BY e.name`, [month]);
+    // Bazada mavjud oylar ro'yxati
+    const months = await query(
+      `SELECT month, COUNT(DISTINCT production_date) AS distinct_dates, COUNT(*) AS rows
+       FROM employee_production GROUP BY month ORDER BY month DESC`, []);
+    res.json({
+      month,
+      distinct_dates_in_month: dates.rows.length,
+      dates: dates.rows,
+      per_employee: perEmp.rows,
+      all_months: months.rows,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Frontend static files (Railway uchun - Nginx yo'q)
 const frontendDist = path.join(__dirname, '../../frontend/dist');
 // Hashli fayllar (assets/) abadiy keshlanadi, index.html esa HECH QACHON keshlanmaydi

@@ -232,6 +232,8 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
   const blink = { green: '1.3s', amber: '1.8s', red: '0.7s' }[active];
   const label = String(name || '').toUpperCase().slice(0, 12);
   const g = `m3d-${theme}`;
+  // Holatga mos pastki LED-nurlanish (mashina osti yoritgichi)
+  const glowCol = { green: '#10b981', amber: '#f59e0b', red: '#ef4444' }[active] || null;
   // LED status displey matni va rangi
   const [ledTxt, ledCol] = {
     running: ['RUN', '#4ade80'], service: ['SERVIS', '#fbbf24'],
@@ -254,7 +256,13 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
           <stop offset="0%" stopColor="#4f8ef7" /><stop offset="55%" stopColor="#2563eb" /><stop offset="100%" stopColor="#1e3a8a" />
         </linearGradient>
         <linearGradient id={`${g}-base`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#b7bfca" /><stop offset="60%" stopColor="#8d95a1" /><stop offset="100%" stopColor="#6b7380" />
+          <stop offset="0%" stopColor="#b0b9c5" /><stop offset="55%" stopColor="#7f8894" /><stop offset="100%" stopColor="#525b67" />
+        </linearGradient>
+        <linearGradient id={`${g}-chrome`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ffffff" /><stop offset="35%" stopColor="#c7d2de" /><stop offset="65%" stopColor="#8494a6" /><stop offset="100%" stopColor="#e6edf4" />
+        </linearGradient>
+        <linearGradient id={`${g}-hyd`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#8b95a3" /><stop offset="45%" stopColor="#525c6a" /><stop offset="100%" stopColor="#2c343f" />
         </linearGradient>
         <linearGradient id={`${g}-steel`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#f8fafc" /><stop offset="50%" stopColor="#cbd5e1" /><stop offset="100%" stopColor="#94a3b8" />
@@ -270,8 +278,8 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
           <stop offset="100%" stopColor="#475569" stopOpacity="0" />
         </linearGradient>
         <radialGradient id={`${g}-vig`} cx="0.5" cy="0.42" r="0.78">
-          <stop offset="62%" stopColor="#334155" stopOpacity="0" />
-          <stop offset="100%" stopColor="#334155" stopOpacity="0.2" />
+          <stop offset="60%" stopColor="#334155" stopOpacity="0" />
+          <stop offset="100%" stopColor="#334155" stopOpacity="0.26" />
         </radialGradient>
       </defs>
 
@@ -283,6 +291,8 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
       <line x1="608" y1="12" x2="608" y2="34" stroke="#8b96a3" strokeWidth="2" />
       <path d="M596,34 L620,34 L614,46 L602,46 Z" fill="#94a3b8" stroke="#7b8794" strokeWidth="0.8" />
       <ellipse cx="608" cy="50" rx="14" ry="5" fill="#fef9c3" opacity="0.35" />
+      {/* Chiroqdan tushayotgan yorug'lik konusi */}
+      <polygon points="598,48 618,48 656,230 556,230" fill="#fde68a" opacity="0.07" />
       {/* Deraza (chapda) */}
       <g opacity="0.55">
         <rect x="14" y="22" width="56" height="64" rx="3" fill="#dbeafe" stroke="#b9c6d6" strokeWidth="1.5" />
@@ -300,10 +310,14 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
       {/* Poldagi aks (reflection) */}
       <rect x="84" y="268" width="456" height="28" fill={`url(#${g}-refl)`} />
       <rect x="576" y="278" width="58" height="18" fill={`url(#${g}-refl)`} />
-      <ellipse cx="320" cy="264" rx="272" ry="14" fill="#1e293b" opacity="0.22" filter={`url(#${g}-soft)`} />
+      <ellipse cx="320" cy="264" rx="272" ry="14" fill="#1e293b" opacity="0.27" filter={`url(#${g}-soft)`} />
 
       {/* Stanina (mashina asosi) — 2.5D: ustki qirra + old yuz + o'ng yon */}
       <polygon points="86,184 576,184 560,196 70,196" fill="#c9d0d9" />
+      {/* Ustki qirradagi bolt qatori — og'ir metall konstruksiya */}
+      {[120, 170, 220, 270, 320, 370, 420, 470, 520].map(x => (
+        <circle key={x} cx={x} cy="190" r="1.5" fill="#525a66" />
+      ))}
       <polygon points="560,196 576,184 576,244 560,256" fill="#5d6570" />
       <rect x="70" y="196" width="490" height="60" rx="5" fill={`url(#${g}-base)`} stroke="#5f6771" strokeWidth="1.2" />
       {/* Shkaf eshiklari + ventilyatsiya */}
@@ -332,6 +346,38 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
       {/* Ogohlantirish yorlig'i */}
       <rect x="486" y="210" width="26" height="16" rx="2" fill="#facc15" stroke="#a16207" strokeWidth="0.8" />
       <path d="M499,213 L506,223 L492,223 Z" fill="none" stroke="#78350f" strokeWidth="1.4" />
+      {/* Bosim va moy manometrlari — ishlaganda mili tebranadi */}
+      {[[524, '#dc2626'], [544, '#2563eb']].map(([cx, col], gi) => (
+        <g key={cx}>
+          <circle cx={cx} cy="236" r="8.5" fill="#f8fafc" stroke="#334155" strokeWidth="1.2" />
+          <circle cx={cx} cy="236" r="6.5" fill="none" stroke="#cbd5e1" strokeWidth="0.8" />
+          <path d={`M ${cx - 4.6} ${231.4} A 6.5 6.5 0 0 1 ${cx + 4.6} ${231.4}`} fill="none" stroke={col} strokeWidth="1.6" strokeLinecap="round" />
+          <g transform={`rotate(-55 ${cx} 236)`}>
+            {running && (
+              <animateTransform attributeName="transform" type="rotate"
+                values={`-55 ${cx} 236; ${30 - gi * 18} ${cx} 236; ${-10 - gi * 6} ${cx} 236; ${34 - gi * 10} ${cx} 236; -55 ${cx} 236`}
+                dur={`${2.6 + gi * 0.7}s`} repeatCount="indefinite" />
+            )}
+            <line x1={cx} y1="236" x2={cx} y2="230" stroke="#0f172a" strokeWidth="1.3" strokeLinecap="round" />
+          </g>
+          <circle cx={cx} cy="236" r="1.3" fill="#0f172a" />
+        </g>
+      ))}
+      {/* Sariq-qora xavfsizlik chizig'i — stanina pastki qirrasi */}
+      <rect x="70" y="249" width="490" height="7" fill="#242b36" />
+      {Array.from({ length: 24 }, (_, i) => 74 + i * 20).map(x => (
+        <polygon key={x} points={`${x},256 ${x + 7},249 ${x + 14},249 ${x + 7},256`} fill="#facc15" opacity="0.85" />
+      ))}
+      {/* Mashina osti LED-nurlanish — holat rangida */}
+      {glowCol && (
+        <>
+          <rect x="80" y="257" width="470" height="5" rx="2.5" fill={glowCol} opacity="0.45" filter={`url(#${g}-soft)`}>
+            {running && <animate attributeName="opacity" values="0.45;0.16;0.45" dur="2.8s" repeatCount="indefinite" />}
+            {theme === 'broken' && <animate attributeName="opacity" values="0.45;0.1;0.45" dur="0.7s" repeatCount="indefinite" />}
+          </rect>
+          <rect x="120" y="258" width="390" height="2.5" rx="1.2" fill={glowCol} opacity="0.7" />
+        </>
+      )}
       {/* Oyoqlar */}
       {[84, 280, 536].map(x => (
         <g key={x}>
@@ -339,6 +385,24 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
           <rect x={x - 3} y="268" width="22" height="4" rx="2" fill="#1f2530" />
         </g>
       ))}
+
+      {/* Gidravlik qisish silindri — mashinaning quvvat manbai (chapda, porshen sikl bilan suriladi) */}
+      <path d="M40,126 C44,104 64,98 84,102" fill="none" stroke="#475569" strokeWidth="3.2" strokeLinecap="round" />
+      <path d="M38,170 C40,196 54,202 72,205" fill="none" stroke="#475569" strokeWidth="3.2" strokeLinecap="round" />
+      <g>
+        {running && (
+          <animateTransform attributeName="transform" type="translate"
+            values="0 0; 9 0; 9 0; 0 0" keyTimes="0;0.35;0.6;1" dur="2.8s" repeatCount="indefinite" />
+        )}
+        <rect x="66" y="144" width="20" height="8" rx="2" fill={`url(#${g}-chrome)`} stroke="#64748b" strokeWidth="0.6" />
+      </g>
+      <rect x="26" y="124" width="8" height="48" rx="2" fill="#1f2937" />
+      <rect x="32" y="127" width="42" height="42" rx="6" fill={`url(#${g}-hyd)`} stroke="#1f2937" strokeWidth="1.2" />
+      {[40, 48, 56, 64].map(x => (
+        <rect key={x} x={x} y="127" width="2.6" height="42" fill="#171e28" opacity="0.35" />
+      ))}
+      <rect x="34" y="131" width="38" height="5" rx="2.5" fill="#ffffff" opacity="0.22" />
+      <rect x="72" y="140" width="8" height="16" rx="1.5" fill="#334155" />
 
       {/* Qisish uzeli — oq korpus (brend nomi bilan) */}
       <polygon points="100,72 256,72 240,84 84,84" fill="#f7f9fb" stroke="#c3ccd6" strokeWidth="1" />
@@ -357,8 +421,8 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
 
       {/* Qolip zonasi: qora ichki bo'shliq, tie-bar, platalar, himoya eshik */}
       <rect x="240" y="90" width="84" height="112" fill="#0f172a" stroke="#1e293b" strokeWidth="1" />
-      <rect x="240" y="112" width="84" height="6" rx="3" fill={`url(#${g}-steel)`} />
-      <rect x="240" y="168" width="84" height="6" rx="3" fill={`url(#${g}-steel)`} />
+      <rect x="240" y="111.5" width="84" height="7" rx="3.5" fill={`url(#${g}-chrome)`} />
+      <rect x="240" y="167.5" width="84" height="7" rx="3.5" fill={`url(#${g}-chrome)`} />
       <rect x="246" y="120" width="18" height="46" fill="#94a3b8" stroke="#64748b" strokeWidth="0.8" />
       <rect x="264" y="132" width="6" height="22" fill="#cbd5e1" />
       <g>
@@ -455,6 +519,8 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
       <rect x="470" y="155" width="40" height="3" fill="#94a3b8" />
       <rect x="470" y="161" width="52" height="3" fill="#b6c0cc" />
       <rect x="470" y="167" width="30" height="3" fill="#b6c0cc" />
+      {/* Quvvat kabeli — injection blokdan pastga */}
+      <path d="M536,202 C540,220 550,228 560,231" fill="none" stroke="#334155" strokeWidth="2" />
 
       {/* Barrel (silindr) + isitgich xalqalari + nozzle — sikl bilan siljiydi */}
       <g>
@@ -471,6 +537,14 @@ function MachineIllustration({ theme, running, name = '', className = '' }) {
           </rect>
         ))}
       </g>
+      {/* Bug' — nozzle atrofidan ko'tariladi (faqat ishlaganda) */}
+      {running && [0, 1].map(i => (
+        <circle key={i} cx={304 + i * 9} cy="128" r="2.5" fill="#e2e8f0" opacity="0">
+          <animate attributeName="cy" values="130;104" dur="2.2s" begin={`${i * 1.1}s`} repeatCount="indefinite" />
+          <animate attributeName="r" values="1.5;4.5" dur="2.2s" begin={`${i * 1.1}s`} repeatCount="indefinite" />
+          <animate attributeName="opacity" values="0;0.45;0" dur="2.2s" begin={`${i * 1.1}s`} repeatCount="indefinite" />
+        </circle>
+      ))}
       {/* Issiqlik jimirlashi — qizigan barrel ustida */}
       {running && [0, 1].map(i => (
         <path key={i} d={`M ${400 + i * 20} 130 q 4 -6 8 0 q 4 6 8 0`} fill="none"
@@ -2316,7 +2390,7 @@ export default function MachinesPage() {
 
               {/* 3D stanok ko'rinishi — holat rangida, ishlab turganda jonli sikl animatsiyasi */}
               <div className="relative border-b border-gray-100">
-                <MachineIllustration theme={th.key} running={!!m.is_running} name={m.name} className="w-full h-[150px] block" />
+                <MachineIllustration theme={th.key} running={!!m.is_running} name={m.name} className="w-full h-[170px] block" />
                 {th.live && (
                   <span className="absolute top-2 right-2 flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/90 text-emerald-700 shadow-sm">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> LIVE

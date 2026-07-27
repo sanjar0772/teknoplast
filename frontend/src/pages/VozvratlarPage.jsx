@@ -75,10 +75,16 @@ export default function VozvratlarPage() {
     queryFn: () => salesAPI.getAllReturns(dateFilter.date_from || dateFilter.date_to ? dateFilter : undefined).then(r => r.data),
   });
 
-  // Vozvrat qilish uchun so'nggi sotuvlar (faqat oyna ochilganda yuklanadi)
+  // Vozvrat qilish uchun sotuvlar — OXIRGI 3 YILGACHA (mijoz 1-2 yildan keyin ham
+  // mahsulotni qaytarib olib kelishi mumkin). Faqat oyna ochilganda yuklanadi.
   const { data: salesData, isLoading: salesLoading } = useQuery({
     queryKey: ['sales', 'for-return'],
-    queryFn: () => salesAPI.getAll({ limit: 300 }).then(r => r.data),
+    queryFn: () => {
+      const d = new Date();
+      d.setFullYear(d.getFullYear() - 3);
+      const start = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      return salesAPI.getAll({ limit: 100000, start_date: start }).then(r => r.data);
+    },
     enabled: picker,
   });
 

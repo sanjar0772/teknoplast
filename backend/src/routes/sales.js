@@ -790,6 +790,17 @@ router.post('/:id/return', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGE
     if (!saleR.rows.length) return res.status(404).json({ error: 'Sotuv topilmadi' });
     const sale = saleR.rows[0];
 
+    // VOZVRAT MUDDATI: sotuvdan 3 yildan ko'p vaqt o'tgan bo'lsa qaytarib bo'lmaydi.
+    // (Mijoz 1-2 yildan keyin ham qaytarishi mumkin — shuning uchun muddat 3 yilgacha.)
+    if (sale.sale_date) {
+      const cutoff = new Date();
+      cutoff.setFullYear(cutoff.getFullYear() - 3);
+      const sd = new Date(sale.sale_date);
+      if (!isNaN(sd.getTime()) && sd < cutoff) {
+        return res.status(400).json({ error: "Bu savdodan 3 yildan ko'p vaqt o'tgan — vozvrat muddati tugagan" });
+      }
+    }
+
     // FILIAL AJRATISH: filial xodimi (agent/sotuvchi) faqat O'Z filialining savdosini qaytara oladi
     if (req.user.branch_id && String(sale.branch_id || '') !== String(req.user.branch_id)) {
       return res.status(403).json({ error: "Bu savdo sizning filialingizniki emas — vozvrat qilib bo'lmaydi" });

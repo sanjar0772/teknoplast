@@ -73,7 +73,41 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'kunlik-sana-7-10-hamma-rol', commit: 'v248' });
+  res.json({ version: 'mijoz-inspect-temp', commit: 'v249' });
+});
+
+// VAQTINCHALIK (tekshiruvdan keyin o'chiriladi): mijoz operatsiyalarini
+// read-only ko'rish. Kalit bilan himoyalangan, hech narsa o'zgartirmaydi.
+app.get('/api/_mijoz-inspect', async (req, res) => {
+  try {
+    if (req.query.k !== 'tkp-inspect-7f3k9q2m') return res.status(404).json({ error: 'Not found' });
+    const like = `%${req.query.q || ''}%`;
+    const custs = await db.query('SELECT * FROM customers WHERE name ILIKE $1', [like]);
+    const data = [];
+    for (const c of custs.rows) {
+      const sales = await db.query(
+        `SELECT s.*, p.name AS product_name, p.unit FROM sales s
+         LEFT JOIN products p ON s.product_id = p.id
+         WHERE s.customer_id = $1 ORDER BY s.sale_date, s.created_at`, [c.id]);
+      const pays = await db.query(
+        `SELECT pm.*, s.order_ref AS sale_order_ref, p.name AS product_name FROM payments pm
+         JOIN sales s ON pm.sale_id = s.id
+         LEFT JOIN products p ON s.product_id = p.id
+         WHERE s.customer_id = $1 ORDER BY pm.payment_date, pm.created_at`, [c.id]);
+      let rets = [];
+      try {
+        const rr = await db.query(
+          `SELECT sr.*, p.name AS product_name FROM sale_returns sr
+           LEFT JOIN products p ON sr.product_id = p.id
+           LEFT JOIN sales s ON sr.sale_id = s.id
+           WHERE sr.customer_id = $1 OR s.customer_id = $2
+           ORDER BY COALESCE(sr.return_date, sr.created_at)`, [c.id, c.id]);
+        rets = rr.rows;
+      } catch (e) { rets = []; }
+      data.push({ customer: c, sales: sales.rows, payments: pays.rows, returns: rets });
+    }
+    res.json({ count: custs.rows.length, data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

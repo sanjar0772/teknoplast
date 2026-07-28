@@ -13,17 +13,24 @@ const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n
 export default function ProductionPage() {
   const { isOwner, isProductionHead, isKirimchi } = useAuthStore();
   const qc = useQueryClient();
-  const localDate = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
-  const localMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
+  // Sana/soat DOIM Toshkent vaqti (UTC+5) bo'yicha hisoblanadi — qurilma/brauzer vaqt zonasi
+  // noto'g'ri (masalan UTC) sozlangan bo'lsa ham. O'zbekistonda UTC+5 yil bo'yi o'zgarmas.
+  // `new Date(now + 5soat)` ning UTC komponentlari = Toshkent mahalliy vaqti.
+  const TASH_MS = 5 * 60 * 60 * 1000;
+  const tashAt = (offsetDays = 0) => new Date(Date.now() + TASH_MS + offsetDays * 86400000);
+  const tashDateStr = (offsetDays = 0) => { const d = tashAt(offsetDays); return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`; };
+  const tashHour = () => tashAt(0).getUTCHours();
+  const localDate = () => tashDateStr(0);                 // Toshkent bugungi kun
+  const localMonth = () => localDate().slice(0, 7);       // Toshkent joriy oy
   // Kechagi kun — tungi (2-) smena o'tgan kunga hisoblanadi
-  const yesterdayDate = () => { const d = new Date(); d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+  const yesterdayDate = () => tashDateStr(-1);            // Toshkent kechagi kun
   // Avto sana/smena (faqat KIRIMCHI uchun) — HAR SAFAR joriy vaqtga qarab hisoblanadi:
   //  • ertalab 7:00–10:00 → tungi 2-SMENA hisoboti, sana KECHAGI kun (tungi smena o'tgan kunga tegishli)
   //  • boshqa har qanday vaqt (12:00, 17:00, ...) → BUGUNGI kun + hamma smena
   // MUHIM: bu "Kunlik kiritish" har ochilganda va har saqlashdan keyin qayta hisoblanadi (pastda),
   // shuning uchun sahifa ertalab ochilib qolsa ham, kunduzi kiritilganda sana DOIM to'g'ri bo'ladi.
   const computeAuto = () => {
-    const h = new Date().getHours();
+    const h = tashHour();  // Toshkent soati (qurilma zonasidan qat'i nazar)
     const morning = isKirimchi() && h >= 7 && h < 10;
     return { morning, date: morning ? yesterdayDate() : localDate(), shift: morning ? '2-SMENA' : '' };
   };
@@ -42,8 +49,8 @@ export default function ProductionPage() {
   const scannerRef = useRef(null);
 
   // Davr bo'yicha statistika (Stanokchi/Detalchi)
-  const [rangeStart, setRangeStart] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; });
-  const [rangeEnd, setRangeEnd] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
+  const [rangeStart, setRangeStart] = useState(() => localDate().slice(0, 8) + '01'); // Toshkent oy boshi
+  const [rangeEnd, setRangeEnd] = useState(() => localDate());                        // Toshkent bugun
   const [selectedEmpIds, setSelectedEmpIds] = useState([]);
   const [shiftFilter, setShiftFilter] = useState(auto0.shift); // '' = hammasi, '1-SMENA', '2-SMENA' — faqat Stanokchiga ta'sir qiladi (ertalab 7-10 → avto 2-SMENA)
   const [compactMode, setCompactMode] = useState(false);
@@ -855,7 +862,7 @@ export default function ProductionPage() {
       {/* Daily detail */}
       <div className="card">
         <h2 className="text-sm font-semibold text-gray-700 mb-4">
-          {new Date(date).toLocaleDateString('uz-UZ', { day: 'numeric', month: 'long' })} — Kunlik natijalar
+          {new Date(date + 'T12:00:00').toLocaleDateString('uz-UZ', { day: 'numeric', month: 'long' })} — Kunlik natijalar
         </h2>
         <div className="table-container">
           <table className="table">
@@ -926,12 +933,12 @@ export default function ProductionPage() {
               <button onClick={() => setShowBulk(false)}><X size={20} className="text-gray-400" /></button>
             </div>
 
-            <p className="text-sm text-gray-500 mb-2">Sana: <strong>{new Date(date).toLocaleDateString('uz-UZ')}</strong>
+            <p className="text-sm text-gray-500 mb-2">Sana: <strong>{new Date(date + 'T12:00:00').toLocaleDateString('uz-UZ')}</strong>
               {shiftFilter && <span className="ml-2 text-indigo-600 font-medium">· {shiftFilter === '2-SMENA' ? '2-Smena' : '1-Smena'}</span>}
             </p>
             {morningShift && (
               <div className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg p-2 mb-3">
-                🌙 Ertalabki kiritish (7:00–10:00): tungi <b>2-smena</b> hisoboti — sana avtomatik <b>kechagi kun</b> ({new Date(date).toLocaleDateString('uz-UZ')}) qilib olindi. Kerak bo'lsa sana yoki smenani o'zgartirishingiz mumkin.
+                🌙 Ertalabki kiritish (7:00–10:00): tungi <b>2-smena</b> hisoboti — sana avtomatik <b>kechagi kun</b> ({new Date(date + 'T12:00:00').toLocaleDateString('uz-UZ')}) qilib olindi. Kerak bo'lsa sana yoki smenani o'zgartirishingiz mumkin.
               </div>
             )}
 

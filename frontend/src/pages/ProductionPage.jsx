@@ -13,6 +13,9 @@ const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n
 export default function ProductionPage() {
   const { isOwner, isProductionHead, isKirimchi } = useAuthStore();
   const qc = useQueryClient();
+  // Ishlab chiqarish kirita oladigan rollar (egasi, ishlab chiqarish boshlig'i, kirimchi).
+  // Ertalabki 7-10 "kechagi kun" qoidasi shu rollarning HAMMASIGA taalluqli (egasi talabi).
+  const roleCanEnter = () => isOwner() || isProductionHead() || isKirimchi();
   // Sana/soat DOIM Toshkent vaqti (UTC+5) bo'yicha hisoblanadi — qurilma/brauzer vaqt zonasi
   // noto'g'ri (masalan UTC) sozlangan bo'lsa ham. O'zbekistonda UTC+5 yil bo'yi o'zgarmas.
   // `new Date(now + 5soat)` ning UTC komponentlari = Toshkent mahalliy vaqti.
@@ -24,14 +27,14 @@ export default function ProductionPage() {
   const localMonth = () => localDate().slice(0, 7);       // Toshkent joriy oy
   // Kechagi kun — tungi (2-) smena o'tgan kunga hisoblanadi
   const yesterdayDate = () => tashDateStr(-1);            // Toshkent kechagi kun
-  // Avto sana/smena (faqat KIRIMCHI uchun) — HAR SAFAR joriy vaqtga qarab hisoblanadi:
+  // Avto sana/smena (kiritа oladigan HAMMA rol uchun) — HAR SAFAR joriy Toshkent vaqtiga qarab:
   //  • ertalab 7:00–10:00 → tungi 2-SMENA hisoboti, sana KECHAGI kun (tungi smena o'tgan kunga tegishli)
   //  • boshqa har qanday vaqt (12:00, 17:00, ...) → BUGUNGI kun + hamma smena
   // MUHIM: bu "Kunlik kiritish" har ochilganda va har saqlashdan keyin qayta hisoblanadi (pastda),
   // shuning uchun sahifa ertalab ochilib qolsa ham, kunduzi kiritilganda sana DOIM to'g'ri bo'ladi.
   const computeAuto = () => {
     const h = tashHour();  // Toshkent soati (qurilma zonasidan qat'i nazar)
-    const morning = isKirimchi() && h >= 7 && h < 10;
+    const morning = roleCanEnter() && h >= 7 && h < 10;
     return { morning, date: morning ? yesterdayDate() : localDate(), shift: morning ? '2-SMENA' : '' };
   };
   const auto0 = computeAuto();
@@ -177,10 +180,10 @@ export default function ProductionPage() {
       toast.success(`${res.data.count} ta xodim kiritildi`);
       qc.invalidateQueries({ queryKey: ['production'] });
       setShowBulk(false);
-      // Saqlashdan keyin — KIRIMCHI uchun sana/smenani joriy vaqtga qaytaramiz.
+      // Saqlashdan keyin — sana/smenani joriy vaqtga qaytaramiz.
       // (Masalan "Shu kun" bilan o'tmishdagi kunni tuzatib saqlansa ham, keyingi kiritish
       //  DOIM to'g'ri — joriy vaqtdagi — sana bilan boshlanadi.)
-      if (isKirimchi()) {
+      if (roleCanEnter()) {
         const a = computeAuto();
         setMorningShift(a.morning);
         setShiftFilter(a.shift);
@@ -248,7 +251,7 @@ export default function ProductionPage() {
   // Qo'lda o'zgartirgan bo'lsa (date !== lastAutoDate) — tegmaymiz, tanlangan sana saqlanadi.
   // OWNER/PRODUCTION_HEAD ga umuman ta'sir qilmaydi (faqat KIRIMCHI).
   const applyAutoDate = () => {
-    if (!isKirimchi()) return;
+    if (!roleCanEnter()) return;
     if (date !== lastAutoDate.current) return;
     const a = computeAuto();
     setMorningShift(a.morning);

@@ -12,7 +12,8 @@ import useAuthStore from '../store/authStore';
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
 export default function ReportsPage() {
-  const { isOwner, isAccountant } = useAuthStore();
+  const { isOwner, isAccountant, isInBranch } = useAuthStore();
+  const inBranch = isInBranch();
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
 
   const { data, isLoading } = useQuery({
@@ -76,9 +77,12 @@ export default function ReportsPage() {
               <button onClick={downloadSalesExcel} className="btn-secondary btn-sm">
                 <Download size={14} /> Sotuv Excel
               </button>
-              <button onClick={downloadSalaryExcel} className="btn-secondary btn-sm">
-                <Download size={14} /> Maosh Excel
-              </button>
+              {/* Maosh tizimi faqat zavodda — filialda bu tugma yo'q */}
+              {!inBranch && (
+                <button onClick={downloadSalaryExcel} className="btn-secondary btn-sm">
+                  <Download size={14} /> Maosh Excel
+                </button>
+              )}
             </>
           )}
         </div>
@@ -172,23 +176,25 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        {/* Oylik xulosasi */}
-        <div className="card">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Oylik Xulosasi</h2>
-          <div className="space-y-3">
-            {[
-              { label: 'Jami oylik', value: fmt(data?.salaries?.total) },
-              { label: "To'langan oyliklar", value: data?.salaries?.paid_count },
-              { label: 'Xodimlar soni', value: data?.salaries?.count },
-              { label: 'Ishlab chiqarildi', value: `${fmt(data?.production?.total_qty)} dona` },
-            ].map(({ label, value }) => (
-              <div key={label} className="flex justify-between py-2 border-b border-gray-50 last:border-0">
-                <span className="text-sm text-gray-600">{label}</span>
-                <span className="font-semibold text-gray-900">{value}</span>
-              </div>
-            ))}
+        {/* Oylik xulosasi — maosh va ishlab chiqarish faqat zavodda, filialda bu bo'lim yo'q */}
+        {!inBranch && (
+          <div className="card">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">Oylik Xulosasi</h2>
+            <div className="space-y-3">
+              {[
+                { label: 'Jami oylik', value: fmt(data?.salaries?.total) },
+                { label: "To'langan oyliklar", value: data?.salaries?.paid_count },
+                { label: 'Xodimlar soni', value: data?.salaries?.count },
+                { label: 'Ishlab chiqarildi', value: `${fmt(data?.production?.total_qty)} dona` },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex justify-between py-2 border-b border-gray-50 last:border-0">
+                  <span className="text-sm text-gray-600">{label}</span>
+                  <span className="font-semibold text-gray-900">{value}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

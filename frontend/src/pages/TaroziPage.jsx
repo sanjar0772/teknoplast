@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { Scale, Truck, Printer, RotateCcw, Package, ArrowDown } from 'lucide-react';
+import { Scale, Truck, Printer, RotateCcw, Package, ArrowDown, Cable, Unplug, Activity } from 'lucide-react';
 import { COMPANY } from '../constants/company';
 import { taroziAPI } from '../services/api';
+import { useTaroziScale, serialSupported, BAUD_RATES, savedBaud } from '../utils/taroziSerial';
 
 // Toshkent bo'yicha bugungi sana (YYYY-MM-DD) — UTC bug'siz
 const localDate = () => {
@@ -48,6 +49,11 @@ export default function TaroziPage() {
   const [recent, setRecent] = useState([]);
   const [serverMaxNo, setServerMaxNo] = useState(0);
 
+  // Tarozi indikatori (RS-232) — og'irlikni avtomatik o'qish
+  const scale = useTaroziScale();
+  const [baud, setBaud] = useState(savedBaud);
+  const [diag, setDiag] = useState(false);
+
   // Oxirgi cheklarni yuklash + serverdagi eng katta chek raqamini olish
   // (boshqa qurilmada ham raqam uzluksiz davom etsin)
   useEffect(() => {
@@ -75,6 +81,15 @@ export default function TaroziPage() {
 
   const reset = () => {
     setMashina(''); setMashinaTuri(''); setMahsulot(''); setBrutto(''); setTara(''); setHaydovchi('');
+  };
+
+  // Tarozida turgan og'irlikni maydonga ko'chirish
+  const olish = (setter, nomi) => {
+    if (scale.overload) { toast.error('Tarozida ortiqcha yuk (OL)'); return; }
+    if (scale.kg === null) { toast.error("Tarozidan ma'lumot kelmayapti"); return; }
+    const v = Math.round(scale.kg * 10) / 10;
+    setter(String(v));
+    toast.success(`${nomi}: ${fmt(v)} kg olindi`);
   };
 
   const validate = () => {
@@ -154,6 +169,89 @@ export default function TaroziPage() {
               <input value={haydovchi} onChange={e => setHaydovchi(e.target.value)}
                 placeholder="Ism / familiya" className="input" />
             </div>
+          </div>
+
+          {/* TAROZI INDIKATORI — RS-232 orqali avtomatik o'qish */}
+          <div className="card space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                <Cable size={15} className="text-blue-600" /> Tarozi indikatori
+              </h2>
+              {scale.connected ? (
+                <span className={scale.stable ? 'badge-green' : 'badge-yellow'}>
+                  {scale.stable ? 'Barqaror' : 'Tebranmoqda'}
+                </span>
+              ) : (
+                <span className="badge-gray">Ulanmagan</span>
+              )}
+            </div>
+
+            {!serialSupported() ? (
+              <p className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3">
+                Bu brauzer tarozini o'qiy olmaydi. Kompyuterda <b>Google Chrome</b> yoki{' '}
+                <b>Microsoft Edge</b> dan foydalaning (telefonda ishlamaydi).
+              </p>
+            ) : !scale.connected ? (
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="label">Tezlik (baud)</label>
+                  <select value={baud} onChange={e => setBaud(parseInt(e.target.value, 10))}
+                    className="select w-32">
+                    {BAUD_RATES.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+                <button onClick={() => scale.connect(baud)} disabled={scale.busy} className="btn-primary">
+                  <Cable size={16} /> {scale.busy ? 'Ulanmoqda...' : 'Tarozini ulash'}
+                </button>
+                <p className="text-xs text-gray-400 basis-full">
+                  Tugmani bosgach chiqadigan ro'yxatdan USB↔RS-232 shnurni (COM port) tanlang.
+                  Bir marta tanlansa — keyin o'zi ulanadi.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-4 rounded-xl bg-gray-900 text-white px-4 py-3">
+                  <span className="text-xs text-gray-400">Tarozida hozir</span>
+                  <span className="text-3xl font-extrabold tabular-nums">
+                    {scale.overload ? 'OL' : scale.kg === null ? '—' : fmt(scale.kg)}
+                    <span className="text-base font-medium text-gray-400 ml-1">kg</span>
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={() => olish(setBrutto, 'Brutto')} className="btn-success">
+                    <ArrowDown size={15} /> Brutto ga olish
+                  </button>
+                  <button onClick={() => olish(setTara, 'Tara')} className="btn-secondary">
+                    <ArrowDown size={15} /> Tara ga olish
+                  </button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <button onClick={() => setDiag(d => !d)}
+                    className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
+                    <Activity size={12} /> Diagnostika
+                  </button>
+                  <button onClick={scale.disconnect} className="btn-secondary btn-sm">
+                    <Unplug size={13} /> Uzish
+                  </button>
+                </div>
+              </>
+            )}
+
+            {scale.error && <p className="text-sm text-red-600">{scale.error}</p>}
+
+            {diag && (
+              <div className="rounded-lg bg-gray-50 border border-gray-100 p-2 max-h-40 overflow-auto">
+                <p className="text-[10px] text-gray-400 mb-1">Indikatordan kelayotgan xom ma'lumot:</p>
+                {scale.log.length === 0
+                  ? <p className="text-xs text-gray-400">Hali ma'lumot kelmadi.</p>
+                  : scale.log.map((l, i) => (
+                    <div key={`${l.t}-${i}`} className="text-[10px] font-mono text-gray-600 border-b border-gray-100 py-0.5">
+                      <span className="text-gray-800">{l.line}</span>
+                      <span className="text-gray-400 ml-2">{l.hex}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
 
           <div className="card space-y-4">

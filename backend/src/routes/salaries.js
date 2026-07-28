@@ -8,6 +8,18 @@ const { ensureEmployeeTransactionsSchema, getMonthTotals } = require('../service
 const router = express.Router();
 router.use(authenticate);
 
+// MAOSH TIZIMI FAQAT ZAVODDA (asosiy tizimda).
+// Filial ichida (filial xodimi yoki EGA filialga admin sifatida kirgan holatda)
+// maosh bo'limi yo'q — so'rovlar rad etiladi, aks holda filialda zavodning
+// maosh ma'lumotlari ko'rinib qolardi.
+// Istisno: /plan — bu oylik SAVDO rejasi (maosh emas), bosh sahifada ishlatiladi.
+router.use((req, res, next) => {
+  if (req.user?.branch_id && !req.path.startsWith('/plan')) {
+    return res.status(403).json({ error: 'Maoshlar tizimi filialda mavjud emas — zavod (asosiy tizim) bo\'limi' });
+  }
+  next();
+});
+
 // GET /api/salaries?month=2024-01
 router.get('/', async (req, res, next) => {
   try {

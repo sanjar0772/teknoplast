@@ -78,6 +78,12 @@ function PublicRoute({ children }) {
   return isAuthenticated ? <Navigate to="/" replace /> : children;
 }
 
+// Faqat zavod (asosiy tizim) sahifasi — filial ichida manzil qo'lda kiritilsa ham ochilmaydi
+function FactoryOnlyRoute({ children }) {
+  const { isInBranch } = useAuthStore();
+  return isInBranch() ? <Navigate to="/" replace /> : children;
+}
+
 useThemeStore.getState().initTheme();
 
 export default function App() {
@@ -108,7 +114,7 @@ export default function App() {
             <Route path="expenses" element={<ExpensesPage />} />
             <Route path="employees" element={<EmployeesPage />} />
             <Route path="production" element={<ProductionPage />} />
-            <Route path="salaries" element={<SalariesPage />} />
+            <Route path="salaries" element={<FactoryOnlyRoute><SalariesPage /></FactoryOnlyRoute>} />
             <Route path="products" element={<ProductsPage />} />
             <Route path="components" element={<ComponentsPage />} />
             <Route path="products-grid" element={<SmartProductsPage />} />

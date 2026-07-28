@@ -586,15 +586,21 @@ router.get('/monthly', async (req, res, next) => {
         FROM expenses WHERE TO_CHAR(expense_date,'YYYY-MM')=$1
         GROUP BY category
       `, [period]),
-      query(`
-        SELECT SUM(quantity_produced) as total_qty, COUNT(DISTINCT employee_id) as workers
-        FROM employee_production WHERE month=$1
-      `, [period]),
-      query(`
-        SELECT COALESCE(SUM(net_amount),0) as total, COUNT(*) as count,
-               COUNT(CASE WHEN status='PAID' THEN 1 END) as paid_count
-        FROM salaries WHERE month=$1
-      `, [period]),
+      // Ishlab chiqarish va maosh — faqat zavod ko'rsatkichlari.
+      // Filial kontekstida bo'sh qaytariladi (aks holda filial hisobotida zavodniki chiqardi).
+      req.user.branch_id
+        ? Promise.resolve({ rows: [{ total_qty: 0, workers: 0 }] })
+        : query(`
+            SELECT SUM(quantity_produced) as total_qty, COUNT(DISTINCT employee_id) as workers
+            FROM employee_production WHERE month=$1
+          `, [period]),
+      req.user.branch_id
+        ? Promise.resolve({ rows: [{ total: 0, count: 0, paid_count: 0 }] })
+        : query(`
+            SELECT COALESCE(SUM(net_amount),0) as total, COUNT(*) as count,
+                   COUNT(CASE WHEN status='PAID' THEN 1 END) as paid_count
+            FROM salaries WHERE month=$1
+          `, [period]),
     ]);
 
     const totalExpenses = expenses.rows.reduce((acc, r) => acc + parseFloat(r.total), 0);
@@ -619,8 +625,11 @@ router.get('/pdf/monthly', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, 
     const { month } = req.query;
     const period = month || new Date().toISOString().slice(0, 7);
 
+    // Filial konteksti ham uzatiladi — aks holda filial PDF'ida zavod raqamlari chiqardi
+    const fwdHeaders = { authorization: req.headers.authorization };
+    if (req.headers['x-branch-id']) fwdHeaders['x-branch-id'] = req.headers['x-branch-id'];
     const monthData = await fetch(`http://localhost:${process.env.PORT || 5000}/api/reports/monthly?month=${period}`, {
-      headers: { authorization: req.headers.authorization }
+      headers: fwdHeaders
     }).then(r => r.json());
 
     const pdfBuffer = await reportService.generateMonthlyPDF(monthData);
@@ -756,6 +765,10 @@ router.get('/excel/sales', requireRole('OWNER', 'ACCOUNTANT', 'SALES_HEAD'), asy
 // GET /api/reports/excel/salaries?month=2024-01
 router.get('/excel/salaries', requireRole('OWNER', 'ACCOUNTANT'), async (req, res, next) => {
   try {
+    // Maosh tizimi faqat zavodda — filial kontekstida yuklab bo'lmaydi
+    if (req.user?.branch_id) {
+      return res.status(403).json({ error: 'Maoshlar tizimi filialda mavjud emas' });
+    }
     const { month } = req.query;
     const period = month || new Date().toISOString().slice(0, 7);
 

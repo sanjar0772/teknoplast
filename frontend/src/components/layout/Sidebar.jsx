@@ -91,8 +91,9 @@ export default function Sidebar() {
 
   // Filial konteksti: filial xodimi (branch_id) YOKI EGA filialga "admin sifatida" kirgan (activeBranch)
   const inBranchContext = !!(user?.branch_id || activeBranch);
-  // Filialda ishlab chiqarish YO'Q — bu bo'limlar filialdan olib tashlanadi (zavodda qoladi)
-  const HIDE_IN_BRANCH = ['/production', '/components', '/tarozi', '/tarozi-cheklar', '/ai', '/worker', '/machines', '/employees'];
+  // Filialda ishlab chiqarish va maosh tizimi YO'Q — bu bo'limlar filialdan
+  // olib tashlanadi (faqat zavodda / asosiy tizimda qoladi)
+  const HIDE_IN_BRANCH = ['/production', '/components', '/tarozi', '/tarozi-cheklar', '/ai', '/worker', '/machines', '/employees', '/salaries'];
   // Faqat FILIALDA ko'rinadi (asosiy tizim/zavodda YO'Q):
   // xodimlar joyi (GPS kuzatuv) va yetkazib berish (dostavka/shopir) — bular filial tizimi.
   const ONLY_IN_BRANCH = ['/agent-locations', '/deliveries', '/vozvrat-karta', '/mijozlar-karta'];

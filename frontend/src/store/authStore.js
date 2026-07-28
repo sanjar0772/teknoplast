@@ -90,6 +90,9 @@ const useAuthStore = create((set, get) => ({
     return user && roles.includes(user.role);
   },
 
+  // Filial konteksti: filial xodimi (branch_id) YOKI EGA filialga admin sifatida kirgan
+  isInBranch: () => !!(get().user?.branch_id || get().activeBranch),
+
   isOwner: () => get().user?.role === 'OWNER',
   isAccountant: () => ['OWNER', 'ACCOUNTANT'].includes(get().user?.role),
   isSalesHead: () => ['OWNER', 'SALES_HEAD'].includes(get().user?.role),

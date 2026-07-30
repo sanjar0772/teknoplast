@@ -73,64 +73,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'toplam-toliq-vazn', commit: 'v253' });
-});
-
-// VAQTINCHALIK read-only diagnostika (qarz tekshiruvi) — tekshirilgach O'CHIRILADI.
-app.get('/api/_diag/58613ce55439669c34/customer/:phone', async (req, res) => {
-  try {
-    const cust = await db.query('SELECT id, name, phone FROM customers WHERE phone = $1', [req.params.phone]);
-    if (!cust.rows.length) return res.json({ error: 'not found' });
-    const c = cust.rows[0];
-    const sales = await db.query(
-      `SELECT s.id, s.order_ref, s.sale_date, s.created_at, s.total_amount, s.payment_amount, s.status,
-              p.name AS product, s.quantity
-       FROM sales s JOIN products p ON p.id = s.product_id
-       WHERE s.customer_id = $1 ORDER BY s.created_at`, [c.id]);
-    const pays = await db.query(
-      `SELECT pm.sale_id, pm.amount, pm.method, pm.payment_date, pm.notes, pm.payment_ref, pm.created_at
-       FROM payments pm JOIN sales s ON s.id = pm.sale_id
-       WHERE s.customer_id = $1 ORDER BY pm.created_at`, [c.id]);
-    const totalDebt = await db.query(
-      'SELECT COALESCE(SUM(total_amount - payment_amount),0) AS d, COALESCE(SUM(total_amount),0) AS t, COALESCE(SUM(payment_amount),0) AS p FROM sales WHERE customer_id=$1', [c.id]);
-    const payByOrder = await db.query(
-      `SELECT s.order_ref, COALESCE(SUM(pm.amount),0) AS paid_in_payments
-       FROM sales s LEFT JOIN payments pm ON pm.sale_id = s.id
-       WHERE s.customer_id = $1 GROUP BY s.order_ref`, [c.id]);
-    // Audit loglar — shu mijozning order_ref va sale_id lari bo'yicha (tarixni tiklash)
-    const audit = await db.query(
-      `SELECT a.action, a.record_id, a.new_values, a.old_values, a.created_at
-       FROM audit_logs a
-       WHERE a.record_id IN (SELECT order_ref FROM sales WHERE customer_id = $1 AND order_ref IS NOT NULL)
-          OR a.record_id IN (SELECT id FROM sales WHERE customer_id = $2)
-       ORDER BY a.created_at`, [c.id, c.id]);
-    res.json({
-      customer: { id: c.id, name: c.name, phone: c.phone },
-      totals: totalDebt.rows[0],
-      sales: sales.rows,
-      payments: pays.rows,
-      payByOrder: payByOrder.rows,
-      audit: audit.rows,
-    });
-  } catch (e) { res.json({ error: e.message }); }
-});
-
-// VAQTINCHALIK repair — bitta order_ref savdolarini "to'liq to'langan"ga keltiradi
-// (bug savdo paytidagi to'g'ridan-to'g'ri to'lovni o'chirib yuborgan holni tuzatadi).
-// Faqat POST + kalit; ishlatilgach O'CHIRILADI.
-app.post('/api/_diag/58613ce55439669c34/fix-order/:orderRef', async (req, res) => {
-  try {
-    const before = await db.query(
-      'SELECT COALESCE(SUM(total_amount - payment_amount),0) AS debt, COUNT(*) AS n FROM sales WHERE order_ref = $1',
-      [req.params.orderRef]);
-    const upd = await db.query(
-      "UPDATE sales SET payment_amount = total_amount, status = 'PAID', updated_at = NOW() WHERE order_ref = $1",
-      [req.params.orderRef]);
-    const after = await db.query(
-      'SELECT COALESCE(SUM(total_amount - payment_amount),0) AS debt FROM sales WHERE order_ref = $1',
-      [req.params.orderRef]);
-    res.json({ order_ref: req.params.orderRef, before: before.rows[0], after: after.rows[0], updated: upd.rowCount });
-  } catch (e) { res.json({ error: e.message }); }
+  res.json({ version: 'qarz-tolov-direct-tuzatildi', commit: 'v254' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

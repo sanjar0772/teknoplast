@@ -2,7 +2,7 @@ import { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Plus, X, Package, DollarSign, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory, Calendar, CheckSquare, Square, FileText, FileSpreadsheet, Trash2, FlaskConical, Camera } from 'lucide-react';
+import { Plus, X, Package, DollarSign, Layers, Search, History, ArrowDownCircle, ArrowUpCircle, Factory, Calendar, CheckSquare, Square, FileText, FileSpreadsheet, Trash2, FlaskConical, Camera, AlertTriangle } from 'lucide-react';
 import clsx from 'clsx';
 import { productsAPI, customersAPI } from '../services/api';
 import useAuthStore from '../store/authStore';
@@ -203,7 +203,7 @@ function Modal({ open, onClose, title, children }) {
 }
 
 export default function ProductsPage({ embedded = false }) {
-  const { isOwner, isProductionHead, isAccountant, isKirimchi, isSalesHead } = useAuthStore();
+  const { isOwner, isProductionHead, isAccountant, isKirimchi, isSalesHead, isInBranch } = useAuthStore();
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
@@ -219,6 +219,7 @@ export default function ProductsPage({ embedded = false }) {
   const [historyProduct, setHistoryProduct] = useState(null); // tarix modal
   const [deleteTarget, setDeleteTarget] = useState(null); // o'chirish tasdig'i: mahsulot yoki { bulk: true }
   const [search, setSearch] = useState(''); // mahsulot qidiruv
+  const [onlyNoRecipe, setOnlyNoRecipe] = useState(false); // faqat retseptsiz mahsulotlar
   const [dateFilter, setDateFilter] = useState({ date_from: '', date_to: '' });
   const [datePreset, setDatePreset] = useState('all');
   // Belgilash rejimi — mahsulotlarni tanlab tarixini eksport qilish
@@ -434,18 +435,39 @@ export default function ProductsPage({ embedded = false }) {
 
   // Komponent (KOMPONENT) mahsulotlar — BOM (Tarkib) formasi uchun
   const componentProducts = (data?.products || []).filter(p => p.kind === 'KOMPONENT');
+
+  // RETSEPT MAJBURIY (faqat zavod/asosiy tizim — filialga daxli yo'q).
+  // Retsept kerak: ishlab chiqariladigan mahsulot (qayta sotish emas, komponentlardan
+  // yig'iladigan to'plam emas, "Qo'lda qarz" soxta mahsulot emas) va hali retsept
+  // qo'shilmagan bo'lsa. Bunday mahsulotda "qaysi xom ashyo ketishi" kiritilmagan.
+  const inBranch = isInBranch();
+  const needsRecipe = (p) =>
+    !inBranch &&
+    !!p.is_active &&
+    !p.is_resale &&
+    p.description !== 'MANUAL_DEBT' &&
+    Number(p.recipe_count || 0) === 0 &&
+    Number(p.bom_count || 0) === 0;
+
   // Sahifa faqat TAYYOR mahsulotlarni ko'rsatadi (komponentlar alohida sahifada)
   // Qidiruv — bitta harf yozilsa ham, ichida bo'lsa chiqaveradi (nom/turi/rang bo'yicha)
   const q = search.trim().toLowerCase();
   const shownProducts = useMemo(() => {
-    const base = (data?.products || []).filter(p => p.kind !== 'KOMPONENT');
+    let base = (data?.products || []).filter(p => p.kind !== 'KOMPONENT');
+    if (onlyNoRecipe) base = base.filter(needsRecipe);
     if (!q) return base;
     return base.filter(p =>
       String(p.name || '').toLowerCase().includes(q) ||
       String(p.type || '').toLowerCase().includes(q) ||
       String(p.rang || '').toLowerCase().includes(q)
     );
-  }, [data, q]);
+  }, [data, q, onlyNoRecipe, inBranch]);
+
+  // Retseptsiz mahsulotlar soni (zavodda — ogohlantirish banneri uchun)
+  const noRecipeCount = useMemo(
+    () => (data?.products || []).filter(p => p.kind !== 'KOMPONENT' && needsRecipe(p)).length,
+    [data, inBranch]
+  );
 
   // Belgilash rejimi yordamchilari
   const toggleSelect = (id) => setSelectedIds(prev => {
@@ -516,6 +538,34 @@ export default function ProductsPage({ embedded = false }) {
           </button>
         </div>
       </div>
+
+      {/* RETSEPT OGOHLANTIRISHI — retsept kiritilmagan mahsulotlar bo'lsa (faqat zavod) */}
+      {noRecipeCount > 0 && (
+        <div className="rounded-xl border border-red-300 bg-red-50 p-4 flex flex-wrap items-center gap-3">
+          <div className="flex items-start gap-2 flex-1 min-w-[240px]">
+            <AlertTriangle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-red-800">
+                {noRecipeCount} ta mahsulotga retsept kiritilmagan
+              </p>
+              <p className="text-xs text-red-600 mt-0.5">
+                Har bir mahsulotga qaysi xom ashyo ketishini kiriting — aks holda ishlab chiqarishda
+                xom ashyo avtomatik ayirilmaydi.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setOnlyNoRecipe(v => !v)}
+            className={`btn-sm flex items-center gap-1 rounded-lg px-3 border ${
+              onlyNoRecipe
+                ? 'bg-red-600 text-white border-red-600 hover:bg-red-700'
+                : 'bg-white text-red-700 border-red-300 hover:bg-red-100'
+            }`}
+          >
+            {onlyNoRecipe ? 'Barchasini ko\'rsatish' : 'Faqat retseptsizlarni ko\'rsatish'}
+          </button>
+        </div>
+      )}
 
       {/* Qidiruv + Sana filtri */}
       <div className="card p-4 space-y-3">
@@ -631,7 +681,12 @@ export default function ProductsPage({ embedded = false }) {
         ) : !shownProducts.length ? (
           <div className="col-span-3 text-center py-12 text-gray-400">
             <Package size={40} className="mx-auto mb-2 opacity-30" />
-            {q ? (
+            {onlyNoRecipe ? (
+              <>
+                <p className="text-green-600 font-medium">✅ Barcha mahsulotlarga retsept kiritilgan</p>
+                <button onClick={() => setOnlyNoRecipe(false)} className="text-xs text-blue-600 mt-1 hover:underline">Barcha mahsulotlarni ko'rsatish</button>
+              </>
+            ) : q ? (
               <>
                 <p>"{search}" bo'yicha mahsulot topilmadi</p>
                 <button onClick={() => setSearch('')} className="text-xs text-blue-600 mt-1 hover:underline">Qidiruvni tozalash</button>
@@ -646,7 +701,7 @@ export default function ProductsPage({ embedded = false }) {
         ) : shownProducts.map(p => (
           <div key={p.id}
             onClick={selectMode ? () => toggleSelect(p.id) : undefined}
-            className={`card ${!p.is_active ? 'opacity-60' : ''} ${selectMode ? 'cursor-pointer transition' : ''} ${selectMode && selectedIds.has(p.id) ? 'ring-2 ring-blue-500 bg-blue-50/40' : ''}`}>
+            className={`card ${!p.is_active ? 'opacity-60' : ''} ${selectMode ? 'cursor-pointer transition' : ''} ${selectMode && selectedIds.has(p.id) ? 'ring-2 ring-blue-500 bg-blue-50/40' : ''} ${!selectMode && needsRecipe(p) ? 'ring-2 ring-red-300' : ''}`}>
             {/* Mahsulot fotosi — bosganda kattalashadi, kamera tugmasi bilan yuklanadi */}
             <div className="relative h-36 mb-3 rounded-xl overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-100">
               {p.has_photo ? (
@@ -697,6 +752,12 @@ export default function ProductsPage({ embedded = false }) {
             </div>
 
             <div className="space-y-2">
+              {needsRecipe(p) && (
+                <div className="flex items-start gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">
+                  <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                  <span>Retsept kiritilmagan — qaysi xom ashyo ketishini kiriting</span>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Narxi:</span>
                 <span className="font-semibold">{fmt(p.price)} so'm</span>
@@ -775,8 +836,12 @@ export default function ProductsPage({ embedded = false }) {
               )}
               {canWrite && (
                 <button onClick={() => { setRecipeModal(p); setRecipeAddForm(RECIPE_FORM0); }}
-                  className="btn-sm w-full bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 rounded-lg px-2 flex items-center gap-1 justify-center mt-1">
-                  <FlaskConical size={13} /> Retsept (xom ashyo)
+                  className={`btn-sm w-full rounded-lg px-2 flex items-center gap-1 justify-center mt-1 border ${
+                    needsRecipe(p)
+                      ? 'bg-red-600 text-white border-red-600 hover:bg-red-700 font-semibold'
+                      : 'bg-green-50 text-green-700 hover:bg-green-100 border-green-200'
+                  }`}>
+                  <FlaskConical size={13} /> {needsRecipe(p) ? 'Retsept qo\'shing!' : 'Retsept (xom ashyo)'}
                 </button>
               )}
               {canDelete && (
@@ -1070,9 +1135,10 @@ export default function ProductsPage({ embedded = false }) {
           <div>
             <h4 className="text-sm font-semibold text-gray-700 mb-2">Hozirgi retsept</h4>
             {!(recipeData?.recipe?.length) ? (
-              <div className="text-center py-6 bg-gray-50 rounded-lg">
-                <FlaskConical size={24} className="mx-auto mb-2 text-gray-300" />
-                <p className="text-sm text-gray-400">Hali ingredient qo'shilmagan</p>
+              <div className="text-center py-6 bg-red-50 border border-red-200 rounded-lg">
+                <AlertTriangle size={24} className="mx-auto mb-2 text-red-400" />
+                <p className="text-sm font-medium text-red-700">Retsept kiritilmagan</p>
+                <p className="text-xs text-red-500 mt-0.5">Quyida qaysi xom ashyo ketishini qo'shing</p>
               </div>
             ) : (
               <div className="space-y-1.5 max-h-52 overflow-y-auto">

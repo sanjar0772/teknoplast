@@ -73,56 +73,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'qarz-tolov-direct-tuzatildi', commit: 'v254' });
-});
-
-// VAQTINCHALIK to'liq skaner — bug ta'sirini butun baza bo'yicha aniqlash uchun.
-// Faqat FIFO qarz to'lovi (payment_ref LIKE 'PAY-%') bo'lgan mijozlarning
-// savdo + to'lov + audit ma'lumotini beradi. Read-only. Tekshirilgach O'CHIRILADI.
-app.get('/api/_diag/b81b485ff40ab8b56d25b95c/scan', async (req, res) => {
-  try {
-    // Faqat qarz to'lovi (PAY-) bo'lgan mijozlar — bug faqat shularда bo'lishi mumkin
-    const custIds = (await db.query(
-      `SELECT DISTINCT s.customer_id
-       FROM payments pm JOIN sales s ON s.id = pm.sale_id
-       WHERE pm.payment_ref LIKE 'PAY-%' AND s.customer_id IS NOT NULL`)).rows.map(r => r.customer_id);
-    const out = [];
-    for (const cid of custIds) {
-      const cust = (await db.query('SELECT id, name, phone FROM customers WHERE id = $1', [cid])).rows[0];
-      if (!cust) continue;
-      const sales = (await db.query(
-        `SELECT id, order_ref, sale_date, created_at, total_amount, payment_amount, status
-         FROM sales WHERE customer_id = $1 ORDER BY created_at`, [cid])).rows;
-      const pays = (await db.query(
-        `SELECT pm.sale_id, pm.amount, pm.method, pm.payment_ref, pm.created_at
-         FROM payments pm JOIN sales s ON s.id = pm.sale_id
-         WHERE s.customer_id = $1 ORDER BY pm.created_at`, [cid])).rows;
-      const audit = (await db.query(
-        `SELECT action, record_id, new_values, created_at FROM audit_logs
-         WHERE action IN ('PAYMENT_RECORD','SALE_BULK_CREATE','SALE_UPDATE')
-           AND (record_id IN (SELECT order_ref FROM sales WHERE customer_id = $1 AND order_ref IS NOT NULL)
-             OR record_id IN (SELECT id FROM sales WHERE customer_id = $2))
-         ORDER BY created_at`, [cid, cid])).rows;
-      out.push({ customer: cust, sales, payments: pays, audit });
-    }
-    res.json({ count: out.length, customers: out });
-  } catch (e) { res.json({ error: e.message }); }
-});
-
-// VAQTINCHALIK repair — bitta order_ref savdolarini "to'liq to'langan"ga keltiradi. O'CHIRILADI.
-app.post('/api/_diag/b81b485ff40ab8b56d25b95c/fix-order/:orderRef', async (req, res) => {
-  try {
-    const before = await db.query(
-      'SELECT COALESCE(SUM(total_amount - payment_amount),0) AS debt, COUNT(*) AS n FROM sales WHERE order_ref = $1',
-      [req.params.orderRef]);
-    await db.query(
-      "UPDATE sales SET payment_amount = total_amount, status = 'PAID', updated_at = NOW() WHERE order_ref = $1",
-      [req.params.orderRef]);
-    const after = await db.query(
-      'SELECT COALESCE(SUM(total_amount - payment_amount),0) AS debt FROM sales WHERE order_ref = $1',
-      [req.params.orderRef]);
-    res.json({ order_ref: req.params.orderRef, before: before.rows[0], after: after.rows[0] });
-  } catch (e) { res.json({ error: e.message }); }
+  res.json({ version: 'baza-skaner-tozalandi', commit: 'v255' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

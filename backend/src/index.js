@@ -76,6 +76,37 @@ app.get('/api/version', (req, res) => {
   res.json({ version: 'toplam-toliq-vazn', commit: 'v253' });
 });
 
+// VAQTINCHALIK read-only diagnostika (qarz tekshiruvi) — tekshirilgach O'CHIRILADI.
+app.get('/api/_diag/58613ce55439669c34/customer/:phone', async (req, res) => {
+  try {
+    const cust = await db.query('SELECT id, name, phone FROM customers WHERE phone = $1', [req.params.phone]);
+    if (!cust.rows.length) return res.json({ error: 'not found' });
+    const c = cust.rows[0];
+    const sales = await db.query(
+      `SELECT s.id, s.order_ref, s.sale_date, s.created_at, s.total_amount, s.payment_amount, s.status,
+              p.name AS product, s.quantity
+       FROM sales s JOIN products p ON p.id = s.product_id
+       WHERE s.customer_id = $1 ORDER BY s.created_at`, [c.id]);
+    const pays = await db.query(
+      `SELECT pm.sale_id, pm.amount, pm.method, pm.payment_date, pm.notes, pm.payment_ref, pm.created_at
+       FROM payments pm JOIN sales s ON s.id = pm.sale_id
+       WHERE s.customer_id = $1 ORDER BY pm.created_at`, [c.id]);
+    const totalDebt = await db.query(
+      'SELECT COALESCE(SUM(total_amount - payment_amount),0) AS d, COALESCE(SUM(total_amount),0) AS t, COALESCE(SUM(payment_amount),0) AS p FROM sales WHERE customer_id=$1', [c.id]);
+    const payByOrder = await db.query(
+      `SELECT s.order_ref, COALESCE(SUM(pm.amount),0) AS paid_in_payments
+       FROM sales s LEFT JOIN payments pm ON pm.sale_id = s.id
+       WHERE s.customer_id = $1 GROUP BY s.order_ref`, [c.id]);
+    res.json({
+      customer: { id: c.id, name: c.name, phone: c.phone },
+      totals: totalDebt.rows[0],
+      sales: sales.rows,
+      payments: pays.rows,
+      payByOrder: payByOrder.rows,
+    });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
 // Frontend static files (Railway uchun - Nginx yo'q)
 const frontendDist = path.join(__dirname, '../../frontend/dist');
 // Hashli fayllar (assets/) abadiy keshlanadi, index.html esa HECH QACHON keshlanmaydi

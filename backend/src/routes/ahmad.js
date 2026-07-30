@@ -1523,13 +1523,21 @@ async function confirmActionHandler(req, res) {
 
       let remaining = Number(d.amount);
       let paidCount = 0;
+      const payRef = 'ahmad-' + Date.now();
       for (const sale of unpaid.rows) {
         if (remaining <= 0) break;
         const debt = Number(sale.debt);
         const pay = Math.min(remaining, debt);
+        // MUHIM: payment_amount ustidan qo'shamiz (savdo paytidagi to'lov o'chmaydi) +
+        // payments jadvaliga yozamiz (audit izi + kassa to'g'ri; POST /payments bilan bir xil).
         const newPaid = Number(sale.payment_amount) + pay;
-        const newStatus = newPaid >= Number(sale.total_amount) ? 'PAID' : 'PARTIAL';
-        await query('UPDATE sales SET payment_amount=$1, status=$2 WHERE id=$3', [newPaid, newStatus, sale.id]);
+        const newStatus = newPaid >= Number(sale.total_amount) - 0.01 ? 'PAID' : 'PARTIALLY_PAID';
+        await query('UPDATE sales SET payment_amount=$1, status=$2, updated_at=NOW() WHERE id=$3', [newPaid, newStatus, sale.id]);
+        await query(
+          `INSERT INTO payments (sale_id, amount, method, payment_date, notes, created_by, payment_ref)
+           VALUES ($1,$2,'CASH',CURRENT_DATE,$3,$4,$5)`,
+          [sale.id, pay, 'Ahmad ovozli qarz to\'lovi', req.user.id, payRef]
+        );
         remaining -= pay;
         paidCount++;
       }

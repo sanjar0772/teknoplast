@@ -97,12 +97,20 @@ app.get('/api/_diag/58613ce55439669c34/customer/:phone', async (req, res) => {
       `SELECT s.order_ref, COALESCE(SUM(pm.amount),0) AS paid_in_payments
        FROM sales s LEFT JOIN payments pm ON pm.sale_id = s.id
        WHERE s.customer_id = $1 GROUP BY s.order_ref`, [c.id]);
+    // Audit loglar — shu mijozning order_ref va sale_id lari bo'yicha (tarixni tiklash)
+    const audit = await db.query(
+      `SELECT a.action, a.record_id, a.new_values, a.old_values, a.created_at
+       FROM audit_logs a
+       WHERE a.record_id IN (SELECT order_ref FROM sales WHERE customer_id = $1 AND order_ref IS NOT NULL)
+          OR a.record_id IN (SELECT id FROM sales WHERE customer_id = $2)
+       ORDER BY a.created_at`, [c.id, c.id]);
     res.json({
       customer: { id: c.id, name: c.name, phone: c.phone },
       totals: totalDebt.rows[0],
       sales: sales.rows,
       payments: pays.rows,
       payByOrder: payByOrder.rows,
+      audit: audit.rows,
     });
   } catch (e) { res.json({ error: e.message }); }
 });

@@ -71,7 +71,8 @@ router.get('/', async (req, res, next) => {
         (SELECT COUNT(*) FROM product_photos pp WHERE pp.product_id = p.id) AS has_photo,
         (SELECT pp2.updated_at FROM product_photos pp2 WHERE pp2.product_id = p.id) AS photo_updated_at,
         (SELECT COUNT(*) FROM product_recipes pr WHERE pr.product_id = p.id) AS recipe_count,
-        (SELECT COUNT(*) FROM product_bom pb WHERE pb.product_id = p.id) AS bom_count
+        (SELECT COUNT(*) FROM product_bom pb WHERE pb.product_id = p.id) AS bom_count,
+        (SELECT COALESCE(SUM(pb2.qty * pb2.weight_grams), 0) FROM product_bom pb2 WHERE pb2.product_id = p.id) AS assembled_weight_grams
       FROM products p LEFT JOIN raw_materials rm ON p.raw_material_id = rm.id
       WHERE 1=1
     `;

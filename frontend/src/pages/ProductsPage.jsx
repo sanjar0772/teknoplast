@@ -11,6 +11,14 @@ import { parseSom } from '../utils/money';
 
 const fmt = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(parseFloat(n || 0)));
 
+// Vazn (gramm) — chiroyli ko'rsatish: 1000 gr dan oshsa kg, aks holda gr
+const fmtGr = (n) => new Intl.NumberFormat('uz-UZ', { maximumFractionDigits: 2 }).format(Math.round((parseFloat(n) || 0) * 100) / 100);
+const fmtWeight = (g) => {
+  const n = parseFloat(g) || 0;
+  if (n <= 0) return null;
+  return n >= 1000 ? `${fmtGr(n / 1000)} kg` : `${fmtGr(n)} gr`;
+};
+
 // Mahsulot foto URL (cache-busting uchun updated_at qo'shiladi)
 const photoUrl = (p) => `/api/products/${p.id}/photo?v=${encodeURIComponent(p.photo_updated_at || '')}`;
 
@@ -768,6 +776,12 @@ export default function ProductsPage({ embedded = false }) {
                   {p.stock_quantity} {p.unit}
                 </span>
               </div>
+              {Number(p.bom_count) > 0 && parseFloat(p.assembled_weight_grams) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-indigo-500 flex items-center gap-1"><Layers size={13} /> To'liq vazni:</span>
+                  <span className="font-semibold text-indigo-700">{fmtWeight(p.assembled_weight_grams)}</span>
+                </div>
+              )}
               {p.period && (
                 <div className="border-t pt-2 mt-1 space-y-1">
                   <div className="flex justify-between text-sm">
@@ -1005,6 +1019,8 @@ export default function ProductsPage({ embedded = false }) {
         <div className="space-y-4">
           <p className="text-xs text-gray-500">
             Ushbu tayyor mahsulot qaysi komponentlardan yig'iladi. Komponentlar "Ishlab chiqarish ombori"da turadi.
+            Har bir komponentning <strong>1 dona vazni</strong>ni kiriting — mahsulotning to'liq (yig'ilgan) vazni
+            avtomatik hisoblanadi.
           </p>
 
           <div>
@@ -1022,7 +1038,9 @@ export default function ProductsPage({ embedded = false }) {
                       <div className="font-medium text-sm text-gray-900 truncate">{item.name}</div>
                       <div className="text-xs text-gray-500">
                         × <strong>{item.qty}</strong> {item.unit}
-                        {parseFloat(item.weight_grams) > 0 && <> · <strong>{item.weight_grams}</strong> gr</>}
+                        {parseFloat(item.weight_grams) > 0 && (
+                          <> · 1 dona: <strong>{fmtWeight(item.weight_grams)}</strong> · jami: <strong className="text-indigo-700">{fmtWeight((parseFloat(item.qty) || 0) * (parseFloat(item.weight_grams) || 0))}</strong></>
+                        )}
                         {' '}· omborda: {item.stock_quantity}
                       </div>
                     </div>
@@ -1049,6 +1067,18 @@ export default function ProductsPage({ embedded = false }) {
                 ))}
               </div>
             )}
+            {/* To'liq (yig'ilgan) vazn — barcha komponentlar vazni yig'indisi */}
+            {(() => {
+              const total = (bomData?.bom || []).reduce(
+                (s, it) => s + (parseFloat(it.qty) || 0) * (parseFloat(it.weight_grams) || 0), 0);
+              if (total <= 0) return null;
+              return (
+                <div className="mt-2 flex items-center justify-between rounded-lg bg-indigo-600 text-white px-3 py-2">
+                  <span className="text-sm font-medium flex items-center gap-1.5"><Layers size={15} /> To'liq (yig'ilgan) vazni:</span>
+                  <span className="text-base font-bold">{fmtWeight(total)}</span>
+                </div>
+              );
+            })()}
           </div>
 
           {canWrite && (
@@ -1081,7 +1111,7 @@ export default function ProductsPage({ embedded = false }) {
                       onChange={e => setBomAddForm(f => ({ ...f, qty: parseFloat(e.target.value) || 1 }))}
                       className="input text-sm w-20"
                     />
-                    <label className="text-xs text-gray-600 whitespace-nowrap">Vazni (gr):</label>
+                    <label className="text-xs text-gray-600 whitespace-nowrap">1 dona vazni (gr):</label>
                     <input
                       type="number" min="0" step="0.1"
                       value={bomAddForm.weight_grams}

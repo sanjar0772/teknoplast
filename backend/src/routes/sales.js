@@ -627,9 +627,13 @@ router.post('/:id/payments', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'A
     if (!saleR.rows.length) return res.status(404).json({ error: 'Sotuv topilmadi' });
     const sale = saleR.rows[0];
 
-    const alreadyR = await query('SELECT COALESCE(SUM(amount),0) as paid FROM payments WHERE sale_id=$1', [sale.id]);
-    const already = parseFloat(alreadyR.rows[0].paid);
-    const remaining = parseFloat(sale.total_amount) - already;
+    // MUHIM: to'langan summaning ASL manbai — sale.payment_amount (savdo paytidagi
+    // to'g'ridan-to'g'ri naqd + oldingi qarz to'lovlari HAMMASI shu ustunда turadi).
+    // Ilgari bu yerda faqat payments jadvalidagi yig'indi (already) olinib, payment_amount
+    // qayta yozilardi — natijada savdo paytidagi naqd (payments jadvalida yozuvi yo'q)
+    // O'CHIB, qarz noto'g'ri oshib ketardi. Endi payment_amount ustidan qo'shamiz.
+    const priorPaid = parseFloat(sale.payment_amount) || 0;
+    const remaining = parseFloat(sale.total_amount) - priorPaid;
     // Ortiqcha to'lov (haqdor) — faqat allow_overpay bo'lganda ruxsat; aks holda qoldiqdan oshmaydi
     if (!allow_overpay && amt > remaining + 0.01) {
       return res.status(400).json({ error: `To'lov qoldiqdan ko'p. Qolgan qarz: ${Math.round(remaining)} so'm` });
@@ -643,7 +647,7 @@ router.post('/:id/payments', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'A
          VALUES ($1,$2,$3,$4,$5,$6,$7)`,
         [sale.id, amt, method || 'CASH', payment_date || todayUZB(), notes || null, req.user.id, payment_ref || null]
       );
-      const paid = already + amt;
+      const paid = priorPaid + amt;
       let status = 'PENDING';
       if (paid >= parseFloat(sale.total_amount) - 0.01) status = 'PAID';
       else if (paid > 0) status = 'PARTIALLY_PAID';

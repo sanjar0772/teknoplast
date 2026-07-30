@@ -115,6 +115,24 @@ app.get('/api/_diag/58613ce55439669c34/customer/:phone', async (req, res) => {
   } catch (e) { res.json({ error: e.message }); }
 });
 
+// VAQTINCHALIK repair — bitta order_ref savdolarini "to'liq to'langan"ga keltiradi
+// (bug savdo paytidagi to'g'ridan-to'g'ri to'lovni o'chirib yuborgan holni tuzatadi).
+// Faqat POST + kalit; ishlatilgach O'CHIRILADI.
+app.post('/api/_diag/58613ce55439669c34/fix-order/:orderRef', async (req, res) => {
+  try {
+    const before = await db.query(
+      'SELECT COALESCE(SUM(total_amount - payment_amount),0) AS debt, COUNT(*) AS n FROM sales WHERE order_ref = $1',
+      [req.params.orderRef]);
+    const upd = await db.query(
+      "UPDATE sales SET payment_amount = total_amount, status = 'PAID', updated_at = NOW() WHERE order_ref = $1",
+      [req.params.orderRef]);
+    const after = await db.query(
+      'SELECT COALESCE(SUM(total_amount - payment_amount),0) AS debt FROM sales WHERE order_ref = $1',
+      [req.params.orderRef]);
+    res.json({ order_ref: req.params.orderRef, before: before.rows[0], after: after.rows[0], updated: upd.rowCount });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
 // Frontend static files (Railway uchun - Nginx yo'q)
 const frontendDist = path.join(__dirname, '../../frontend/dist');
 // Hashli fayllar (assets/) abadiy keshlanadi, index.html esa HECH QACHON keshlanmaydi

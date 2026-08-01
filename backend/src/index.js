@@ -95,7 +95,18 @@ app.get('/api/_diag/0561107f43a172b99f6e6106/dups', async (req, res) => {
        AND ABS(strftime('%s', b.created_at) - strftime('%s', a.created_at)) < 300
       ORDER BY a.created_at DESC
       LIMIT 200`)).rows;
-    res.json({ count: rows.length, dups: rows });
+    // Bir order_ref ichida BIR XIL mahsulot 2+ marta (savat/items dublikati)
+    const sameOrder = (await db.query(`
+      SELECT order_ref, product_id, COUNT(*) AS n, SUM(quantity) AS qty, MAX(customer_name) AS cust,
+             MAX(sale_date) AS sale_date
+      FROM sales WHERE order_ref IS NOT NULL
+      GROUP BY order_ref, product_id HAVING COUNT(*) > 1
+      ORDER BY MAX(created_at) DESC LIMIT 200`)).rows;
+    // Oxirgi 3 kun savdolari (yaqinda qo'shilganini ko'rish uchun)
+    const recent = (await db.query(`
+      SELECT id, order_ref, customer_name, product_id, quantity, total_amount, sale_date, created_at, branch_id
+      FROM sales WHERE sale_date >= date('now','-3 day') ORDER BY created_at DESC LIMIT 60`)).rows;
+    res.json({ count: rows.length, dups: rows, sameOrderCount: sameOrder.length, sameOrder, recent });
   } catch (e) { res.json({ error: e.message }); }
 });
 

@@ -76,6 +76,29 @@ app.get('/api/version', (req, res) => {
   res.json({ version: 'ahmad-tolov-audit-tuzatildi', commit: 'v256' });
 });
 
+// VAQTINCHALIK — dublikat savdolarni aniqlash (double-submit). Read-only. O'CHIRILADI.
+app.get('/api/_diag/0561107f43a172b99f6e6106/dups', async (req, res) => {
+  try {
+    // Bir xil (customer, product, qty, total, sana), boshqa order_ref, created_at yaqin (<300s)
+    const rows = (await db.query(`
+      SELECT a.id AS id_a, b.id AS id_b, a.order_ref AS ref_a, b.order_ref AS ref_b,
+             a.customer_name, a.product_id, a.quantity, a.total_amount, a.sale_date,
+             a.created_at AS ca, b.created_at AS cb, a.branch_id
+      FROM sales a JOIN sales b
+        ON a.product_id = b.product_id
+       AND COALESCE(a.customer_id,'') = COALESCE(b.customer_id,'')
+       AND a.quantity = b.quantity
+       AND a.total_amount = b.total_amount
+       AND a.sale_date = b.sale_date
+       AND a.id < b.id
+       AND COALESCE(a.order_ref,'') <> COALESCE(b.order_ref,'')
+       AND ABS(strftime('%s', b.created_at) - strftime('%s', a.created_at)) < 300
+      ORDER BY a.created_at DESC
+      LIMIT 200`)).rows;
+    res.json({ count: rows.length, dups: rows });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
 // Frontend static files (Railway uchun - Nginx yo'q)
 const frontendDist = path.join(__dirname, '../../frontend/dist');
 // Hashli fayllar (assets/) abadiy keshlanadi, index.html esa HECH QACHON keshlanmaydi

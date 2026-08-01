@@ -95,12 +95,13 @@ app.get('/api/_diag/0561107f43a172b99f6e6106/dups', async (req, res) => {
        AND ABS(strftime('%s', b.created_at) - strftime('%s', a.created_at)) < 300
       ORDER BY a.created_at DESC
       LIMIT 200`)).rows;
-    // Bir order_ref ichida BIR XIL mahsulot 2+ marta (savat/items dublikati)
+    // Bir order_ref ichida BIR XIL mahsulot+RANG+narx 2+ marta (haqiqiy dublikat —
+    // turli rang qonuniy, shuning uchun rang+unit_price ham guruhga kiradi)
     const sameOrder = (await db.query(`
-      SELECT order_ref, product_id, COUNT(*) AS n, SUM(quantity) AS qty, MAX(customer_name) AS cust,
-             MAX(sale_date) AS sale_date
+      SELECT order_ref, product_id, COALESCE(rang,'') AS rang, unit_price, quantity,
+             COUNT(*) AS n, MAX(customer_name) AS cust, MAX(sale_date) AS sale_date
       FROM sales WHERE order_ref IS NOT NULL
-      GROUP BY order_ref, product_id HAVING COUNT(*) > 1
+      GROUP BY order_ref, product_id, COALESCE(rang,''), unit_price, quantity HAVING COUNT(*) > 1
       ORDER BY MAX(created_at) DESC LIMIT 200`)).rows;
     // Oxirgi 3 kun savdolari (yaqinda qo'shilganini ko'rish uchun)
     const recent = (await db.query(`

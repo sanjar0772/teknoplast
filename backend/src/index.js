@@ -74,7 +74,54 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'faktura-usul-clean', commit: 'v267' });
+  res.json({ version: 'faktura15-diag', commit: 'v267d' });
+});
+
+// ===== VAQTINCHALIK DIAGNOSTIKA (faqat o'qish, kalit bilan) — Faktura 15 tuzatish uchun.
+// Keyin O'CHIRILADI. =====
+app.get('/api/_diag_f15/:key', async (req, res) => {
+  if (req.params.key !== 'f15diag_Qk93xZ') return res.status(404).end();
+  try {
+    const { query } = require('./db');
+    const ORDER = '02-08-2026-015';
+    const lines = (await query(
+      `SELECT s.id, s.product_id, COALESCE(p.name,'[deleted]') AS product_name, s.quantity, s.unit_price,
+              s.total_amount, s.payment_amount, s.status, s.rang, s.customer_id, s.customer_name,
+              s.notes, s.sale_date, s.branch_id, s.created_by, s.created_at
+       FROM sales s LEFT JOIN products p ON s.product_id = p.id
+       WHERE s.order_ref = $1 ORDER BY s.created_at, s.rowid`, [ORDER]
+    )).rows;
+    const pays = (await query(
+      `SELECT pm.id, pm.sale_id, pm.amount, pm.method, pm.payment_date, pm.notes, pm.payment_ref
+       FROM payments pm JOIN sales s ON pm.sale_id = s.id
+       WHERE s.order_ref = $1 ORDER BY pm.created_at`, [ORDER]
+    )).rows;
+    // Mijoz umumiy balansi
+    let custBalance = null;
+    if (lines.length && lines[0].customer_id) {
+      custBalance = (await query(
+        `SELECT COALESCE(SUM(payment_amount - total_amount),0) AS bal FROM sales WHERE customer_id=$1`,
+        [lines[0].customer_id]
+      )).rows[0];
+    }
+    // Nomzod mahsulotlar — qo'shiladigan/o'chiriladigan
+    const patterns = ['%апалак тувак%', '%ирамида 2 голд%', '%лобус 5%', '%ирамида 3 голд%', '%ирамида 3 gold%', '%апалак%'];
+    const prodMap = {};
+    for (const pat of patterns) {
+      const rows = (await query(
+        `SELECT id, name, price, stock_quantity, unit, branch_id FROM products WHERE name LIKE $1 ORDER BY name`, [pat]
+      )).rows;
+      for (const r of rows) prodMap[r.id] = r;
+    }
+    const products = Object.values(prodMap);
+    // Har bir nomzod mahsulotning rang bucketlari
+    for (const p of products) {
+      p.color_stock = (await query(
+        `SELECT rang, quantity FROM product_color_stock WHERE product_id=$1 ORDER BY rang`, [p.id]
+      )).rows;
+    }
+    res.json({ order: ORDER, lines, pays, custBalance, products });
+  } catch (e) { res.status(500).json({ error: e.message, stack: e.stack }); }
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

@@ -74,7 +74,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'faktura15-diag', commit: 'v267d' });
+  res.json({ version: 'faktura15-diag', commit: 'v267d2' });
 });
 
 // ===== VAQTINCHALIK DIAGNOSTIKA (faqat o'qish, kalit bilan) — Faktura 15 tuzatish uchun.
@@ -120,7 +120,21 @@ app.get('/api/_diag_f15/:key', async (req, res) => {
         `SELECT rang, quantity FROM product_color_stock WHERE product_id=$1 ORDER BY rang`, [p.id]
       )).rows;
     }
-    res.json({ order: ORDER, lines, pays, custBalance, products });
+    // Bugungi barcha fakturalar (order_ref bo'yicha)
+    const todayOrders = (await query(
+      `SELECT s.order_ref, MIN(s.customer_name) AS customer_name, COUNT(*) AS lines,
+              SUM(s.total_amount) AS total, SUM(s.payment_amount) AS paid, MIN(s.created_at) AS created_at
+       FROM sales s WHERE s.order_ref LIKE $1 GROUP BY s.order_ref ORDER BY s.order_ref`,
+      ['02-08-2026-%']
+    )).rows;
+    // Bugun "Пирамида 3 голд" borมี fakturalar
+    const pyramidLines = (await query(
+      `SELECT s.order_ref, s.customer_name, p.name AS product_name, s.quantity, s.unit_price, s.total_amount
+       FROM sales s JOIN products p ON s.product_id = p.id
+       WHERE s.order_ref LIKE $1 AND p.name LIKE '%ирамида 3 голд%' ORDER BY s.order_ref`,
+      ['02-08-2026-%']
+    )).rows;
+    res.json({ order: ORDER, lines, pays, custBalance, products, todayOrders, pyramidLines });
   } catch (e) { res.status(500).json({ error: e.message, stack: e.stack }); }
 });
 

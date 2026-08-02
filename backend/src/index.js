@@ -105,8 +105,8 @@ app.get('/api/_diag/0561107f43a172b99f6e6106/dups', async (req, res) => {
       ORDER BY MAX(created_at) DESC LIMIT 200`)).rows;
     // Oxirgi 3 kun savdolari (yaqinda qo'shilganini ko'rish uchun)
     const recent = (await db.query(`
-      SELECT id, order_ref, customer_name, product_id, quantity, total_amount, sale_date, created_at, branch_id
-      FROM sales WHERE sale_date >= date('now','-3 day') ORDER BY created_at DESC LIMIT 60`)).rows;
+      SELECT id, order_ref, customer_name, product_id, COALESCE(rang,'') AS rang, unit_price, quantity, total_amount, sale_date, created_at, branch_id
+      FROM sales WHERE sale_date >= date('now','-3 day') ORDER BY created_at DESC LIMIT 120`)).rows;
     res.json({ count: rows.length, dups: rows, sameOrderCount: sameOrder.length, sameOrder, recent });
   } catch (e) { res.json({ error: e.message }); }
 });

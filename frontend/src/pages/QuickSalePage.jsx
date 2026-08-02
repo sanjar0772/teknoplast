@@ -319,10 +319,24 @@ export default function QuickSalePage() {
     }
     // Mahsulot narxlari o'zgarishsiz yuboriladi — chegirma narxdan AYRILMAYDI,
     // alohida "chegirma to'lovi" sifatida qarzni kamaytiradi (pastda ko'rsatiladi).
-    const itemsOut = s.cart.map(x => ({ product_id: x.id, quantity: parseInt(x.qty), unit_price: parseFloat(x.price), rang: x.rang }));
+    // DUBLIKAT OLDINI OLISH: bir xil mahsulot+rang+narx qatorlarini birlashtiramiz
+    // (miqdorlar qo'shiladi) — bir savdo ikki qator bo'lib chiqmasligi uchun. Backend ham
+    // buni takroran qiladi (ishonchlilik uchun). Turli rang alohida qoladi.
+    const _mergeMap = new Map();
+    for (const x of s.cart) {
+      const k = `${x.id}|${(x.rang || '').trim()}|${parseFloat(x.price) || 0}`;
+      if (_mergeMap.has(k)) {
+        const e = _mergeMap.get(k);
+        e.quantity += parseInt(x.qty);
+      } else {
+        _mergeMap.set(k, { product_id: x.id, quantity: parseInt(x.qty), unit_price: parseFloat(x.price), rang: x.rang, _name: x.name, _unit: x.unit });
+      }
+    }
+    const merged = Array.from(_mergeMap.values());
+    const itemsOut = merged.map(({ _name, _unit, ...it }) => it);
 
     checkoutRef.current = { idx: activeIdx, customerId: s.customerId, payCash: cashAmt, payCard: cardAmt, payBank: bankAmt, payClick: clickAmt, credit: creditAmt, discount: discountAmt + discountExcess, origTotal: grandTotal, finalTotal };
-    lastCartRef.current = itemsOut.map((it, idx) => ({ name: s.cart[idx].name, qty: it.quantity, price: it.unit_price, unit: s.cart[idx].unit, rang: it.rang }));
+    lastCartRef.current = merged.map(it => ({ name: it._name, qty: it.quantity, price: it.unit_price, unit: it._unit, rang: it.rang }));
     const noteParts = [];
     if (cashAmt > 0) noteParts.push(`Naqd: ${cashAmt}`);
     if (cardAmt > 0) noteParts.push(`Karta: ${cardAmt}`);

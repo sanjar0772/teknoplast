@@ -344,8 +344,23 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), 
       }
     }
 
-    // Ombor yetarliligini tekshirish — RANG bo'yicha (filial bo'lsa — filial ombori)
+    // DUBLIKAT OLDINI OLISH: bir xil mahsulot+rang+narx qatorlarini BIRLASHTIRAMIZ
+    // (miqdorlar qo'shiladi). Aks holda savatда bir mahsulot+rang ikki qator bo'lса,
+    // bitta savdo IKKI qator bo'lib yozilardi ("1 o'rniga 2 ta"). Turli rang — alohida qoladi.
+    const mergedMap = new Map();
     for (const it of items) {
+      const k = `${it.product_id}|${(it.rang || '').trim()}|${parseFloat(it.unit_price) || 0}`;
+      if (mergedMap.has(k)) {
+        const e = mergedMap.get(k);
+        e.quantity = (parseInt(e.quantity) || 0) + (parseInt(it.quantity) || 0);
+      } else {
+        mergedMap.set(k, { ...it });
+      }
+    }
+    const saleItems = Array.from(mergedMap.values());
+
+    // Ombor yetarliligini tekshirish — RANG bo'yicha (filial bo'lsa — filial ombori)
+    for (const it of saleItems) {
       const p = await query('SELECT name FROM products WHERE id = $1', [it.product_id]);
       if (!p.rows.length) return res.status(404).json({ error: `Mahsulot topilmadi: ${it.product_id}` });
       const avail = await getColorStock(query, it.product_id, it.rang);
@@ -365,7 +380,7 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), 
     const discountCredit = Math.max(0, parseFloat(req.body.discount_credit) || 0);
     // To'lov summasi: agar reqPayment kelsa — undan foydalaniladi (jami summadan
     // OSHIB ketishi mumkin — oshiqcha pul mijozning haqdorligi sifatida saqlanadi).
-    const preGrand = items.reduce((s, it) => s + (parseInt(it.quantity) * parseFloat(it.unit_price)), 0);
+    const preGrand = saleItems.reduce((s, it) => s + (parseInt(it.quantity) * parseFloat(it.unit_price)), 0);
     const paidAmount = reqPayment !== undefined
       ? Math.max(0, parseFloat(reqPayment) || 0)
       : null;
@@ -382,8 +397,8 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), 
     let distributedDiscount = 0; // taqsimlangan chegirmani kuzatish
     try {
       await client.query('BEGIN');
-      for (let i = 0; i < items.length; i++) {
-        const it = items[i];
+      for (let i = 0; i < saleItems.length; i++) {
+        const it = saleItems[i];
         const qty = parseInt(it.quantity);
         const price = parseFloat(it.unit_price);
         const total = qty * price;
@@ -392,7 +407,7 @@ router.post('/bulk', requireRole('OWNER', 'SALES_HEAD', 'ACCOUNTANT', 'AGENT'), 
         // qoldiqni o'ziga oladi — jami aniq bo'lsin.
         let itemRealPaid, itemDiscountShare;
         if (paidAmount !== null) {
-          if (i === items.length - 1) {
+          if (i === saleItems.length - 1) {
             itemRealPaid = Math.max(0, Math.round((paidAmount - distributedPaid) * 100) / 100);
             itemDiscountShare = Math.max(0, Math.round((discountAmount - distributedDiscount) * 100) / 100);
           } else {

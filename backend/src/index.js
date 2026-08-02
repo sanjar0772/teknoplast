@@ -73,42 +73,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'ahmad-tolov-audit-tuzatildi', commit: 'v256' });
-});
-
-// VAQTINCHALIK — dublikat savdolarni aniqlash (double-submit). Read-only. O'CHIRILADI.
-app.get('/api/_diag/0561107f43a172b99f6e6106/dups', async (req, res) => {
-  try {
-    // Bir xil (customer, product, qty, total, sana), boshqa order_ref, created_at yaqin (<300s)
-    const rows = (await db.query(`
-      SELECT a.id AS id_a, b.id AS id_b, a.order_ref AS ref_a, b.order_ref AS ref_b,
-             a.customer_name, a.product_id, a.quantity, a.total_amount, a.sale_date,
-             a.created_at AS ca, b.created_at AS cb, a.branch_id
-      FROM sales a JOIN sales b
-        ON a.product_id = b.product_id
-       AND COALESCE(a.customer_id,'') = COALESCE(b.customer_id,'')
-       AND a.quantity = b.quantity
-       AND a.total_amount = b.total_amount
-       AND a.sale_date = b.sale_date
-       AND a.id < b.id
-       AND COALESCE(a.order_ref,'') <> COALESCE(b.order_ref,'')
-       AND ABS(strftime('%s', b.created_at) - strftime('%s', a.created_at)) < 300
-      ORDER BY a.created_at DESC
-      LIMIT 200`)).rows;
-    // Bir order_ref ichida BIR XIL mahsulot+RANG+narx 2+ marta (haqiqiy dublikat —
-    // turli rang qonuniy, shuning uchun rang+unit_price ham guruhga kiradi)
-    const sameOrder = (await db.query(`
-      SELECT order_ref, product_id, COALESCE(rang,'') AS rang, unit_price, quantity,
-             COUNT(*) AS n, MAX(customer_name) AS cust, MAX(sale_date) AS sale_date
-      FROM sales WHERE order_ref IS NOT NULL
-      GROUP BY order_ref, product_id, COALESCE(rang,''), unit_price, quantity HAVING COUNT(*) > 1
-      ORDER BY MAX(created_at) DESC LIMIT 200`)).rows;
-    // Oxirgi 3 kun savdolari (yaqinda qo'shilganini ko'rish uchun)
-    const recent = (await db.query(`
-      SELECT id, order_ref, customer_name, product_id, COALESCE(rang,'') AS rang, unit_price, quantity, total_amount, sale_date, created_at, branch_id
-      FROM sales WHERE sale_date >= date('now','-3 day') ORDER BY created_at DESC LIMIT 120`)).rows;
-    res.json({ count: rows.length, dups: rows, sameOrderCount: sameOrder.length, sameOrder, recent });
-  } catch (e) { res.json({ error: e.message }); }
+  res.json({ version: 'savdo-dublikat-birlashtirish', commit: 'v257' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

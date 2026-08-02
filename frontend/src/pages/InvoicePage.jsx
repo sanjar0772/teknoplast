@@ -35,11 +35,18 @@ const parsePaymentBreakdown = (sale) => {
   const cashMatch = notes.match(/Naqd:\s*([\d\s,.]+)/);
   const cardMatch = notes.match(/Karta:\s*([\d\s,.]+)/);
   const bankMatch = notes.match(/Bank:\s*([\d\s,.]+)/);
+  const clickMatch = notes.match(/Click:\s*([\d\s,.]+)/);
   const paymeMatch = notes.match(/Payme:\s*([\d\s,.]+)/);
+  // Skidka (Chegirma) — pul emas, lekin savdo summasini yopadi (payment_amount ichida),
+  // shuning uchun to'lov usullari qatorida ko'rsatiladi (aks holda yig'indi paid'ga teng
+  // bo'lmay, butun bo'linma yashirinib qolardi — Click ham shu sabab chiqmasdi).
+  const discMatch = notes.match(/Chegirma:\s*([\d\s,.]+)/);
   if (cashMatch) parts.push({ label: 'Naqd', amount: parseAmt(cashMatch), icon: '💵' });
   if (cardMatch) parts.push({ label: 'Karta', amount: parseAmt(cardMatch), icon: '💳' });
   if (bankMatch) parts.push({ label: 'Bank', amount: parseAmt(bankMatch), icon: '🏦' });
+  if (clickMatch) parts.push({ label: 'Click', amount: parseAmt(clickMatch), icon: '⚡' });
   if (paymeMatch) parts.push({ label: 'Pay Me', amount: parseAmt(paymeMatch), icon: '📱' });
+  if (discMatch) parts.push({ label: 'Skidka', amount: parseAmt(discMatch), icon: '🏷️' });
   return parts;
 };
 
@@ -98,8 +105,6 @@ export default function InvoicePage() {
   const debt = Math.max(0, total - paid);
   const credit = Math.max(0, paid - total);
   const paymentParts = parsePaymentBreakdown(sale);
-  const discMatch = (sale.notes || '').match(/Chegirma:\s*([\d\s,.]+)/);
-  const discountAmt = discMatch ? parseFloat(discMatch[1].replace(/[^\d.]/g, '')) || 0 : 0;
   const customerPhone = sale.customer_full_phone || sale.customer_phone;
   const invoiceUrl = `${window.location.origin}/invoice/${sale.order_ref || sale.id}`;
   const grouped = groupInvoiceRows(rows);
@@ -222,12 +227,8 @@ export default function InvoicePage() {
             {paid <= 0 && debt <= 0 && credit <= 0 && <div>{getPaymentLabel(sale)}</div>}
           </div>
           <div className="text-right">
-            {discountAmt > 0 && (
-              <>
-                <div className="text-[11px] text-gray-500">Oraliq: {fmt(total + discountAmt)} so'm</div>
-                <div className="text-[11px] text-rose-600 mb-0.5">Chegirma: −{fmt(discountAmt)} so'm</div>
-              </>
-            )}
+            {/* Skidka (chegirma) yuqorida "To'lov usullari" ichida ko'rsatiladi — bu yerda
+                takrorlamaymiz. Jami = mahsulotlarning to'liq narxi (chegirma narxdan ayrilmaydi). */}
             <span className="text-xs text-gray-400">Jami: </span>
             <span className="text-xl font-bold text-blue-700">{fmt(total)} <span className="text-sm font-medium">so'm</span></span>
           </div>

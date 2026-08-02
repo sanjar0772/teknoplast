@@ -74,7 +74,50 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'xom-ashyo-akt-ixcham', commit: 'v264' });
+  res.json({ version: 'xom-ashyo-akt-ixcham', commit: 'v264d' });
+});
+
+// ===== VAQTINCHALIK DIAGNOSTIKA (faqat o'qish, kalit bilan) — Komilxon faktura tekshirish.
+// Tuzatishdan keyin O'CHIRILADI. =====
+app.get('/api/_diag_komil', async (req, res) => {
+  if (req.query.key !== 'diagKomil_a91Fx7') return res.status(404).end();
+  try {
+    const { query } = require('./db');
+    const customers = (await query(
+      `SELECT id, name, phone, branch_id FROM customers
+       WHERE name LIKE '%омил%' OR name LIKE '%omil%' OR name LIKE '%Комил%' OR name LIKE '%Komil%'`, []
+    )).rows;
+    const balances = [];
+    for (const c of customers) {
+      const b = (await query(
+        `SELECT COALESCE(SUM(payment_amount - total_amount),0) AS bal,
+                COALESCE(SUM(total_amount),0) AS total, COALESCE(SUM(payment_amount),0) AS paid, COUNT(*) AS n
+         FROM sales WHERE customer_id = $1`, [c.id]
+      )).rows[0];
+      const orders = (await query(
+        `SELECT order_ref, COUNT(*) AS lines, SUM(total_amount) AS total, SUM(payment_amount) AS paid,
+                MIN(status) AS status, MIN(sale_date) AS sale_date, MIN(created_at) AS created_at
+         FROM sales WHERE customer_id = $1 GROUP BY order_ref ORDER BY created_at DESC`, [c.id]
+      )).rows;
+      balances.push({ customer: c, balance: b, orders });
+    }
+    // Bugungi barcha savdolar (order_ref bo'yicha) — 018 topilishi uchun
+    const todayOrders = (await query(
+      `SELECT order_ref, customer_name, SUM(total_amount) AS total, SUM(payment_amount) AS paid, MIN(created_at) AS created_at
+       FROM sales WHERE order_ref LIKE $1 GROUP BY order_ref, customer_name ORDER BY order_ref`,
+      ['02-08-2026-%']
+    )).rows;
+    // 018 faktura qatorlari + to'lovlari
+    const o18 = (await query(
+      `SELECT id, product_id, quantity, unit_price, total_amount, payment_amount, status, notes, customer_name, customer_id, sale_date, created_at
+       FROM sales WHERE order_ref = $1 ORDER BY created_at`, ['02-08-2026-018']
+    )).rows;
+    const o18pay = (await query(
+      `SELECT pm.id, pm.sale_id, pm.amount, pm.method, pm.payment_date, pm.notes, pm.payment_ref, pm.created_at
+       FROM payments pm JOIN sales s ON pm.sale_id = s.id WHERE s.order_ref = $1 ORDER BY pm.created_at`, ['02-08-2026-018']
+    )).rows;
+    res.json({ customers, balances, todayOrders, o18, o18pay });
+  } catch (e) { res.status(500).json({ error: e.message, stack: e.stack }); }
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

@@ -74,7 +74,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'xom-ashyo-akt-ixcham', commit: 'v264d' });
+  res.json({ version: 'xom-ashyo-akt-ixcham', commit: 'v264f' });
 });
 
 // ===== VAQTINCHALIK DIAGNOSTIKA (faqat o'qish, kalit bilan) — Komilxon faktura tekshirish.
@@ -117,6 +117,62 @@ app.get('/api/_diag_komil', async (req, res) => {
        FROM payments pm JOIN sales s ON pm.sale_id = s.id WHERE s.order_ref = $1 ORDER BY pm.created_at`, ['02-08-2026-018']
     )).rows;
     res.json({ customers, balances, todayOrders, o18, o18pay });
+  } catch (e) { res.status(500).json({ error: e.message, stack: e.stack }); }
+});
+
+// ===== VAQTINCHALIK TUZATISH (kalit bilan) — Komilxon faktura 018 to'lovlarini to'g'rilash.
+// Naqd 20.5M + Karta 6.12M = 26.62M to'langan; qarz 9 623 250. Bir marta ishlaydi. Keyin O'CHIRILADI. =====
+app.post('/api/_fix_komil', async (req, res) => {
+  if (req.query.key !== 'diagKomil_a91Fx7') return res.status(404).end();
+  const ORDER = '02-08-2026-018';
+  const CUST = 'f253af8eba91b37a5d869d318b742efb';
+  const GRAND = 36243250;       // jami harid (tegilmaydi)
+  const OLD_PAID = 35668700;    // hozirgi (xato) to'langan
+  const TARGET = 26620000;      // to'g'ri to'langan (20.5M + 6.12M)
+  const CASH = 20500000, CARD = 6120000;
+  const DEBT = GRAND - TARGET;  // 9 623 250
+  const NOTES = `To'lov: Naqd: ${CASH} · Karta: ${CARD} · Qarz: ${DEBT}`;
+  const db = require('./db');
+  const { query } = db;
+  try {
+    const rows = (await query(
+      `SELECT id, total_amount, payment_amount, customer_id FROM sales WHERE order_ref=$1 ORDER BY created_at, rowid`, [ORDER]
+    )).rows;
+    if (!rows.length) return res.status(404).json({ error: 'order topilmadi' });
+    const sumTotal = Math.round(rows.reduce((s, r) => s + (parseFloat(r.total_amount) || 0), 0));
+    const sumPaid = Math.round(rows.reduce((s, r) => s + (parseFloat(r.payment_amount) || 0), 0));
+    // XAVFSIZLIK TEKSHIRUVLARI — noto'g'ri nishonga yoki ikki marta tegmaslik uchun
+    if (rows.length !== 18) return res.status(409).json({ error: 'lines != 18', lines: rows.length });
+    if (rows.some(r => r.customer_id !== CUST)) return res.status(409).json({ error: 'customer mismatch' });
+    if (sumTotal !== GRAND) return res.status(409).json({ error: 'total mismatch', sumTotal });
+    if (sumPaid !== OLD_PAID) return res.status(409).json({ error: 'allaqachon o\'zgargan yoki kutilmagan paid', sumPaid });
+
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      let distributed = 0;
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        const share = (i === rows.length - 1)
+          ? (TARGET - distributed)
+          : Math.round((parseFloat(r.total_amount) || 0) * TARGET / GRAND);
+        if (i !== rows.length - 1) distributed += share;
+        await client.query(
+          `UPDATE sales SET payment_amount=$1, status='PARTIALLY_PAID', notes=$2, updated_at=NOW() WHERE id=$3`,
+          [share, NOTES, r.id]
+        );
+      }
+      await client.query('COMMIT');
+    } catch (e) { await client.query('ROLLBACK'); throw e; }
+    finally { client.release(); }
+
+    const after = (await query(
+      `SELECT COALESCE(SUM(payment_amount),0) AS paid, COALESCE(SUM(total_amount),0) AS total FROM sales WHERE order_ref=$1`, [ORDER]
+    )).rows[0];
+    const bal = (await query(
+      `SELECT COALESCE(SUM(payment_amount-total_amount),0) AS bal FROM sales WHERE customer_id=$1`, [CUST]
+    )).rows[0];
+    res.json({ ok: true, before: { sumPaid, sumTotal }, after, customer_balance: bal.bal, cash: CASH, card: CARD, debt: DEBT, notes: NOTES });
   } catch (e) { res.status(500).json({ error: e.message, stack: e.stack }); }
 });
 

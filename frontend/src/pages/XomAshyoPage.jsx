@@ -381,81 +381,107 @@ export default function XomAshyoPage() {
         </div>
       )}
 
-      {/* ===== AKT (faqat chop etishda — oddiy A4 printer, A4 ning yarmini egallaydi) ===== */}
+      {/* ===== AKT (chop etishda — oddiy A4, varaqning yarmidan sal kichik ixcham hujjat) ===== */}
       <div id="xom-ashyo-akt-print" className="hidden print:block bg-white text-black"
         style={{ fontFamily: "'Inter', sans-serif" }}>
-        <div style={{ boxSizing: 'border-box', width: '100%', minHeight: '140mm', padding: '7mm', border: '1.5px solid #000' }}>
-          {/* Sarlavha — korxona + akt raqami */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #000', paddingBottom: '3mm' }}>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: '18px', lineHeight: 1.15 }}>{COMPANY.name}</div>
-              <div style={{ fontSize: '11px' }}>{COMPANY.address}</div>
-              <div style={{ fontSize: '11px' }}>Тел: {COMPANY.phone}</div>
+        <div style={{
+          boxSizing: 'border-box', width: '165mm', minHeight: '130mm', margin: '4mm auto 0',
+          padding: '6mm', border: '1.5px solid #111', color: '#111',
+          display: 'flex', flexDirection: 'column',
+        }}>
+          {/* Sarlavha — korxona + akt raqami qutisi */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ paddingRight: '4mm' }}>
+              <div style={{ fontWeight: 800, fontSize: '15px', lineHeight: 1.1 }}>{COMPANY.name}</div>
+              <div style={{ fontSize: '9px', color: '#333', lineHeight: 1.35, marginTop: '0.6mm' }}>{COMPANY.address}</div>
+              <div style={{ fontSize: '9px', color: '#333' }}>Тел: {COMPANY.phone} · ИНН: {COMPANY.inn}</div>
             </div>
-            <div style={{ textAlign: 'right', fontSize: '12px', whiteSpace: 'nowrap' }}>
-              <div>Акт №: <b style={{ fontSize: '16px' }}>{String(aktNo).padStart(4, '0')}</b></div>
-              <div>{nowLabel()}</div>
+            <div style={{ textAlign: 'center', border: '1.5px solid #111', borderRadius: '2px', padding: '1.5mm 3mm', minWidth: '30mm' }}>
+              <div style={{ fontSize: '8px', color: '#555', letterSpacing: '1.5px' }}>АКТ №</div>
+              <div style={{ fontWeight: 800, fontSize: '17px', lineHeight: 1 }}>{String(aktNo).padStart(4, '0')}</div>
+              <div style={{ fontSize: '8.5px', marginTop: '0.8mm' }}>{nowLabel()}</div>
             </div>
           </div>
 
-          <div style={{ textAlign: 'center', fontWeight: 800, fontSize: '21px', letterSpacing: '1px', margin: '5mm 0 4mm' }}>
+          {/* Sarlavha lentasi */}
+          <div style={{
+            textAlign: 'center', fontWeight: 800, fontSize: '15px', letterSpacing: '3px',
+            borderTop: '2px solid #111', borderBottom: '2px solid #111', padding: '1.8mm 0', margin: '3mm 0 2.5mm',
+          }}>
             ХОМ АШЁ ҚАБУЛ АКТИ
           </div>
 
-          {/* Сотувчи / Олувчи / Хом ашё */}
-          <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse', marginBottom: '3mm' }}>
-            <tbody>
-              <tr>
-                <td style={{ padding: '1.5mm 0', width: '50%' }}>Сотувчи: <b>{sotuvchi}</b></td>
-                <td style={{ padding: '1.5mm 0', width: '50%' }}>Олувчи: <b>{oluvchi || '—'}</b></td>
-              </tr>
-              {mahsulot && <tr><td colSpan={2} style={{ padding: '1.5mm 0' }}>Хом ашё: <b>{mahsulot}</b></td></tr>}
-            </tbody>
-          </table>
-
-          {/* Вазн ва пул жадвали */}
-          <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
-            <tbody>
-              <tr>
-                <td style={{ border: '1px solid #000', padding: '2mm 3mm' }}>Юк билан (Брутто)</td>
-                <td style={{ border: '1px solid #000', padding: '2mm 3mm', textAlign: 'right', fontWeight: 600 }}>{fmt(bruttoN)} кг</td>
-              </tr>
-              <tr>
-                <td style={{ border: '1px solid #000', padding: '2mm 3mm' }}>Тара (бўш)</td>
-                <td style={{ border: '1px solid #000', padding: '2mm 3mm', textAlign: 'right', fontWeight: 600 }}>{fmt(taraN)} кг</td>
-              </tr>
-              <tr>
-                <td style={{ border: '1px solid #000', padding: '2mm 3mm', fontWeight: 700, fontSize: '15px' }}>СОФ (Нетто)</td>
-                <td style={{ border: '1px solid #000', padding: '2mm 3mm', textAlign: 'right', fontWeight: 800, fontSize: '17px' }}>{fmt(netto)} кг</td>
-              </tr>
-              <tr>
-                <td style={{ border: '1px solid #000', padding: '2mm 3mm' }}>Кг нархи</td>
-                <td style={{ border: '1px solid #000', padding: '2mm 3mm', textAlign: 'right', fontWeight: 600 }}>{fmt(narxN)} сўм/кг</td>
-              </tr>
-              <tr>
-                <td style={{ border: '1px solid #000', padding: '2mm 3mm', fontWeight: 700, fontSize: '15px' }}>ЖАМИ СУММА</td>
-                <td style={{ border: '1px solid #000', padding: '2mm 3mm', textAlign: 'right', fontWeight: 800, fontSize: '17px' }}>{fmt(jami)} сўм</td>
-              </tr>
-              <tr>
-                <td style={{ border: '1px solid #000', padding: '2mm 3mm' }}>Тўланди</td>
-                <td style={{ border: '1px solid #000', padding: '2mm 3mm', textAlign: 'right', fontWeight: 600 }}>{fmt(tolanganN)} сўм</td>
-              </tr>
-              <tr>
-                <td style={{ border: '2px solid #000', padding: '2.5mm 3mm', fontWeight: 800, fontSize: '16px' }}>ҚОЛДИҚ (тўланмаган)</td>
-                <td style={{ border: '2px solid #000', padding: '2.5mm 3mm', textAlign: 'right', fontWeight: 800, fontSize: '19px' }}>{fmt(qoldiq)} сўм</td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* ИМЗОЛАР */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16mm', fontSize: '13px' }}>
-            <div style={{ width: '45%' }}>
-              <div style={{ borderTop: '1px solid #000', paddingTop: '1.5mm', fontWeight: 600 }}>Сотувчи имзо</div>
-              <div style={{ fontSize: '11px', color: '#555' }}>{sotuvchi}</div>
+          {/* Taraflar */}
+          <div style={{ fontSize: '11px', lineHeight: 1.6, marginBottom: '2mm' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Сотувчи: <b>{sotuvchi || '—'}</b></span>
+              <span>Олувчи: <b>{oluvchi || '—'}</b></span>
             </div>
-            <div style={{ width: '45%' }}>
-              <div style={{ borderTop: '1px solid #000', paddingTop: '1.5mm', fontWeight: 600 }}>Олувчи имзо</div>
-              <div style={{ fontSize: '11px', color: '#555' }}>{oluvchi || '—'}</div>
+            {mahsulot && <div>Хом ашё: <b>{mahsulot}</b></div>}
+          </div>
+
+          {/* Ikki ustun: ВАЗН | ҲИСОБ-КИТОБ */}
+          <div style={{ display: 'flex', gap: '4mm', alignItems: 'flex-start' }}>
+            {/* Vazn */}
+            <div style={{ flex: 1 }}>
+              <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
+                <tbody>
+                  <tr><td colSpan={2} style={{ border: '1px solid #111', padding: '1.2mm 2.5mm', fontWeight: 700, fontSize: '9.5px', letterSpacing: '0.5px', background: '#eef2f7' }}>ВАЗН</td></tr>
+                  <tr>
+                    <td style={{ border: '1px solid #111', padding: '1.5mm 2.5mm' }}>Брутто</td>
+                    <td style={{ border: '1px solid #111', padding: '1.5mm 2.5mm', textAlign: 'right', fontWeight: 600 }}>{fmt(bruttoN)} кг</td>
+                  </tr>
+                  <tr>
+                    <td style={{ border: '1px solid #111', padding: '1.5mm 2.5mm' }}>Тара</td>
+                    <td style={{ border: '1px solid #111', padding: '1.5mm 2.5mm', textAlign: 'right', fontWeight: 600 }}>{fmt(taraN)} кг</td>
+                  </tr>
+                  <tr>
+                    <td style={{ border: '1px solid #111', padding: '1.5mm 2.5mm', fontWeight: 700 }}>Нетто (соф)</td>
+                    <td style={{ border: '1px solid #111', padding: '1.5mm 2.5mm', textAlign: 'right', fontWeight: 800, fontSize: '13px' }}>{fmt(netto)} кг</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            {/* Hisob-kitob */}
+            <div style={{ flex: 1 }}>
+              <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
+                <tbody>
+                  <tr><td colSpan={2} style={{ border: '1px solid #111', padding: '1.2mm 2.5mm', fontWeight: 700, fontSize: '9.5px', letterSpacing: '0.5px', background: '#eef2f7' }}>ҲИСОБ-КИТОБ</td></tr>
+                  <tr>
+                    <td style={{ border: '1px solid #111', padding: '1.5mm 2.5mm' }}>Кг нархи</td>
+                    <td style={{ border: '1px solid #111', padding: '1.5mm 2.5mm', textAlign: 'right', fontWeight: 600 }}>{fmt(narxN)} сўм</td>
+                  </tr>
+                  <tr>
+                    <td style={{ border: '1px solid #111', padding: '1.5mm 2.5mm', fontWeight: 700 }}>Жами</td>
+                    <td style={{ border: '1px solid #111', padding: '1.5mm 2.5mm', textAlign: 'right', fontWeight: 800, fontSize: '13px' }}>{fmt(jami)} сўм</td>
+                  </tr>
+                  <tr>
+                    <td style={{ border: '1px solid #111', padding: '1.5mm 2.5mm' }}>Тўланди</td>
+                    <td style={{ border: '1px solid #111', padding: '1.5mm 2.5mm', textAlign: 'right', fontWeight: 600 }}>{fmt(tolanganN)} сўм</td>
+                  </tr>
+                  <tr>
+                    <td style={{ border: '1.5px solid #111', padding: '1.5mm 2.5mm', fontWeight: 800, background: '#eef2f7' }}>ҚОЛДИҚ</td>
+                    <td style={{ border: '1.5px solid #111', padding: '1.5mm 2.5mm', textAlign: 'right', fontWeight: 800, fontSize: '14px', background: '#eef2f7' }}>{fmt(qoldiq)} сўм</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Imzolar + izoh — pastga tortiladi */}
+          <div style={{ marginTop: 'auto', paddingTop: '8mm' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+              <div style={{ width: '46%' }}>
+                <div style={{ borderTop: '1px solid #111', paddingTop: '1mm', fontWeight: 700 }}>Сотувчи имзо</div>
+                <div style={{ fontSize: '9px', color: '#666' }}>{sotuvchi || '—'}</div>
+              </div>
+              <div style={{ width: '46%', textAlign: 'right' }}>
+                <div style={{ borderTop: '1px solid #111', paddingTop: '1mm', fontWeight: 700 }}>Олувчи имзо</div>
+                <div style={{ fontSize: '9px', color: '#666' }}>{oluvchi || '—'}</div>
+              </div>
+            </div>
+            <div style={{ textAlign: 'center', fontSize: '8px', color: '#888', marginTop: '3mm', borderTop: '1px dashed #ccc', paddingTop: '1.2mm' }}>
+              Ушбу акт икки нусхада тузилди · TEKNOPLAST
             </div>
           </div>
         </div>

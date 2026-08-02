@@ -45,6 +45,7 @@ const DrobilkaPage = lazyPage(() => import('./pages/DrobilkaPage'));
 const DrobilkaOmborPage = lazyPage(() => import('./pages/DrobilkaOmborPage'));
 const BranchesPage = lazyPage(() => import('./pages/BranchesPage'));
 const TaroziPage = lazyPage(() => import('./pages/TaroziPage'));
+const XomAshyoPage = lazyPage(() => import('./pages/XomAshyoPage'));
 const ReportsPage = lazyPage(() => import('./pages/ReportsPage'));
 const AIPage = lazyPage(() => import('./pages/AIPage'));
 const WorkerPage = lazyPage(() => import('./pages/WorkerPage'));
@@ -124,6 +125,7 @@ export default function App() {
             <Route path="drobilka-ombori" element={<DrobilkaOmborPage />} />
             <Route path="branches" element={<BranchesPage />} />
             <Route path="tarozi" element={<TaroziPage />} />
+            <Route path="xom-ashyo" element={<XomAshyoPage />} />
             <Route path="tarozi-cheklar" element={<TaroziChekPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="agent-profile" element={<AgentProfilePage />} />

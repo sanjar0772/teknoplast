@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   LayoutDashboard, ShoppingCart, Receipt, Users, Factory,
   Banknote, Package, Warehouse, Cog, FileBarChart, Bot,
-  LogOut, ChevronRight, UserSquare2, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X, Sparkles, ShoppingBag, Boxes, History, RotateCcw, Scale, Store, MapPin, Recycle
+  LogOut, ChevronRight, UserSquare2, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X, Sparkles, ShoppingBag, Boxes, History, RotateCcw, Scale, Store, MapPin, Recycle, PackageCheck
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import useThemeStore from '../../store/themeStore';
@@ -53,6 +53,8 @@ const NAV_ITEMS = [
   { to: '/branches',   icon: Store,           label: 'Filiallar',        roles: ['OWNER'] },
   // Tarozi — asosiy tizimda TAMINOTCHI chek chiqaradi; EGA cheklarni ko'radi
   { to: '/tarozi',        icon: Scale,        label: 'Tarozi',           roles: ['OWNER','TAMINOTCHI'] },
+  // Xom ashyo qabul akti — tortish + summa + imzo; avtomatik xarajatga yoziladi
+  { to: '/xom-ashyo',     icon: PackageCheck, label: 'Xom ashyo qabul',  roles: ['OWNER','TAMINOTCHI','KIRIMCHI','OMBORCHI','PRODUCTION_HEAD'] },
   { to: '/tarozi-cheklar', icon: Scale,       label: 'Tarozi cheklari',  roles: ['OWNER'] },
   { to: '/reports',    icon: FileBarChart,    label: 'Hisobotlar',       roles: ['OWNER','ACCOUNTANT'] },
   { to: '/users',      icon: ShieldCheck,     label: 'Foydalanuvchilar', roles: ['OWNER'] },
@@ -93,7 +95,7 @@ export default function Sidebar() {
   const inBranchContext = !!(user?.branch_id || activeBranch);
   // Filialda ishlab chiqarish va maosh tizimi YO'Q — bu bo'limlar filialdan
   // olib tashlanadi (faqat zavodda / asosiy tizimda qoladi)
-  const HIDE_IN_BRANCH = ['/production', '/components', '/tarozi', '/tarozi-cheklar', '/ai', '/worker', '/machines', '/employees', '/salaries'];
+  const HIDE_IN_BRANCH = ['/production', '/components', '/tarozi', '/tarozi-cheklar', '/xom-ashyo', '/ai', '/worker', '/machines', '/employees', '/salaries'];
   // Faqat FILIALDA ko'rinadi (asosiy tizim/zavodda YO'Q):
   // xodimlar joyi (GPS kuzatuv) va yetkazib berish (dostavka/shopir) — bular filial tizimi.
   const ONLY_IN_BRANCH = ['/agent-locations', '/deliveries', '/vozvrat-karta', '/mijozlar-karta'];

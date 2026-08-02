@@ -140,6 +140,12 @@ export const taroziAPI = {
   create: (data) => api.post('/tarozi', data),
 };
 
+// Xom ashyo qabul aktlari
+export const xomAshyoAPI = {
+  getAll: (params) => api.get('/xom-ashyo', { params }),
+  create: (data) => api.post('/xom-ashyo', data),
+};
+
 // Expenses
 export const expensesAPI = {
   getAll: (params) => api.get('/expenses', { params }),

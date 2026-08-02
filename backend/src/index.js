@@ -66,6 +66,7 @@ app.use('/api/branches', require('./routes/branches'));
 app.use('/api/agent', require('./routes/agent'));
 app.use('/api/deliveries', require('./routes/deliveries'));
 app.use('/api/tarozi', require('./routes/tarozi'));
+app.use('/api/xom-ashyo', require('./routes/xomAshyo'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString(), env: process.env.NODE_ENV });
@@ -73,7 +74,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'diagnostika-tozalandi', commit: 'v259' });
+  res.json({ version: 'xom-ashyo-qabul', commit: 'v260' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)
@@ -207,6 +208,11 @@ require('./services/agentSchema')
 require('./services/taroziSchema')
   .ensureTaroziSchema()
   .catch(e => console.error('Tarozi schema init xato:', e.message));
+
+// Xom ashyo qabul aktlari jadvalini tayyorlash
+require('./services/xomAshyoSchema')
+  .ensureXomAshyoSchema()
+  .catch(e => console.error('Xom ashyo schema init xato:', e.message));
 
 // Inventarizatsiya tarixi jadvalini tayyorlash
 require('./services/inventoryAudit')

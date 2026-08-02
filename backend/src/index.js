@@ -74,25 +74,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'faktura-usul-korsatish', commit: 'v266' });
-});
-
-// ===== VAQTINCHALIK DIAGNOSTIKA (faqat o'qish, kalit bilan) — faktura 013 + skidka/click notes. O'CHIRILADI. =====
-app.get('/api/_diag_fak', async (req, res) => {
-  if (req.query.key !== 'diagFak_b72Qz9') return res.status(404).end();
-  try {
-    const { query } = require('./db');
-    const o13 = (await query(
-      `SELECT order_ref, customer_name, SUM(total_amount) AS total, SUM(payment_amount) AS paid, MIN(status) AS status, MIN(notes) AS notes
-       FROM sales WHERE order_ref = $1 GROUP BY order_ref, customer_name`, ['02-08-2026-013']
-    )).rows;
-    const withDisc = (await query(
-      `SELECT order_ref, customer_name, SUM(total_amount) AS total, SUM(payment_amount) AS paid, MIN(status) AS status, MIN(notes) AS notes
-       FROM sales WHERE (notes LIKE '%Chegirma%' OR notes LIKE '%Click%') AND sale_date >= '2026-07-28'
-       GROUP BY order_ref, customer_name ORDER BY MIN(created_at) DESC LIMIT 25`, []
-    )).rows;
-    res.json({ o13, withDisc });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  res.json({ version: 'faktura-usul-clean', commit: 'v267' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

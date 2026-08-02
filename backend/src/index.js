@@ -98,6 +98,18 @@ app.get('/api/_diag/e1a8b46f565a3e6cbefb015a/health', async (req, res) => {
     // ── TO'LOV JADVALI ──
     await chk('I_orphan_payments', `SELECT id, sale_id, amount, method FROM payments WHERE sale_id NOT IN (SELECT id FROM sales) LIMIT 30`);
     await chk('J_payments_gt_pa', `SELECT s.id, s.order_ref, s.customer_name, s.payment_amount, (SELECT COALESCE(SUM(amount),0) FROM payments WHERE sale_id=s.id) AS sum_pay FROM sales s WHERE (SELECT COALESCE(SUM(amount),0) FROM payments WHERE sale_id=s.id) > s.payment_amount + 1 ORDER BY sum_pay - s.payment_amount DESC LIMIT 30`);
+    // J2: vozvrat bilan IZOHLANMAYDIGAN mismatch (haqiqiy anomaliya)
+    await chk('J2_unexplained', `SELECT s.id, s.order_ref, s.customer_name, s.payment_amount,
+      (SELECT COALESCE(SUM(amount),0) FROM payments WHERE sale_id=s.id) AS sum_pay,
+      (SELECT COALESCE(SUM(refund_amount),0) FROM sale_returns WHERE sale_id=s.id) AS refunds
+      FROM sales s WHERE (SELECT COALESCE(SUM(amount),0) FROM payments WHERE sale_id=s.id)
+        > s.payment_amount + (SELECT COALESCE(SUM(refund_amount),0) FROM sale_returns WHERE sale_id=s.id) + 1 LIMIT 30`);
+    // A2: HAQIQIY savdoda (total>0) izohsiz ortiqcha to'lov (vozvrat hisobga olib)
+    await chk('A2_unexplained_overpay', `SELECT s.id, s.order_ref, s.customer_name, s.total_amount, s.payment_amount,
+      (SELECT COALESCE(SUM(refund_amount),0) FROM sale_returns WHERE sale_id=s.id) AS refunds
+      FROM sales s WHERE s.total_amount > 0 AND s.payment_amount - s.total_amount
+        > (SELECT COALESCE(SUM(refund_amount),0) FROM sale_returns WHERE sale_id=s.id) + 1
+      ORDER BY s.payment_amount - s.total_amount DESC LIMIT 30`);
     // ── OMBOR ──
     await chk('K_neg_stock', `SELECT id, name, stock_quantity FROM products WHERE stock_quantity < 0 LIMIT 30`);
     await chk('L_color_drift', `SELECT p.id, p.name, p.stock_quantity, (SELECT COALESCE(SUM(quantity),0) FROM product_color_stock cs WHERE cs.product_id=p.id) AS buckets FROM products p WHERE p.is_active=1 AND ABS(p.stock_quantity - (SELECT COALESCE(SUM(quantity),0) FROM product_color_stock cs WHERE cs.product_id=p.id)) > 0.5 AND (SELECT COUNT(*) FROM product_color_stock cs WHERE cs.product_id=p.id) > 0 LIMIT 40`);

@@ -76,6 +76,48 @@ app.get('/api/version', (req, res) => {
   res.json({ version: 'savdo-dublikat-birlashtirish', commit: 'v257' });
 });
 
+// VAQTINCHALIK — eski dublikat savdo qatorlarini tozalash. Har guruhdan (order_ref+
+// product_id+rang+narx+qty takror) bitta qator qoldiriladi, to'lovlar birlashtiriladi
+// (real pul saqlanadi), qolganlari o'chiriladi. OMBORGA TEGILMAYDI. O'CHIRILADI.
+// dry=1 bo'lsa faqat ko'rsatadi, o'zgartirmaydi.
+app.post('/api/_diag/d736aa3714c5b5c5ee1ec483/dedup', async (req, res) => {
+  try {
+    const dry = req.query.dry === '1';
+    const groups = (await db.query(`
+      SELECT order_ref, product_id, COALESCE(rang,'') AS rang, unit_price, quantity, COUNT(*) AS n
+      FROM sales WHERE order_ref IS NOT NULL
+      GROUP BY order_ref, product_id, COALESCE(rang,''), unit_price, quantity HAVING COUNT(*) > 1`)).rows;
+    const report = [];
+    for (const g of groups) {
+      const rows = (await db.query(
+        `SELECT id, total_amount, payment_amount, customer_id, customer_name FROM sales
+         WHERE order_ref=$1 AND product_id=$2 AND COALESCE(rang,'')=$3 AND unit_price=$4 AND quantity=$5
+         ORDER BY id`, [g.order_ref, g.product_id, g.rang, g.unit_price, g.quantity])).rows;
+      if (rows.length < 2) continue;
+      const keep = rows[0];
+      const dropIds = rows.slice(1).map(r => r.id);
+      const sumPay = rows.reduce((s, r) => s + (parseFloat(r.payment_amount) || 0), 0);
+      const total = parseFloat(keep.total_amount) || 0;
+      const newStatus = sumPay >= total - 0.01 ? 'PAID' : sumPay > 0 ? 'PARTIALLY_PAID' : 'PENDING';
+      report.push({ order_ref: g.order_ref, customer: keep.customer_name, keep_id: keep.id,
+        dropped: dropIds.length, dup_total_removed: (rows.length - 1) * total, kept_payment: sumPay, newStatus });
+      if (!dry) {
+        // dublikat qatorlarning to'lov yozuvlarini KEPT qatorga ko'chiramiz (yetim qolmasin)
+        for (const did of dropIds) {
+          await db.query('UPDATE payments SET sale_id=$1 WHERE sale_id=$2', [keep.id, did]);
+        }
+        await db.query('UPDATE sales SET payment_amount=$1, status=$2, updated_at=NOW() WHERE id=$3',
+          [sumPay, newStatus, keep.id]);
+        for (const did of dropIds) {
+          await db.query('DELETE FROM sales WHERE id=$1', [did]);
+        }
+      }
+    }
+    const totalRemoved = report.reduce((s, r) => s + r.dup_total_removed, 0);
+    res.json({ dry, groups: report.length, total_goods_removed: totalRemoved, report });
+  } catch (e) { res.json({ error: e.message, stack: e.stack }); }
+});
+
 // Frontend static files (Railway uchun - Nginx yo'q)
 const frontendDist = path.join(__dirname, '../../frontend/dist');
 // Hashli fayllar (assets/) abadiy keshlanadi, index.html esa HECH QACHON keshlanmaydi

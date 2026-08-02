@@ -22,14 +22,18 @@ const XOM_ROLES = ['OWNER', 'TAMINOTCHI', 'KIRIMCHI', 'OMBORCHI', 'PRODUCTION_HE
 router.post('/', requireRole(...XOM_ROLES), async (req, res, next) => {
   try {
     await ensureXomAshyoSchema();
-    const { sotuvchi, oluvchi, mahsulot, brutto, tara, netto, summa, izoh, sana } = req.body;
+    const { sotuvchi, oluvchi, mahsulot, brutto, tara, netto, narx_kg, summa, tolangan, izoh, sana } = req.body;
     const b = parseFloat(brutto) || 0;
     const t = parseFloat(tara) || 0;
     const n = netto !== undefined ? (parseFloat(netto) || 0) : Math.max(0, b - t);
-    const s = parseFloat(summa) || 0;
+    const nk = parseFloat(narx_kg) || 0;
+    // Jami = netto × kg narxi. Klient summa yuborsa ham, ishonchli tomoni — qayta hisoblash.
+    const s = nk > 0 ? Math.round(n * nk) : (parseFloat(summa) || 0);
+    const paid = Math.max(0, parseFloat(tolangan) || 0);
+    const qoldiq = Math.max(0, s - paid);
     if (!sotuvchi || !String(sotuvchi).trim()) return res.status(400).json({ error: 'Sotuvchi ismini kiriting' });
     if (b <= 0 || t <= 0 || b <= t) return res.status(400).json({ error: "Brutto tara'dan katta bo'lishi kerak" });
-    if (s <= 0) return res.status(400).json({ error: 'Summani kiriting' });
+    if (s <= 0) return res.status(400).json({ error: 'Kg narxini kiriting (jami 0 bo\'lmasin)' });
 
     const branchId = req.user.branch_id || null;
     const theDate = sana || todayUZB();
@@ -53,13 +57,13 @@ router.post('/', requireRole(...XOM_ROLES), async (req, res, next) => {
     // 2) Qabul akti — to'liq yozuv (imzo aktida qayta chop etish uchun)
     await query(
       `INSERT INTO xom_ashyo_receipts
-        (receipt_no, sotuvchi, oluvchi, mahsulot, brutto, tara, netto, summa, izoh, sana, expense_id, created_by, branch_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        (receipt_no, sotuvchi, oluvchi, mahsulot, brutto, tara, netto, narx_kg, summa, tolangan, qoldiq, izoh, sana, expense_id, created_by, branch_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [no, String(sotuvchi).trim(), (oluvchi || '').trim() || null, (mahsulot || '').trim() || null,
-       b, t, n, s, (izoh || '').trim() || null, theDate, expenseId, req.user.id, branchId]
+       b, t, n, nk, s, paid, qoldiq, (izoh || '').trim() || null, theDate, expenseId, req.user.id, branchId]
     );
 
-    res.status(201).json({ success: true, receipt_no: no, expense_id: expenseId });
+    res.status(201).json({ success: true, receipt_no: no, expense_id: expenseId, summa: s, qoldiq });
   } catch (err) { next(err); }
 });
 
@@ -72,7 +76,7 @@ router.get('/', requireRole('OWNER', 'TAMINOTCHI', 'KIRIMCHI'), async (req, res,
     const scope = branchId ? ` AND branch_id = $2` : ` AND branch_id IS NULL`;
     const params = branchId ? [date, branchId] : [date];
     const rows = (await query(
-      `SELECT id, receipt_no, sotuvchi, oluvchi, mahsulot, brutto, tara, netto, summa, izoh, sana, created_at
+      `SELECT id, receipt_no, sotuvchi, oluvchi, mahsulot, brutto, tara, netto, narx_kg, summa, tolangan, qoldiq, izoh, sana, created_at
        FROM xom_ashyo_receipts
        WHERE sana = $1${scope}
        ORDER BY receipt_no DESC, created_at DESC`,

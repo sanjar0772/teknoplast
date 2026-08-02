@@ -45,12 +45,29 @@ const DDL = USE_PG
       created_at TEXT DEFAULT (datetime('now'))
     )`;
 
+// v261+: kg narxi, to'langan va qoldiq — mavjud jadvalga qo'shish (idempotent).
+// summa = jami (netto × narx_kg). SQLite ADD COLUMN IF NOT EXISTS'ni bilmaydi — xatoni yutamiz.
+const ALTERS = USE_PG
+  ? [
+      `ALTER TABLE xom_ashyo_receipts ADD COLUMN IF NOT EXISTS narx_kg NUMERIC(14,2) NOT NULL DEFAULT 0`,
+      `ALTER TABLE xom_ashyo_receipts ADD COLUMN IF NOT EXISTS tolangan NUMERIC(16,2) NOT NULL DEFAULT 0`,
+      `ALTER TABLE xom_ashyo_receipts ADD COLUMN IF NOT EXISTS qoldiq NUMERIC(16,2) NOT NULL DEFAULT 0`,
+    ]
+  : [
+      `ALTER TABLE xom_ashyo_receipts ADD COLUMN narx_kg REAL NOT NULL DEFAULT 0`,
+      `ALTER TABLE xom_ashyo_receipts ADD COLUMN tolangan REAL NOT NULL DEFAULT 0`,
+      `ALTER TABLE xom_ashyo_receipts ADD COLUMN qoldiq REAL NOT NULL DEFAULT 0`,
+    ];
+
 let _ready = false;
 
 async function ensureXomAshyoSchema() {
   if (_ready) return;
   try {
     await db.query(DDL);
+    for (const sql of ALTERS) {
+      try { await db.query(sql); } catch (e) { /* ustun bor */ }
+    }
     _ready = true;
     console.log('✅ Xom ashyo sxemasi tayyor');
   } catch (e) {

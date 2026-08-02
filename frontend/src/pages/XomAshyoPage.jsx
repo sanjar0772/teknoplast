@@ -35,7 +35,8 @@ export default function XomAshyoPage() {
   const [mahsulot, setMahsulot] = useState('');
   const [brutto, setBrutto] = useState('');
   const [tara, setTara] = useState('');
-  const [summa, setSumma] = useState('');
+  const [narx, setNarx] = useState('');       // kg narxi (so'm/kg)
+  const [tolangan, setTolangan] = useState(''); // to'langan summa
   const [recent, setRecent] = useState([]);
   const [serverMaxNo, setServerMaxNo] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -65,7 +66,10 @@ export default function XomAshyoPage() {
   const bruttoN = num(brutto);
   const taraN = num(tara);
   const netto = Math.max(0, bruttoN - taraN);
-  const summaN = num(summa);
+  const narxN = num(narx);
+  const jami = Math.round(netto * narxN);       // netto × kg narxi
+  const tolanganN = num(tolangan);
+  const qoldiq = Math.max(0, jami - tolanganN);  // to'lanmagan qism
 
   // Keyingi akt raqami — localStorage va server maksimumidan kattasi + 1
   const aktNo = useMemo(() => {
@@ -74,7 +78,7 @@ export default function XomAshyoPage() {
   }, [recent, serverMaxNo]);
 
   const reset = () => {
-    setSotuvchi(''); setMahsulot(''); setBrutto(''); setTara(''); setSumma('');
+    setSotuvchi(''); setMahsulot(''); setBrutto(''); setTara(''); setNarx(''); setTolangan('');
     setOluvchi(user?.full_name || '');
   };
 
@@ -92,7 +96,8 @@ export default function XomAshyoPage() {
     if (bruttoN <= 0) { toast.error("Yuk bilan og'irligini kiriting"); return false; }
     if (taraN <= 0) { toast.error('Tara (bo\'sh og\'irlik) ni kiriting'); return false; }
     if (bruttoN <= taraN) { toast.error("Yuk bilan og'irlik taradan katta bo'lishi kerak"); return false; }
-    if (summaN <= 0) { toast.error('Summani kiriting'); return false; }
+    if (narxN <= 0) { toast.error('Kg narxini kiriting'); return false; }
+    if (tolanganN > jami) { toast.error("To'langan summa jamidan katta bo'lmasin"); return false; }
     return true;
   };
 
@@ -104,15 +109,16 @@ export default function XomAshyoPage() {
     localStorage.setItem(COUNTER_KEY, String(no));
     const entry = {
       no, sotuvchi: sotuvchi.trim(), oluvchi: oluvchi.trim(), mahsulot: mahsulot.trim(),
-      brutto: bruttoN, tara: taraN, netto, summa: summaN, vaqt: nowLabel(),
+      brutto: bruttoN, tara: taraN, netto, narx_kg: narxN, summa: jami, tolangan: tolanganN, qoldiq,
+      vaqt: nowLabel(),
     };
     const next = [entry, ...recent].slice(0, 12);
     setRecent(next);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    // Serverga saqlash — akt + avtomatik xarajat (RAW_MATERIAL). Xato bo'lsa ham akt chiqadi.
+    // Serverga saqlash — akt + avtomatik xarajat (RAW_MATERIAL, jami summa). Xato bo'lsa ham akt chiqadi.
     xomAshyoAPI.create({
       no, sotuvchi: entry.sotuvchi, oluvchi: entry.oluvchi, mahsulot: entry.mahsulot,
-      brutto: bruttoN, tara: taraN, netto, summa: summaN, sana: localDate(),
+      brutto: bruttoN, tara: taraN, netto, narx_kg: narxN, summa: jami, tolangan: tolanganN, sana: localDate(),
     }).then(() => {
       setServerMaxNo(m => Math.max(m, no));
       toast.success('Qabul akti saqlandi va xarajatga yozildi');
@@ -130,8 +136,8 @@ export default function XomAshyoPage() {
             <Boxes size={22} className="text-blue-600" /> Xom ashyo qabul qilish
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Sotuvchidan xom ashyoni torting — yuk bilan og'irligi va tarani kiriting, summani belgilang.
-            Akt ikkala imzo joyi bilan chiqadi va summa xarajatga yoziladi.
+            Sotuvchidan xom ashyoni torting — brutto va tarani kiriting, kg narxini belgilang (jami avtomatik).
+            To'langan summani kiriting, qoldiq o'zi hisoblanadi. Akt ikkala imzo joyi bilan chiqadi; jami summa xarajatga yoziladi.
           </p>
         </div>
         <button onClick={reset} className="btn-secondary btn-sm">
@@ -263,12 +269,38 @@ export default function XomAshyoPage() {
                 </div>
               </div>
             </div>
-            <div>
-              <label className="label flex items-center gap-1.5"><Coins size={14} /> Summa (to'lanadigan)</label>
-              <div className="relative">
-                <input value={summa} onChange={e => setSumma(e.target.value)} inputMode="decimal"
-                  placeholder="0" className="input text-right text-xl font-bold pr-12" />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">so'm</span>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label flex items-center gap-1.5"><Coins size={14} /> Kg narxi</label>
+                <div className="relative">
+                  <input value={narx} onChange={e => setNarx(e.target.value)} inputMode="decimal"
+                    placeholder="0" className="input text-right text-xl font-bold pr-16" />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">so'm/kg</span>
+                </div>
+              </div>
+              <div>
+                <label className="label">Jami (netto × narx)</label>
+                <div className="input text-right text-xl font-extrabold bg-gray-50 text-emerald-700">
+                  {fmt(jami)} <span className="text-sm font-medium text-gray-400">so'm</span>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">To'landi</label>
+                <div className="relative">
+                  <input value={tolangan} onChange={e => setTolangan(e.target.value)} inputMode="decimal"
+                    placeholder="0" className="input text-right text-xl font-bold pr-12" />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">so'm</span>
+                </div>
+                <button type="button" onClick={() => setTolangan(String(jami))}
+                  className="text-xs text-blue-600 hover:underline mt-1">To'liq to'landi</button>
+              </div>
+              <div>
+                <label className="label">Qoldiq (to'lanmagan)</label>
+                <div className={`input text-right text-xl font-extrabold bg-gray-50 ${qoldiq > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                  {fmt(qoldiq)} <span className="text-sm font-medium text-gray-400">so'm</span>
+                </div>
               </div>
             </div>
             <div className="flex justify-center text-gray-300"><ArrowDown size={20} /></div>
@@ -292,11 +324,15 @@ export default function XomAshyoPage() {
               <div className="flex justify-between"><span className="text-blue-100">Oluvchi</span><span className="font-semibold">{oluvchi || '—'}</span></div>
             </div>
           </div>
-          {/* SUMMA */}
+          {/* SUMMA — jami / to'landi / qoldiq */}
           <div className="card bg-gradient-to-br from-emerald-600 to-emerald-700 text-white border-0 shadow-xl">
-            <p className="text-sm text-emerald-100">To'lanadigan summa</p>
-            <p className="text-4xl font-extrabold tracking-tight mt-1 leading-none">{fmt(summaN)}</p>
+            <p className="text-sm text-emerald-100">Jami summa {narxN > 0 && <span className="opacity-80">({fmt(netto)} kg × {fmt(narxN)})</span>}</p>
+            <p className="text-4xl font-extrabold tracking-tight mt-1 leading-none">{fmt(jami)}</p>
             <p className="text-emerald-100 mt-1 text-base font-medium">so'm</p>
+            <div className="mt-4 pt-3 border-t border-white/20 space-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-emerald-100">To'landi</span><span className="font-semibold">{fmt(tolanganN)} so'm</span></div>
+              <div className="flex justify-between"><span className="text-emerald-100">Qoldiq (to'lanmagan)</span><span className="font-bold">{fmt(qoldiq)} so'm</span></div>
+            </div>
           </div>
           <div className="card-sm text-center text-xs text-gray-400">
             Keyingi akt raqami: <span className="font-semibold text-gray-600">№ {String(aktNo).padStart(4, '0')}</span>
@@ -319,7 +355,9 @@ export default function XomAshyoPage() {
                   <th className="text-right py-1.5">Brutto</th>
                   <th className="text-right py-1.5">Tara</th>
                   <th className="text-right py-1.5">Netto</th>
-                  <th className="text-right py-1.5">Summa</th>
+                  <th className="text-right py-1.5">Jami</th>
+                  <th className="text-right py-1.5">To'landi</th>
+                  <th className="text-right py-1.5">Qoldiq</th>
                 </tr>
               </thead>
               <tbody>
@@ -333,6 +371,8 @@ export default function XomAshyoPage() {
                     <td className="py-1.5 text-right text-gray-500">{fmt(r.tara)}</td>
                     <td className="py-1.5 text-right font-bold text-blue-700">{fmt(r.netto)} kg</td>
                     <td className="py-1.5 text-right font-bold text-emerald-700">{fmt(r.summa)}</td>
+                    <td className="py-1.5 text-right text-gray-600">{fmt(r.tolangan || 0)}</td>
+                    <td className="py-1.5 text-right font-semibold text-red-600">{fmt(r.qoldiq || 0)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -379,10 +419,17 @@ export default function XomAshyoPage() {
         </div>
         <div className="border-t border-double border-black my-1" />
 
-        {/* СУММА */}
-        <div className="border-2 border-black rounded-md mt-2 py-1.5 px-1.5 text-center">
-          <div className="text-[11px] font-semibold">ТЎЛОВ СУММАСИ</div>
-          <div className="font-extrabold text-[26px] leading-none mt-0.5">{fmt(summaN)}</div>
+        {/* НАРХ ва СУММА */}
+        <table className="w-full text-[12px]">
+          <tbody>
+            <tr><td className="py-0.5">Кг нархи</td><td className="py-0.5 text-right font-semibold">{fmt(narxN)} сўм/кг</td></tr>
+            <tr><td className="py-0.5 font-bold">ЖАМИ</td><td className="py-0.5 text-right font-bold">{fmt(jami)} сўм</td></tr>
+            <tr><td className="py-0.5">Тўланди</td><td className="py-0.5 text-right font-semibold">{fmt(tolanganN)} сўм</td></tr>
+          </tbody>
+        </table>
+        <div className="border-2 border-black rounded-md mt-1.5 py-1.5 px-1.5 text-center">
+          <div className="text-[11px] font-semibold">ҚОЛДИҚ (тўланмаган)</div>
+          <div className="font-extrabold text-[24px] leading-none mt-0.5">{fmt(qoldiq)}</div>
           <div className="text-[11px] font-semibold">сўм</div>
         </div>
 

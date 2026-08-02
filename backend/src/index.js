@@ -73,64 +73,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'dublikat-tozalandi', commit: 'v258' });
-});
-
-// VAQTINCHALIK — to'liq salomatlik diagnostikasi (read-only). O'CHIRILADI.
-app.get('/api/_diag/e1a8b46f565a3e6cbefb015a/health', async (req, res) => {
-  try {
-    const out = {};
-    const chk = async (name, sql) => {
-      try {
-        const rows = (await db.query(sql)).rows;
-        out[name] = { count: rows.length, sample: rows.slice(0, 6) };
-      } catch (e) { out[name] = { error: e.message }; }
-    };
-    // ── SAVDO / MOLIYA ──
-    await chk('A_overpay_single', `SELECT id, order_ref, customer_name, total_amount, payment_amount FROM sales WHERE payment_amount > total_amount + 1 ORDER BY (payment_amount-total_amount) DESC LIMIT 30`);
-    await chk('B_paid_but_owes', `SELECT id, order_ref, customer_name, total_amount, payment_amount, status FROM sales WHERE status='PAID' AND total_amount - payment_amount > 1 LIMIT 30`);
-    await chk('C_pending_but_paid', `SELECT id, order_ref, customer_name, total_amount, payment_amount, status FROM sales WHERE status='PENDING' AND payment_amount > 1 LIMIT 30`);
-    await chk('D_partial_but_full', `SELECT id, order_ref, customer_name, total_amount, payment_amount, status FROM sales WHERE status='PARTIALLY_PAID' AND total_amount - payment_amount <= 0.01 AND total_amount > 0 LIMIT 30`);
-    await chk('E_bad_status', `SELECT id, order_ref, customer_name, status FROM sales WHERE status NOT IN ('PAID','PENDING','PARTIALLY_PAID') LIMIT 30`);
-    await chk('F_negatives', `SELECT id, order_ref, customer_name, total_amount, payment_amount, quantity FROM sales WHERE total_amount < 0 OR payment_amount < 0 OR quantity < 0 LIMIT 30`);
-    await chk('G_dup_rows', `SELECT order_ref, product_id, COALESCE(rang,'') rang, unit_price, quantity, COUNT(*) n FROM sales WHERE order_ref IS NOT NULL GROUP BY order_ref, product_id, COALESCE(rang,''), unit_price, quantity HAVING COUNT(*) > 1 LIMIT 30`);
-    await chk('H_total_mismatch', `SELECT id, order_ref, customer_name, total_amount, quantity, unit_price FROM sales WHERE ABS(total_amount - quantity*unit_price) > 1 LIMIT 30`);
-    // ── TO'LOV JADVALI ──
-    await chk('I_orphan_payments', `SELECT id, sale_id, amount, method FROM payments WHERE sale_id NOT IN (SELECT id FROM sales) LIMIT 30`);
-    await chk('J_payments_gt_pa', `SELECT s.id, s.order_ref, s.customer_name, s.payment_amount, (SELECT COALESCE(SUM(amount),0) FROM payments WHERE sale_id=s.id) AS sum_pay FROM sales s WHERE (SELECT COALESCE(SUM(amount),0) FROM payments WHERE sale_id=s.id) > s.payment_amount + 1 ORDER BY sum_pay - s.payment_amount DESC LIMIT 30`);
-    // J2: vozvrat bilan IZOHLANMAYDIGAN mismatch (haqiqiy anomaliya)
-    await chk('J2_unexplained', `SELECT s.id, s.order_ref, s.customer_name, s.payment_amount,
-      (SELECT COALESCE(SUM(amount),0) FROM payments WHERE sale_id=s.id) AS sum_pay,
-      (SELECT COALESCE(SUM(refund_amount),0) FROM sale_returns WHERE sale_id=s.id) AS refunds
-      FROM sales s WHERE (SELECT COALESCE(SUM(amount),0) FROM payments WHERE sale_id=s.id)
-        > s.payment_amount + (SELECT COALESCE(SUM(refund_amount),0) FROM sale_returns WHERE sale_id=s.id) + 1 LIMIT 30`);
-    // A2: HAQIQIY savdoda (total>0) izohsiz ortiqcha to'lov (vozvrat hisobga olib)
-    await chk('A2_unexplained_overpay', `SELECT s.id, s.order_ref, s.customer_name, s.total_amount, s.payment_amount,
-      (SELECT COALESCE(SUM(refund_amount),0) FROM sale_returns WHERE sale_id=s.id) AS refunds
-      FROM sales s WHERE s.total_amount > 0 AND s.payment_amount - s.total_amount
-        > (SELECT COALESCE(SUM(refund_amount),0) FROM sale_returns WHERE sale_id=s.id) + 1
-      ORDER BY s.payment_amount - s.total_amount DESC LIMIT 30`);
-    // ── OMBOR ──
-    await chk('K_neg_stock', `SELECT id, name, stock_quantity FROM products WHERE stock_quantity < 0 LIMIT 30`);
-    await chk('L_color_drift', `SELECT p.id, p.name, p.stock_quantity, (SELECT COALESCE(SUM(quantity),0) FROM product_color_stock cs WHERE cs.product_id=p.id) AS buckets FROM products p WHERE p.is_active=1 AND ABS(p.stock_quantity - (SELECT COALESCE(SUM(quantity),0) FROM product_color_stock cs WHERE cs.product_id=p.id)) > 0.5 AND (SELECT COUNT(*) FROM product_color_stock cs WHERE cs.product_id=p.id) > 0 LIMIT 40`);
-    await chk('M_neg_color', `SELECT product_id, rang, quantity FROM product_color_stock WHERE quantity < 0 LIMIT 30`);
-    await chk('N_semi_neg', `SELECT id, name, semi_stock_quantity FROM products WHERE semi_stock_quantity < 0 LIMIT 30`);
-    // ── BOG'LIQLIK ──
-    await chk('O_orphan_customer', `SELECT id, order_ref, customer_name, customer_id FROM sales WHERE customer_id IS NOT NULL AND customer_id NOT IN (SELECT id FROM customers) LIMIT 30`);
-    await chk('P_deleted_product', `SELECT COUNT(*) AS cnt FROM sales WHERE product_id NOT IN (SELECT id FROM products)`);
-    // J2 — aynan anomal qatorlar (sum_pay > payment_amount) va ularning HAMMA to'lov yozuvlari
-    await chk('Z_anom_sales', `SELECT s.id, s.order_ref, s.quantity, s.unit_price, s.total_amount, s.payment_amount, s.status,
-      (SELECT COALESCE(SUM(amount),0) FROM payments WHERE sale_id=s.id) AS sum_pay
-      FROM sales s WHERE s.order_ref='28-07-2026-030'
-        AND (SELECT COALESCE(SUM(amount),0) FROM payments WHERE sale_id=s.id) > s.payment_amount + 1 ORDER BY s.id`);
-    await chk('Z_anom_pays', `SELECT p.sale_id, p.amount, p.method, p.payment_ref, p.created_at, p.notes FROM payments p
-      WHERE p.sale_id IN (SELECT id FROM sales WHERE order_ref='28-07-2026-030'
-        AND (SELECT COALESCE(SUM(amount),0) FROM payments WHERE sale_id=sales.id) > sales.payment_amount + 1) ORDER BY p.sale_id, p.created_at`);
-    // ── UMUMIY SANOQ ──
-    const counts = (await db.query(`SELECT (SELECT COUNT(*) FROM sales) AS sales, (SELECT COUNT(*) FROM payments) AS payments, (SELECT COUNT(*) FROM products) AS products, (SELECT COUNT(*) FROM customers) AS customers`)).rows[0];
-    out._totals = counts;
-    res.json(out);
-  } catch (e) { res.json({ error: e.message, stack: e.stack }); }
+  res.json({ version: 'diagnostika-tozalandi', commit: 'v259' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

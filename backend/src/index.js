@@ -118,9 +118,14 @@ app.get('/api/_diag/e1a8b46f565a3e6cbefb015a/health', async (req, res) => {
     // ── BOG'LIQLIK ──
     await chk('O_orphan_customer', `SELECT id, order_ref, customer_name, customer_id FROM sales WHERE customer_id IS NOT NULL AND customer_id NOT IN (SELECT id FROM customers) LIMIT 30`);
     await chk('P_deleted_product', `SELECT COUNT(*) AS cnt FROM sales WHERE product_id NOT IN (SELECT id FROM products)`);
-    // J2 orderni chuqur ko'rish
-    await chk('Z_dilrabo_sales', `SELECT id, product_id, quantity, unit_price, total_amount, payment_amount, status, created_at FROM sales WHERE order_ref='28-07-2026-030' ORDER BY id`);
-    await chk('Z_dilrabo_pays', `SELECT p.id, p.sale_id, p.amount, p.method, p.payment_ref, p.payment_date, p.created_at, p.notes FROM payments p WHERE p.sale_id IN (SELECT id FROM sales WHERE order_ref='28-07-2026-030') ORDER BY p.created_at`);
+    // J2 — aynan anomal qatorlar (sum_pay > payment_amount) va ularning HAMMA to'lov yozuvlari
+    await chk('Z_anom_sales', `SELECT s.id, s.order_ref, s.quantity, s.unit_price, s.total_amount, s.payment_amount, s.status,
+      (SELECT COALESCE(SUM(amount),0) FROM payments WHERE sale_id=s.id) AS sum_pay
+      FROM sales s WHERE s.order_ref='28-07-2026-030'
+        AND (SELECT COALESCE(SUM(amount),0) FROM payments WHERE sale_id=s.id) > s.payment_amount + 1 ORDER BY s.id`);
+    await chk('Z_anom_pays', `SELECT p.sale_id, p.amount, p.method, p.payment_ref, p.created_at, p.notes FROM payments p
+      WHERE p.sale_id IN (SELECT id FROM sales WHERE order_ref='28-07-2026-030'
+        AND (SELECT COALESCE(SUM(amount),0) FROM payments WHERE sale_id=sales.id) > sales.payment_amount + 1) ORDER BY p.sale_id, p.created_at`);
     // ── UMUMIY SANOQ ──
     const counts = (await db.query(`SELECT (SELECT COUNT(*) FROM sales) AS sales, (SELECT COUNT(*) FROM payments) AS payments, (SELECT COUNT(*) FROM products) AS products, (SELECT COUNT(*) FROM customers) AS customers`)).rows[0];
     out._totals = counts;

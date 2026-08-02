@@ -381,72 +381,84 @@ export default function XomAshyoPage() {
         </div>
       )}
 
-      {/* ===== AKT (faqat chop etishda ko'rinadi — 80mm) ===== */}
-      <div id="xom-ashyo-akt-print" className="hidden print:block bg-white text-black mx-auto"
-        style={{ width: '80mm', fontFamily: "'Inter', monospace" }}>
-        <div className="text-center pt-2 pb-1">
-          <div className="font-bold text-[13px] leading-tight">{COMPANY.name}</div>
-          <div className="text-[10px] leading-snug">{COMPANY.address}</div>
-          <div className="text-[10px]">Тел: {COMPANY.phone}</div>
-        </div>
-        <div className="border-t border-dashed border-black my-1" />
-        <div className="text-center font-bold text-[13px] tracking-wide">ХОМ АШЁ ҚАБУЛ АКТИ</div>
-        <div className="flex justify-between text-[11px] mt-1">
-          <span>Акт №: {String(aktNo).padStart(4, '0')}</span>
-          <span>{nowLabel()}</span>
-        </div>
-        <div className="border-t border-dashed border-black my-1" />
-
-        <table className="w-full text-[12px]">
-          <tbody>
-            <tr><td className="py-0.5">Сотувчи</td><td className="py-0.5 text-right font-bold">{sotuvchi}</td></tr>
-            <tr><td className="py-0.5">Олувчи</td><td className="py-0.5 text-right">{oluvchi || '—'}</td></tr>
-            {mahsulot && <tr><td className="py-0.5">Хом ашё</td><td className="py-0.5 text-right">{mahsulot}</td></tr>}
-          </tbody>
-        </table>
-        <div className="border-t border-dashed border-black my-1" />
-
-        <table className="w-full text-[12px]">
-          <tbody>
-            <tr><td className="py-0.5">Юк билан (Брутто)</td><td className="py-0.5 text-right font-semibold">{fmt(bruttoN)} кг</td></tr>
-            <tr><td className="py-0.5">Тара (бўш)</td><td className="py-0.5 text-right font-semibold">{fmt(taraN)} кг</td></tr>
-          </tbody>
-        </table>
-        <div className="border-t border-double border-black my-1" />
-        <div className="flex justify-between items-baseline px-0.5">
-          <span className="font-bold text-[13px]">СОФ (Нетто)</span>
-          <span className="font-extrabold text-[18px]">{fmt(netto)} кг</span>
-        </div>
-        <div className="border-t border-double border-black my-1" />
-
-        {/* НАРХ ва СУММА */}
-        <table className="w-full text-[12px]">
-          <tbody>
-            <tr><td className="py-0.5">Кг нархи</td><td className="py-0.5 text-right font-semibold">{fmt(narxN)} сўм/кг</td></tr>
-            <tr><td className="py-0.5 font-bold">ЖАМИ</td><td className="py-0.5 text-right font-bold">{fmt(jami)} сўм</td></tr>
-            <tr><td className="py-0.5">Тўланди</td><td className="py-0.5 text-right font-semibold">{fmt(tolanganN)} сўм</td></tr>
-          </tbody>
-        </table>
-        <div className="border-2 border-black rounded-md mt-1.5 py-1.5 px-1.5 text-center">
-          <div className="text-[11px] font-semibold">ҚОЛДИҚ (тўланмаган)</div>
-          <div className="font-extrabold text-[24px] leading-none mt-0.5">{fmt(qoldiq)}</div>
-          <div className="text-[11px] font-semibold">сўм</div>
-        </div>
-
-        {/* ИМЗОЛАР */}
-        <div className="mt-4 space-y-3 text-[11px]">
-          <div>
-            <div>Сотувчи имзо: ____________________</div>
-            <div className="text-[9px] text-gray-500 mt-0.5">({sotuvchi})</div>
+      {/* ===== AKT (faqat chop etishda — oddiy A4 printer, A4 ning yarmini egallaydi) ===== */}
+      <div id="xom-ashyo-akt-print" className="hidden print:block bg-white text-black"
+        style={{ fontFamily: "'Inter', sans-serif" }}>
+        <div style={{ boxSizing: 'border-box', width: '100%', minHeight: '140mm', padding: '7mm', border: '1.5px solid #000' }}>
+          {/* Sarlavha — korxona + akt raqami */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #000', paddingBottom: '3mm' }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '18px', lineHeight: 1.15 }}>{COMPANY.name}</div>
+              <div style={{ fontSize: '11px' }}>{COMPANY.address}</div>
+              <div style={{ fontSize: '11px' }}>Тел: {COMPANY.phone}</div>
+            </div>
+            <div style={{ textAlign: 'right', fontSize: '12px', whiteSpace: 'nowrap' }}>
+              <div>Акт №: <b style={{ fontSize: '16px' }}>{String(aktNo).padStart(4, '0')}</b></div>
+              <div>{nowLabel()}</div>
+            </div>
           </div>
-          <div>
-            <div>Олувчи имзо: ____________________</div>
-            <div className="text-[9px] text-gray-500 mt-0.5">({oluvchi || '—'})</div>
+
+          <div style={{ textAlign: 'center', fontWeight: 800, fontSize: '21px', letterSpacing: '1px', margin: '5mm 0 4mm' }}>
+            ХОМ АШЁ ҚАБУЛ АКТИ
+          </div>
+
+          {/* Сотувчи / Олувчи / Хом ашё */}
+          <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse', marginBottom: '3mm' }}>
+            <tbody>
+              <tr>
+                <td style={{ padding: '1.5mm 0', width: '50%' }}>Сотувчи: <b>{sotuvchi}</b></td>
+                <td style={{ padding: '1.5mm 0', width: '50%' }}>Олувчи: <b>{oluvchi || '—'}</b></td>
+              </tr>
+              {mahsulot && <tr><td colSpan={2} style={{ padding: '1.5mm 0' }}>Хом ашё: <b>{mahsulot}</b></td></tr>}
+            </tbody>
+          </table>
+
+          {/* Вазн ва пул жадвали */}
+          <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
+            <tbody>
+              <tr>
+                <td style={{ border: '1px solid #000', padding: '2mm 3mm' }}>Юк билан (Брутто)</td>
+                <td style={{ border: '1px solid #000', padding: '2mm 3mm', textAlign: 'right', fontWeight: 600 }}>{fmt(bruttoN)} кг</td>
+              </tr>
+              <tr>
+                <td style={{ border: '1px solid #000', padding: '2mm 3mm' }}>Тара (бўш)</td>
+                <td style={{ border: '1px solid #000', padding: '2mm 3mm', textAlign: 'right', fontWeight: 600 }}>{fmt(taraN)} кг</td>
+              </tr>
+              <tr>
+                <td style={{ border: '1px solid #000', padding: '2mm 3mm', fontWeight: 700, fontSize: '15px' }}>СОФ (Нетто)</td>
+                <td style={{ border: '1px solid #000', padding: '2mm 3mm', textAlign: 'right', fontWeight: 800, fontSize: '17px' }}>{fmt(netto)} кг</td>
+              </tr>
+              <tr>
+                <td style={{ border: '1px solid #000', padding: '2mm 3mm' }}>Кг нархи</td>
+                <td style={{ border: '1px solid #000', padding: '2mm 3mm', textAlign: 'right', fontWeight: 600 }}>{fmt(narxN)} сўм/кг</td>
+              </tr>
+              <tr>
+                <td style={{ border: '1px solid #000', padding: '2mm 3mm', fontWeight: 700, fontSize: '15px' }}>ЖАМИ СУММА</td>
+                <td style={{ border: '1px solid #000', padding: '2mm 3mm', textAlign: 'right', fontWeight: 800, fontSize: '17px' }}>{fmt(jami)} сўм</td>
+              </tr>
+              <tr>
+                <td style={{ border: '1px solid #000', padding: '2mm 3mm' }}>Тўланди</td>
+                <td style={{ border: '1px solid #000', padding: '2mm 3mm', textAlign: 'right', fontWeight: 600 }}>{fmt(tolanganN)} сўм</td>
+              </tr>
+              <tr>
+                <td style={{ border: '2px solid #000', padding: '2.5mm 3mm', fontWeight: 800, fontSize: '16px' }}>ҚОЛДИҚ (тўланмаган)</td>
+                <td style={{ border: '2px solid #000', padding: '2.5mm 3mm', textAlign: 'right', fontWeight: 800, fontSize: '19px' }}>{fmt(qoldiq)} сўм</td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* ИМЗОЛАР */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16mm', fontSize: '13px' }}>
+            <div style={{ width: '45%' }}>
+              <div style={{ borderTop: '1px solid #000', paddingTop: '1.5mm', fontWeight: 600 }}>Сотувчи имзо</div>
+              <div style={{ fontSize: '11px', color: '#555' }}>{sotuvchi}</div>
+            </div>
+            <div style={{ width: '45%' }}>
+              <div style={{ borderTop: '1px solid #000', paddingTop: '1.5mm', fontWeight: 600 }}>Олувчи имзо</div>
+              <div style={{ fontSize: '11px', color: '#555' }}>{oluvchi || '—'}</div>
+            </div>
           </div>
         </div>
-
-        <div className="text-center text-[11px] font-semibold mt-3">Раҳмат!</div>
-        <div className="text-center text-[9px] text-gray-500 mt-1 pb-2">TEKNOPLAST хом ашё тизими</div>
       </div>
     </div>
   );

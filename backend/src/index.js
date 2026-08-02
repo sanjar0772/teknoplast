@@ -74,7 +74,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'xom-ashyo-kg-narx', commit: 'v262' });
+  res.json({ version: 'xom-ashyo-akt-a5', commit: 'v263' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

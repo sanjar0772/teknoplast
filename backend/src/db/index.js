@@ -1155,6 +1155,37 @@ if (USE_PG) {
         data TEXT NOT NULL,
         updated_at TEXT DEFAULT (datetime('now'))
       )`,
+      // ONLAYN ZAKAZLAR (asosiy tizim, faqat zavod) — savdo boshlig'i (Saidmuhtor)
+      // ijtimoiy tarmoqdan kelgan buyurtmalarni ro'yxat qiladi. Zakaz tuzilganda ombor
+      // BAND qilinadi (stock ayiriladi), lekin bu hali SAVDO emas — kassa/foydaga tegmaydi.
+      // Mijoz ~10 kundan keyin kelib mahsulotni olib ketganda "yakunlash" bosiladi va
+      // shundagina oddiy savdoga (sales) aylanadi. Bekor qilinsa — ombor qaytariladi.
+      `CREATE TABLE IF NOT EXISTS online_orders (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        order_ref TEXT,
+        customer_id TEXT REFERENCES customers(id),
+        customer_name TEXT,
+        customer_phone TEXT,
+        status TEXT NOT NULL DEFAULT 'RESERVED',
+        total_amount REAL NOT NULL DEFAULT 0,
+        advance_amount REAL NOT NULL DEFAULT 0,
+        expected_date TEXT,
+        source TEXT,
+        notes TEXT,
+        sale_order_ref TEXT,
+        created_by TEXT REFERENCES users(id),
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS online_order_items (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        order_id TEXT NOT NULL REFERENCES online_orders(id),
+        product_id TEXT NOT NULL REFERENCES products(id),
+        quantity INTEGER NOT NULL,
+        unit_price REAL NOT NULL DEFAULT 0,
+        rang TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      )`,
     ];
     for (const m of migrations) {
       try {

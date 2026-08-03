@@ -47,6 +47,7 @@ app.use('/api/auth/login', loginLimiter);
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/sales', require('./routes/sales'));
+app.use('/api/online-orders', require('./routes/onlineOrders'));
 app.use('/api/customers', require('./routes/customers'));
 app.use('/api/intakes', require('./routes/intakes'));
 app.use('/api/fulfillment', require('./routes/fulfillment'));
@@ -74,7 +75,7 @@ app.get('/api/health', (req, res) => {
 
 // Deploy versiyasini tekshirish uchun (auth talab qilinmaydi)
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'faktura15-done', commit: 'v268' });
+  res.json({ version: 'onlayn-zakazlar', commit: 'v269' });
 });
 
 // Frontend static files (Railway uchun - Nginx yo'q)

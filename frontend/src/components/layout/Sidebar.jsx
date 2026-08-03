@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   LayoutDashboard, ShoppingCart, Receipt, Users, Factory,
   Banknote, Package, Warehouse, Cog, FileBarChart, Bot,
-  LogOut, ChevronRight, UserSquare2, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X, Sparkles, ShoppingBag, Boxes, History, RotateCcw, Scale, Store, MapPin, Recycle, PackageCheck
+  LogOut, ChevronRight, UserSquare2, Wallet, ShieldCheck, PackagePlus, Truck, KeyRound, X, Sparkles, ShoppingBag, Boxes, History, RotateCcw, Scale, Store, MapPin, Recycle, PackageCheck, Globe
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import useThemeStore from '../../store/themeStore';
@@ -48,6 +48,7 @@ const NAV_ITEMS = [
   { to: '/products',   icon: Package,         label: 'Mahsulotlar',      roles: ['OWNER','PRODUCTION_HEAD','SALES_HEAD','KIRIMCHI'] },
   { to: '/components', icon: Boxes,           label: 'Komponentlar',     roles: ['OWNER','PRODUCTION_HEAD','KIRIMCHI'] },
   { to: '/quick-sale', icon: ShoppingBag,     label: 'Savdo qilish',     roles: ['OWNER','ACCOUNTANT','SALES_HEAD','AGENT'] },
+  { to: '/online-orders', icon: Globe,        label: 'Onlayn zakazlar',  roles: ['OWNER','SALES_HEAD'] },
   { to: '/inventory',  icon: Warehouse,       label: 'Ombor',            roles: ['OWNER','ACCOUNTANT','PRODUCTION_HEAD','KIRIMCHI','OMBORCHI','TAMINOTCHI','SALES_HEAD'] },
   { to: '/machines',   icon: Cog,             label: 'Mashinalar',       roles: ['OWNER','PRODUCTION_HEAD','CYCLE_TIME','KIRIMCHI'] },
   { to: '/branches',   icon: Store,           label: 'Filiallar',        roles: ['OWNER'] },
@@ -95,7 +96,7 @@ export default function Sidebar() {
   const inBranchContext = !!(user?.branch_id || activeBranch);
   // Filialda ishlab chiqarish va maosh tizimi YO'Q — bu bo'limlar filialdan
   // olib tashlanadi (faqat zavodda / asosiy tizimda qoladi)
-  const HIDE_IN_BRANCH = ['/production', '/components', '/tarozi', '/tarozi-cheklar', '/xom-ashyo', '/ai', '/worker', '/machines', '/employees', '/salaries'];
+  const HIDE_IN_BRANCH = ['/production', '/components', '/tarozi', '/tarozi-cheklar', '/xom-ashyo', '/ai', '/worker', '/machines', '/employees', '/salaries', '/online-orders'];
   // Faqat FILIALDA ko'rinadi (asosiy tizim/zavodda YO'Q):
   // xodimlar joyi (GPS kuzatuv) va yetkazib berish (dostavka/shopir) — bular filial tizimi.
   const ONLY_IN_BRANCH = ['/agent-locations', '/deliveries', '/vozvrat-karta', '/mijozlar-karta'];

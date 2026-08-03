@@ -27,6 +27,7 @@ const VozvratlarPage = lazyPage(() => import('./pages/VozvratlarPage'));
 const HistoryPage = lazyPage(() => import('./pages/HistoryPage'));
 const InvoicePage = lazyPage(() => import('./pages/InvoicePage'));
 const QuickSalePage = lazyPage(() => import('./pages/QuickSalePage'));
+const OnlineOrdersPage = lazyPage(() => import('./pages/OnlineOrdersPage'));
 const CustomersPage = lazyPage(() => import('./pages/CustomersPage'));
 const DebtsPage = lazyPage(() => import('./pages/DebtsPage'));
 const UsersPage = lazyPage(() => import('./pages/UsersPage'));
@@ -103,6 +104,7 @@ export default function App() {
           }>
             <Route index element={<Dashboard />} />
             <Route path="quick-sale" element={<QuickSalePage />} />
+            <Route path="online-orders" element={<FactoryOnlyRoute><OnlineOrdersPage /></FactoryOnlyRoute>} />
             <Route path="history" element={<HistoryPage />} />
             <Route path="sales" element={<SalesPage />} />
             <Route path="vozvrat" element={<VozvratlarPage />} />

@@ -68,6 +68,14 @@ export const salesAPI = {
   delete: (id) => api.delete(`/sales/${id}`),
 };
 
+// Onlayn zakazlar (asosiy tizim, savdo boshlig'i)
+export const onlineOrdersAPI = {
+  getAll: (params) => api.get('/online-orders', { params }),
+  create: (data) => api.post('/online-orders', data),
+  complete: (id, data) => api.post(`/online-orders/${id}/complete`, data),
+  cancel: (id, data) => api.post(`/online-orders/${id}/cancel`, data),
+};
+
 // Customers (CRM)
 export const customersAPI = {
   getAll: (params) => api.get('/customers', { params }),

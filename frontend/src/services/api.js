@@ -120,6 +120,7 @@ export const branchesAPI = {
   getUsers: (id) => api.get(`/branches/${id}/users`),
   getProducts: (id) => api.get(`/branches/${id}/products`),
   copyProducts: (id) => api.post(`/branches/${id}/copy-products`),
+  restorePrices: (id) => api.post(`/branches/${id}/restore-prices`),
 };
 
 // Agent — shaxsiy ma'lumotlar (profil) va GPS joylashuv

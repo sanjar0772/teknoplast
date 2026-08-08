@@ -209,4 +209,32 @@ router.get('/:id/summary', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/branches/:id/restore-prices — filial narxlarini zavod narxlariga qaytarish (OWNER).
+// Faqat narx farq qilganlarni yangilaydi (boshqa maydonlarga tegmaydi).
+router.post('/:id/restore-prices', requireRole('OWNER'), async (req, res, next) => {
+  try {
+    const b = await query('SELECT id, name FROM branches WHERE id = $1', [req.params.id]);
+    if (!b.rows.length) return res.status(404).json({ error: 'Filial topilmadi' });
+    const branchProducts = (await query(
+      'SELECT id, name, price FROM products WHERE branch_id = $1 AND is_active = true', [req.params.id]
+    )).rows;
+    let restored = 0;
+    for (const bp of branchProducts) {
+      const factory = await query(
+        'SELECT price FROM products WHERE name = $1 AND branch_id IS NULL AND is_active = true LIMIT 1',
+        [bp.name]
+      );
+      if (!factory.rows.length) continue;
+      const fPrice = parseFloat(factory.rows[0].price) || 0;
+      const bPrice = parseFloat(bp.price) || 0;
+      if (Math.abs(fPrice - bPrice) > 0.01) {
+        await query('UPDATE products SET price = $1, updated_at = NOW() WHERE id = $2', [fPrice, bp.id]);
+        restored++;
+      }
+    }
+    logAudit(req, { action: 'BRANCH_RESTORE_PRICES', table: 'products', recordId: req.params.id, newValues: { restored, total: branchProducts.length } });
+    res.json({ success: true, restored, total: branchProducts.length, branch: b.rows[0].name });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

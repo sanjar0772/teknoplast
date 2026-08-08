@@ -15,11 +15,11 @@ async function importPricelist2026() {
     for (const item of pricelist) {
       // 1) kod (description) + narx bo'yicha, 2) bo'lmasa eski nom bo'yicha
       let existing = await client.query(
-        'SELECT id FROM products WHERE description = $1 AND price = $2 LIMIT 1',
+        'SELECT id FROM products WHERE description = $1 AND price = $2 AND branch_id IS NULL LIMIT 1',
         [item.code, item.price]
       );
       if (!existing.rows.length) {
-        existing = await client.query('SELECT id FROM products WHERE name = $1 LIMIT 1', [item.name]);
+        existing = await client.query('SELECT id FROM products WHERE name = $1 AND branch_id IS NULL LIMIT 1', [item.name]);
       }
       if (existing.rows.length) {
         await client.query(
@@ -50,7 +50,7 @@ async function importPricelist2026() {
 // o'tkazib yuboramiz (qo'lda tahrirlangan mahsulotlar ustiga yozilmasin).
 async function ensurePricelist2026() {
   try {
-    const sentinel = await db.query('SELECT id FROM products WHERE name = $1 LIMIT 1', ['Бачок 100л']);
+    const sentinel = await db.query('SELECT id FROM products WHERE name = $1 AND branch_id IS NULL LIMIT 1', ['Бачок 100л']);
     if (sentinel.rows && sentinel.rows.length) {
       console.log('📋 Praysist 2026 allaqachon yuklangan — o\'tkazildi');
       return;

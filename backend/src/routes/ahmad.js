@@ -318,20 +318,20 @@ async function findProduct(nameOrCode) {
   const term = String(nameOrCode).trim();
   // 1) Aniq nom (tez yo'l)
   let r = await query(
-    "SELECT id, name, price, stock_quantity FROM products WHERE LOWER(name)=LOWER($1) AND is_active=1 LIMIT 1",
+    "SELECT id, name, price, stock_quantity FROM products WHERE LOWER(name)=LOWER($1) AND is_active=1 AND branch_id IS NULL LIMIT 1",
     [term]
   );
   if (r.rows.length) return r.rows[0];
   // 2) Qisman nom (bir xil alifbo)
   r = await query(
-    "SELECT id, name, price, stock_quantity FROM products WHERE LOWER(name) LIKE LOWER($1) AND is_active=1 ORDER BY length(name) ASC LIMIT 1",
+    "SELECT id, name, price, stock_quantity FROM products WHERE LOWER(name) LIKE LOWER($1) AND is_active=1 AND branch_id IS NULL ORDER BY length(name) ASC LIMIT 1",
     [`%${term}%`]
   );
   if (r.rows.length) return r.rows[0];
   // 3) Kirill <-> lotin moslik: nomlarni soddalashtirib solishtiramiz
   const nq = normUz(term);
   if (nq.length >= 2) {
-    const all = await query("SELECT id, name, price, stock_quantity FROM products WHERE is_active=1", []);
+    const all = await query("SELECT id, name, price, stock_quantity FROM products WHERE is_active=1 AND branch_id IS NULL", []);
     let best = null, bestLen = Infinity;
     for (const p of all.rows) {
       const np = normUz(p.name);
@@ -345,7 +345,7 @@ async function findProduct(nameOrCode) {
   }
   // 4) Kod (description ichida)
   r = await query(
-    "SELECT id, name, price, stock_quantity FROM products WHERE LOWER(description) LIKE LOWER($1) AND is_active=1 LIMIT 1",
+    "SELECT id, name, price, stock_quantity FROM products WHERE LOWER(description) LIKE LOWER($1) AND is_active=1 AND branch_id IS NULL LIMIT 1",
     [`%${term}%`]
   );
   return r.rows.length ? r.rows[0] : null;
@@ -1494,14 +1494,14 @@ async function confirmActionHandler(req, res) {
     // --- Narx o'zgartirish ---
     if (action.type === 'UPDATE_PRICE') {
       const d = action.data;
-      await query('UPDATE products SET price=$1, updated_at=NOW() WHERE id=$2', [d.new_price, d.product_id]);
+      await query('UPDATE products SET price=$1, updated_at=NOW() WHERE id=$2 AND branch_id IS NULL', [d.new_price, d.product_id]);
       return res.json({ success: true, message: `${d.product_name} narxi ${fmt(d.new_price)} so'm bo'ldi` });
     }
 
     // --- Ombor o'zgartirish ---
     if (action.type === 'UPDATE_STOCK') {
       const d = action.data;
-      await query('UPDATE products SET stock_quantity=$1, updated_at=NOW() WHERE id=$2', [parseInt(d.new_quantity), d.product_id]);
+      await query('UPDATE products SET stock_quantity=$1, updated_at=NOW() WHERE id=$2 AND branch_id IS NULL', [parseInt(d.new_quantity), d.product_id]);
       return res.json({ success: true, message: `${d.product_name} ombori ${d.new_quantity} dona bo'ldi` });
     }
 
@@ -1556,7 +1556,7 @@ async function confirmActionHandler(req, res) {
             const price = cleanNum(it.price ?? it.unit_price ?? 0);
             // Agar narx berilgan bo'lsa — mahsulot narxini yangilaymiz
             if (price > 0) {
-              await query('UPDATE products SET price=$1, updated_at=NOW() WHERE id=$2', [price, p.id]);
+              await query('UPDATE products SET price=$1, updated_at=NOW() WHERE id=$2 AND branch_id IS NULL', [price, p.id]);
             }
             resolved.push({ product_id: p.id, quantity: cleanNum(it.quantity) || 1 });
           }

@@ -87,6 +87,18 @@ export default function BranchesPage() {
     onError: (e) => toast.error(e.response?.data?.error || 'Nusxalashda xato'),
   });
 
+  // Filial narxlarini zavod narxlariga qaytarish
+  const restorePricesMutation = useMutation({
+    mutationFn: () => branchesAPI.restorePrices(detailId).then(r => r.data),
+    onSuccess: (d) => {
+      toast.success(d.restored > 0
+        ? `${d.restored} ta mahsulot narxi zavod narxiga qaytarildi`
+        : 'Narxlar allaqachon zavod bilan bir xil');
+      qc.invalidateQueries({ queryKey: ['branch-products', detailId] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Narx tiklashda xato'),
+  });
+
   // Filialga xodim (savdo boshlig'i yoki savdo agenti) logini yaratish — mavjud auth/register'dan
   const createSellerMutation = useMutation({
     mutationFn: (d) => authAPI.register({
@@ -362,11 +374,18 @@ export default function BranchesPage() {
                   <div className="flex items-center gap-2 text-sm font-semibold text-blue-800">
                     <PackagePlus size={15} /> Filial mahsulot katalogi
                   </div>
-                  <button
-                    onClick={() => { if (window.confirm('Zavod mahsulotlari shu filialga nusxalansinmi?\nZavod omboriga TEGILMAYDI, filial qoldig\'i 0 dan boshlanadi.')) copyMutation.mutate(); }}
-                    disabled={copyMutation.isPending} className="btn-primary btn-sm">
-                    <PackagePlus size={13} /> {copyMutation.isPending ? 'Nusxalanmoqda...' : 'Zavod mahsulotlarini nusxalash'}
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { if (window.confirm('Filial narxlari zavod narxlariga qaytarilsinmi?\nFaqat narx o\'zgaradi, ombor va boshqa ma\'lumotlarga TEGILMAYDI.')) restorePricesMutation.mutate(); }}
+                      disabled={restorePricesMutation.isPending} className="btn-sm bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300">
+                      {restorePricesMutation.isPending ? 'Tiklanmoqda...' : 'Narxlarni tiklash'}
+                    </button>
+                    <button
+                      onClick={() => { if (window.confirm('Zavod mahsulotlari shu filialga nusxalansinmi?\nZavod omboriga TEGILMAYDI, filial qoldig\'i 0 dan boshlanadi.')) copyMutation.mutate(); }}
+                      disabled={copyMutation.isPending} className="btn-primary btn-sm">
+                      <PackagePlus size={13} /> {copyMutation.isPending ? 'Nusxalanmoqda...' : 'Zavod mahsulotlarini nusxalash'}
+                    </button>
+                  </div>
                 </div>
                 <p className="text-xs text-gray-500">
                   Filialning <b>o'z</b> mahsulot ro'yxati. "Nusxalash" zavod katalogini bu filialga ko'chiradi

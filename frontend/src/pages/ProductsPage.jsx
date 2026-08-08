@@ -842,13 +842,13 @@ export default function ProductsPage({ embedded = false }) {
                   <DollarSign size={13} /> Narh
                 </button>
               )}
-              {canWrite && (
+              {canWrite && !inBranch && (
                 <button onClick={() => { setBomModal(p); setBomAddForm({ component_id: '', qty: 1 }); }}
                   className="btn-sm w-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2 flex items-center gap-1 justify-center mt-1">
                   <Layers size={13} /> Tarkib (komponentlar)
                 </button>
               )}
-              {canWrite && (
+              {canWrite && !inBranch && (
                 <button onClick={() => { setRecipeModal(p); setRecipeAddForm(RECIPE_FORM0); }}
                   className={`btn-sm w-full rounded-lg px-2 flex items-center gap-1 justify-center mt-1 border ${
                     needsRecipe(p)
